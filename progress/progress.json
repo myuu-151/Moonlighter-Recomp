@@ -1,0 +1,81 @@
+{
+ "lines": 160682,
+ "ported": 10616,
+ "verified": 10306,
+ "percent": 6.61,
+ "verifiedPercent": 6.41,
+ "classes": 1173,
+ "classesDone": 31,
+ "categories": {
+  "Items & effects": {
+   "lines": 13388,
+   "ported": 34.0,
+   "verified": 0.0,
+   "classes": 132,
+   "done": 0
+  },
+  "Player": {
+   "lines": 9277,
+   "ported": 2044.0,
+   "verified": 1940.8,
+   "classes": 28,
+   "done": 1
+  },
+  "Core & other": {
+   "lines": 44306,
+   "ported": 405.9,
+   "verified": 354.9,
+   "classes": 487,
+   "done": 5
+  },
+  "UI": {
+   "lines": 20716,
+   "ported": 0.0,
+   "verified": 0.0,
+   "classes": 97,
+   "done": 0
+  },
+  "Enemies": {
+   "lines": 27342,
+   "ported": 2367.8,
+   "verified": 2367.8,
+   "classes": 178,
+   "done": 6
+  },
+  "Town, shop & villagers": {
+   "lines": 12097,
+   "ported": 0.0,
+   "verified": 0.0,
+   "classes": 67,
+   "done": 0
+  },
+  "Bosses": {
+   "lines": 8285,
+   "ported": 187.8,
+   "verified": 187.8,
+   "classes": 53,
+   "done": 2
+  },
+  "Dungeon runtime": {
+   "lines": 5487,
+   "ported": 311.0,
+   "verified": 189.0,
+   "classes": 30,
+   "done": 0
+  },
+  "Dungeon generation": {
+   "lines": 10310,
+   "ported": 5178.8,
+   "verified": 5178.8,
+   "classes": 42,
+   "done": 17
+  },
+  "Wanderer DLC": {
+   "lines": 9474,
+   "ported": 86.9,
+   "verified": 86.9,
+   "classes": 59,
+   "done": 0
+  }
+ }
+}

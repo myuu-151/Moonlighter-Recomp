@@ -9,10 +9,39 @@ C# and checked against the real game by an injected oracle, rather than by eye.
 It also builds for the GameCube:
 [Moonlighter GC](https://github.com/myuu-151/Moonlighter-GC) compiles this code for the console.
 
+<!-- progress:start -->
+## Progress
+
+![ported](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge.json)
+![verified](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge_verified.json)
+
+**6.6%** of the game's own code is ported (10,616 of 160,682 lines of C#, 31 of 1,173 classes whole); **6.4%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
+
+```
+total                    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░   6.6%
+```
+
+| Area | Lines | Ported | Verified | |
+|---|---:|---:|---:|---|
+| Dungeon generation | 10,310 | 50.2% | 50.2% | `██████████░░░░░░░░░░` |
+| Player | 9,277 | 22.0% | 20.9% | `████░░░░░░░░░░░░░░░░` |
+| Enemies | 27,342 | 8.7% | 8.7% | `██░░░░░░░░░░░░░░░░░░` |
+| Dungeon runtime | 5,487 | 5.7% | 3.4% | `█░░░░░░░░░░░░░░░░░░░` |
+| Bosses | 8,285 | 2.3% | 2.3% | `░░░░░░░░░░░░░░░░░░░░` |
+| Items & effects | 13,388 | 0.3% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
+| Town, shop & villagers | 12,097 | 0.0% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
+| UI | 20,716 | 0.0% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
+| Wanderer DLC | 9,474 | 0.9% | 0.9% | `░░░░░░░░░░░░░░░░░░░░` |
+| Core & other | 44,306 | 0.9% | 0.8% | `░░░░░░░░░░░░░░░░░░░░` |
+
+_Updated by `tools/progress.py` on every commit._
+<!-- progress:end -->
+
 ## Layout
 
 | Path | What | In git |
 |---|---|---|
+| `progress/` | The port's progress: the game's classes and line counts, what's ported, the badges (`tools/progress.py`, refreshed by the `tools/hooks/pre-commit` hook) | yes |
 | `Moonlighter/` | Copy of the Steam install (+ BepInEx, `steam_appid.txt`) | no |
 | `decomp/` | ILSpy output of `Assembly-CSharp*.dll` | no |
 | `data/` | Oracle recordings, asset scans, downloads | no |

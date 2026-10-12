@@ -1,0 +1,1174 @@
+# path	lines	category  (tools/progress.py --scan)
+AbandonedItemsGenerator.cs	87	Items & effects
+Ability.cs	104	Player
+AbilityItemMaster.cs	9	Player
+AchievementsSaveInfo.cs	45	Core & other
+ActionArea.cs	123	Player
+ActionTrigger.cs	472	Player
+ActivateWhenEnabled.cs	13	Core & other
+ActivationChecker.cs	38	Core & other
+ActiveQuest.cs	60	Core & other
+AdaptTextToResolution.cs	45	UI
+AddFamiliarAmuletEffect.cs	42	Items & effects
+AdvanceInQueueMessage.cs	8	Core & other
+AdviseOfCollisionToOtherGameObject.cs	14	Core & other
+AdviseOfCollisionWithPlayer.cs	24	Core & other
+Agent.cs	107	Core & other
+AgentSystem.cs	128	Core & other
+AgentSystemMessage.cs	18	Core & other
+AgentWeightList.cs	5	Core & other
+AmbientSoundManager.cs	90	Core & other
+Amulet.cs	78	Items & effects
+AmuletEquipmentMaster.cs	11	Items & effects
+AmuletGUI.cs	110	Items & effects
+AmuletMoonlighterEffect.cs	29	Items & effects
+AmuletUtility.cs	238	Items & effects
+AnalyticsManager.cs	10	Core & other
+AngelAmuletEffect.cs	176	Items & effects
+AnimatorStateEvents.cs	29	Core & other
+AnimatorVisitorGenerationParams.cs	9	Core & other
+AntiConfusionAmuletEffect.cs	15	Items & effects
+AntiElectricAmuletEffect.cs	15	Items & effects
+AntiFireAmuletEffect.cs	15	Items & effects
+AntiPoisonAmuletEffect.cs	15	Items & effects
+AreaEffect.cs	270	Items & effects
+ArmorAmuletEffect.cs	28	Items & effects
+AssetBundleTester.cs	34	Core & other
+AssetBundleUtils.cs	136	Core & other
+AStar.cs	77	Enemies
+AttackEmergencyAmuletEffect.cs	73	Items & effects
+AudioManager.cs	175	Core & other
+AutoConsumable.cs	8	Core & other
+AutoConsumableItemMaster.cs	5	Items & effects
+AutomaticTyper.cs	74	Core & other
+BabySlimeBehaviour.cs	28	Enemies
+BabySlimeFamiliarBehaviour.cs	317	Enemies
+BackersDatabase.cs	4	Core & other
+BagInventorySlotGUI.cs	77	Items & effects
+BagPlaceHolder.cs	34	Core & other
+BankerInteractive.cs	229	Town, shop & villagers
+BankerPanel.cs	533	Town, shop & villagers
+BankerSaveInfo.cs	12	Town, shop & villagers
+BardPuppetBehaviour.cs	184	Enemies
+BeamSet.cs	7	Core & other
+Bed.cs	91	Town, shop & villagers
+Bezier.cs	55	Core & other
+BigSwordWeaponMaster.cs	5	Player
+BirdBehaviour.cs	52	Enemies
+BirdCloseMessage.cs	5	Core & other
+BirdController.cs	207	Core & other
+BirdEnteredShopMessage.cs	8	Town, shop & villagers
+BirdExitedShopMessage.cs	3	Town, shop & villagers
+BirdFarMessage.cs	5	Core & other
+BirdRenderer.cs	8	Core & other
+BirdVisitorMind.cs	281	Core & other
+Blackboard.cs	36	Core & other
+BlackCatAmuletEffect.cs	18	Items & effects
+BlackSmithInteractive.cs	71	Town, shop & villagers
+BlacksmithPanel.cs	784	Town, shop & villagers
+BlacksmithSlot.cs	8	Town, shop & villagers
+BlacksmithSlotGUI.cs	59	Town, shop & villagers
+BladeTreeLeafProjectile.cs	165	Enemies
+BladeTreeSproutBehaviour.cs	141	Enemies
+BladeTreeSproutFamiliar.cs	200	Core & other
+BladeTreeSproutFamiliarProjectile.cs	171	Enemies
+BlockSlotsAction.cs	66	UI
+Body.cs	33	Core & other
+BoomerangSkeletonBehaviour.cs	380	Enemies
+BoomerangSkeletonProjectile.cs	195	Enemies
+BoostEffect.cs	46	Items & effects
+BossBehaviour.cs	121	Bosses
+BossCaveRoom.cs	20	Bosses
+BossRoomMiner.cs	95	Bosses
+BoundingBox2D.cs	55	Core & other
+Bow.cs	182	Player
+BowArrow.cs	90	Player
+BowWeaponMaster.cs	10	Player
+BreakableBoxBehaviour.cs	8	Enemies
+BreakableDetail.cs	63	Dungeon runtime
+BreakableObject.cs	24	Dungeon runtime
+BreakableObjectBehaviour.cs	207	Enemies
+BreakEffectAction.cs	158	Items & effects
+BreakItemAction.cs	66	Items & effects
+BrokenGolemButlerBehaviour.cs	161	Enemies
+BrokenGolemTurretBehaviour.cs	225	Enemies
+BrokenGolemTurretProjectile.cs	80	Enemies
+BubbleAnimation.cs	17	Core & other
+BubbleAnimationEndedMessage.cs	8	Core & other
+Buggies.cs	103	Core & other
+ButtonEvents.cs	30	UI
+ButtonIconSwitcher.cs	61	UI
+ButtonPlatformIconManager.cs	412	UI
+ButtonPressedChecker.cs	17	UI
+ButtonPrizeHandler.cs	81	UI
+ButtonSpriteConfig.cs	16	UI
+ButtonSpriteSwitcher.cs	59	UI
+ButtonSwitchConfig.cs	17	UI
+BuyDetailsPanel.cs	145	UI
+BuyTransactionCompleteMessage.cs	3	Core & other
+ByteReader.cs	191	Core & other
+CalendarPanel.cs	88	UI
+CameraArea.cs	24	Core & other
+CameraController.cs	4	Core & other
+CameraManager.cs	436	Core & other
+CampGenerator.cs	197	Core & other
+CanvasSafeArea.cs	27	Core & other
+Cappy.cs	112	Core & other
+CarnivorousMutaeAmuletEffect.cs	52	Bosses
+CarnivorousMutaeBossBehaviour.cs	441	Bosses
+CarnivorousMutaeBossRoots.cs	50	Bosses
+CarnivorousMutaeBossSpawnProjectile.cs	80	Bosses
+CarnivorousMutaeBossSporeProjectile.cs	112	Bosses
+CarnivorousMutaeBossTentacle.cs	62	Bosses
+CarnivorousMutaeSpores.cs	21	Bosses
+CashPoint.cs	169	Core & other
+CaveGenerator.cs	137	Dungeon generation
+CaveRoom.cs	74	Dungeon generation
+CaveRoomUnit.cs	56	Dungeon generation
+CenterOnChild.cs	59	Core & other
+ChangeShaderByPlatform.cs	10	Core & other
+ChangeSpeedOnDepth.cs	25	Core & other
+ChargedAttackAmuletEffect.cs	84	Items & effects
+ChatController.cs	27	Core & other
+Chest.cs	945	Dungeon runtime
+ChestInventoryPanel.cs	655	Dungeon runtime
+ChestSaveInfo.cs	22	Dungeon runtime
+ChestSlotGUI.cs	120	Dungeon runtime
+ChestVisitorSlot.cs	5	Dungeon runtime
+ChineseObjectDeactivator.cs	7	Core & other
+ChineseSpriteSwitcher.cs	10	Core & other
+ChristmasTreeBehaviour.cs	41	Enemies
+Citizen.cs	479	Town, shop & villagers
+CitizenDialog.cs	255	Town, shop & villagers
+CitizenGenerator.cs	133	Town, shop & villagers
+CitizenLevelList.cs	17	Town, shop & villagers
+ClickToMove.cs	24	Core & other
+CloseShopMessage.cs	3	Town, shop & villagers
+ClothTangleBehaviour.cs	95	Enemies
+ClothTangleFireballProyectile.cs	63	Enemies
+Coin.cs	15	Core & other
+ColorBlindFilter.cs	80	Core & other
+ColorBlindMode.cs	12	Core & other
+CommonDungeonData.cs	5	Core & other
+CommonRoomMiner.cs	144	Core & other
+CommonVisitorMind.cs	84	Core & other
+ConfusedEffect.cs	114	Items & effects
+Constants.cs	287	Dungeon generation
+Consumable.cs	43	Core & other
+ConsumableChecker.cs	4	Core & other
+ConsumableItemMaster.cs	8	Items & effects
+ContinuosPositionChecker.cs	39	Core & other
+ConversationUtils.cs	61	Core & other
+CorruptDimensionalPoliceBehaviour.cs	819	Enemies
+CorruptDimensionalPoliceProjectile.cs	104	Enemies
+CraftAnimationIngredient.cs	34	Core & other
+CrazyPeteChecker.cs	38	Core & other
+CrazyPeteNotes.cs	50	Core & other
+CrazyPeteShitPlace.cs	12	Core & other
+CreditsPanel.cs	364	UI
+CSVParser.cs	82	Core & other
+CuccoController.cs	128	Core & other
+CuccoHordeBehaviour.cs	160	Enemies
+CultureManager.cs	401	Core & other
+CultureNotes.cs	20	Core & other
+CurvedMesh.cs	299	Core & other
+CurvedMesh_VariableEndDecrement.cs	288	Core & other
+CustomButton.cs	10	UI
+CustomScrollbar.cs	82	Core & other
+CustomTuple.cs	17	Core & other
+CuttingBehaviour.cs	161	Enemies
+CuttingProjectile.cs	98	Enemies
+DamageAction.cs	33	Core & other
+DamageOverTimeEffect.cs	164	Items & effects
+DancerPuppetFamiliar.cs	112	Core & other
+Dash.cs	124	Player
+DataStructures/FastPriorityQueue.cs	178	Core & other
+DataStructures/PriorityQueueItem.cs	6	Items & effects
+DayAfternoonPanel.cs	194	UI
+DayInfoPanel.cs	167	UI
+DayInventorySlotGUI.cs	108	Items & effects
+DaySpriteReferences.cs	23	Core & other
+DayTime.cs	5	Core & other
+DeathGeneratorBehaviour.cs	329	Enemies
+DebugColliders.cs	127	Core & other
+DebugLabel.cs	44	Core & other
+DebugUtils.cs	16	Core & other
+DecorationBuyPanel.cs	140	UI
+DecorationGUIData.cs	15	UI
+DecorativeItem.cs	15	Items & effects
+DecorativeItemMaster.cs	29	Items & effects
+DecorativePanel.cs	412	UI
+DecorativeSlot.cs	125	UI
+DecorativeSlotGUI.cs	89	UI
+DefenseEmergencyAmuletEffect.cs	75	Items & effects
+DesertBossBehaviour.cs	928	Bosses
+DesertBossBodyPiece.cs	212	Bosses
+DesertBossElementalBehaviour.cs	237	Bosses
+DesertBossElementalFireProyectile.cs	64	Bosses
+DesertBossFireProyectile.cs	104	Bosses
+DesertBossHead.cs	43	Bosses
+DesertBossRefPoint.cs	10	Bosses
+DesertDungeonData.cs	5	Core & other
+DestroyAfterTime.cs	16	Core & other
+DestroyOnConsoles.cs	7	Core & other
+DetailsPrefabRegister.cs	205	Dungeon generation
+DiagramInteractive.cs	31	Town, shop & villagers
+DiagramPanel.cs	87	UI
+DialogEndedChecker.cs	28	UI
+DialogGUIWithButton.cs	131	UI
+DigitalSun.Moonlighter/AnimatorIdleBreaks.cs	53	Core & other
+DigitalSun.Moonlighter/InGameNewsDataDownloader.cs	36	Core & other
+DigitalSun.Moonlighter/InGameNewsPopup.cs	233	UI
+DigitalSun.Moonlighter/InGameNewsRewardSpawner.cs	50	Core & other
+DigitalSun.Moonlighter/InGameNewsSaveInfo.cs	25	Core & other
+DigitalSun.Moonlighter/InGameNewsViewer.cs	477	Core & other
+DigitalSun.Moonlighter/PaginationElement.cs	22	Core & other
+DigitalSunGames.Resources/BundleHandle.cs	118	Core & other
+DigitalSunGames.Resources/BundleLoader.cs	59	Core & other
+DigitalSunGames.Resources/ResourceController.cs	46	Core & other
+DigitalSunGames.Utils/Debug.cs	90	Core & other
+DigitalSunGames.Utils/TimeMeasurement.cs	27	Core & other
+DimensionalWizardBehaviour.cs	238	Enemies
+DimensionalWizardItemBehaviour.cs	195	Enemies
+DimensionalWizardPortalAnimationsWrap.cs	13	Core & other
+DimensionalWizardPortalAttackBehaviour.cs	148	Enemies
+DimensionalWizardSphereAttackBehaviour.cs	98	Enemies
+DimensionalWizardSphereBehaviour.cs	207	Enemies
+DimensionalWormBehaviour.cs	493	Enemies
+DimensionalWormDamageDealer.cs	10	Core & other
+DirectionChecker.cs	68	Core & other
+DLCSaveInfo.cs	15	Core & other
+Doberman.cs	116	Core & other
+DontDestroyOnLoad.cs	8	Core & other
+DoorToStorageCameraSwap.cs	43	Core & other
+DoubleWeaponFeetCollisionDetection.cs	29	Core & other
+DoubleWeaponSkeletonBehaviour.cs	352	Enemies
+DoubleWeaponSkeletonCollisionDetection.cs	29	Core & other
+DoubleWeaponSkeletonProjectile.cs	83	Enemies
+DRMFreeStoreController.cs	7	Core & other
+DummyAgent.cs	6	Core & other
+DummyBehaviour.cs	106	Enemies
+DummyBody.cs	105	Core & other
+DummyMind.cs	124	Core & other
+DungeonBossRoom.cs	485	Bosses
+DungeonBossRoomEnterDoor.cs	71	Bosses
+DungeonBossRoomExitDoor.cs	65	Bosses
+DungeonData.cs	7	Dungeon runtime
+DungeonDoor.cs	133	Dungeon runtime
+DungeonFinalBossRoom.cs	76	Bosses
+DungeonGenerationTester.cs	137	Dungeon generation
+DungeonGenerator.cs	2082	Dungeon generation
+DungeonHolesInfoContainer.cs	9	Dungeon runtime
+DungeonLastLevelDoor.cs	87	Dungeon runtime
+DungeonLoadingPanel.cs	339	Dungeon runtime
+DungeonManager.cs	623	Dungeon runtime
+DungeonPrefabRegister.cs	10	Dungeon runtime
+DungeonResultsPanel.cs	911	Dungeon runtime
+DungeonRoom.cs	2102	Dungeon generation
+DungeonRoomBossAlertArea.cs	13	Dungeon generation
+DungeonRoomDatabase.cs	214	Dungeon generation
+DungeonRoomDetailsGenerationInfo.cs	16	Dungeon generation
+DungeonRoomEditor.cs	94	Dungeon generation
+DungeonRoomEditorButton.cs	25	Dungeon generation
+DungeonRoomGenerationData.cs	73	Dungeon generation
+DungeonRoomGenerator.cs	1368	Dungeon generation
+DungeonRoomInfo.cs	89	Dungeon generation
+DungeonRoomSecretAdvisor.cs	21	Dungeon generation
+DungeonRoomSecretRope.cs	63	Dungeon generation
+DungeonRoomUnknownDungeon.cs	63	Dungeon generation
+DungeonSaveInfo.cs	180	Dungeon runtime
+DungeonSpawn.cs	40	Dungeon generation
+DungeonSpawnPack.cs	18	Dungeon generation
+DungeonSpawSelection.cs	22	Dungeon runtime
+DungeonSpriteByCulture.cs	17	Dungeon runtime
+DungeonTestEnemySpawn.cs	52	Enemies
+DungeonToHomeChest.cs	84	Dungeon runtime
+DungeonTrailBossSpriteChecker.cs	8	Bosses
+DungeonTrailGizmo.cs	501	Dungeon runtime
+DungeonWelcomeScroll.cs	292	Dungeon runtime
+DuplicateEnemiesFixScript.cs	13	Core & other
+DynamicMesh.cs	210	Core & other
+DynamicWaterBeam.cs	206	Core & other
+Effect.cs	164	Items & effects
+EffectAction.cs	21	Items & effects
+EffectTrigger.cs	52	Items & effects
+ElectricArcMesh.cs	110	Core & other
+ElectricPostBehaviour.cs	101	Enemies
+ElectricSphereMesh.cs	143	Core & other
+ElectromagneticBallBehaviour.cs	71	Enemies
+ElementalDamageAmuletEffect.cs	34	Items & effects
+ElementalEnchantedParticlesHelper.cs	48	Core & other
+EligibleEnemySet.cs	19	Enemies
+EmblemPortal.cs	254	Core & other
+EnchantedParticlesHelper.cs	75	Core & other
+EnchantmentRecipe.cs	103	Items & effects
+EndGameCinematic.cs	520	Core & other
+EndSceneVillagerAnimation.cs	86	Town, shop & villagers
+EnemiesPrefabRegister.cs	326	Core & other
+Enemy.cs	403	Enemies
+EnemyAttackCollisionDetection.cs	43	Enemies
+EnemyBehaviour.cs	557	Enemies
+EnemyDamageReceiver.cs	12	Enemies
+EnemyHealthBar.cs	73	Enemies
+EnemyStatManager.cs	74	Enemies
+EnemyStatModificator.cs	51	Enemies
+EnemyStats.cs	303	Enemies
+EnemyStatsContainer.cs	25	Enemies
+EnemyWarpSpawner.cs	201	Enemies
+EnemyWavesShrine.cs	365	Enemies
+EnergyBeam.cs	178	Core & other
+EnergyBeamMesh.cs	405	Core & other
+EnergyFluxAmuletEffect.cs	54	Items & effects
+EnumMaskFieldAttribute.cs	10	Core & other
+EnvMapAnimator.cs	24	Core & other
+Equipment.cs	415	Items & effects
+EquipmentInventorySlotGUI.cs	76	Items & effects
+EquipmentItemMaster.cs	28	Items & effects
+EquipmentStats.cs	137	Items & effects
+EventDispatcher.cs	16	Core & other
+EvilWillArrowBehaviour.cs	87	Enemies
+EvilWillBehaviour.cs	763	Enemies
+ExaminePanel.cs	33	UI
+ExampleRenderTexturePlayback.cs	4	UI
+ExplodeInventoryAction.cs	3	Items & effects
+ExplosiveArmedRobotBehaviour.cs	321	Enemies
+ExplosiveArmedRobotProjectile.cs	235	Enemies
+ExplosiveArrow.cs	131	Core & other
+Extensions.cs	939	Core & other
+FakeDungeonRoomThatLoadNextLevelDungeon.cs	16	Core & other
+FakeIdleOffsetDatabase.cs	36	Core & other
+FallingFloor.cs	78	Core & other
+FamiliarBase.cs	908	Core & other
+FamiliarEggSaveInfo.cs	27	Core & other
+FamiliarElementalAttackCollisionDetection.cs	19	Core & other
+FamiliarItem.cs	12	Items & effects
+FamiliarItemMaster.cs	8	Items & effects
+FamiliarSlot.cs	172	UI
+FamiliarSlotGUI.cs	82	UI
+FamiliarSlotGUIResources.cs	32	UI
+FamiliarSlotResources.cs	69	UI
+FamiliarsManager.cs	656	Core & other
+FamiliarsPanel.cs	297	UI
+FamiliarsYard.cs	129	Core & other
+FirePuppetBehaviour.cs	90	Enemies
+FirePuppetProyectile.cs	110	Core & other
+FireRhombusBeam.cs	34	Core & other
+FireRhombusBehaviour.cs	495	Enemies
+FixedStepsMiner.cs	80	Core & other
+FlexibleGridLayout.cs	75	Core & other
+FlexibleGridLayoutElement.cs	30	Core & other
+FloatingDamageIndicator.cs	115	Core & other
+FloatingDamageSpriteIndicator.cs	83	Core & other
+FloatingGoldIndicator.cs	50	Core & other
+FloatingIsland.cs	57	Core & other
+FlyingFamiliarMovement.cs	186	Core & other
+FlyingKamikazeGolemBehaviour.cs	180	Enemies
+FlyingRepairGolemBehaviour.cs	198	Enemies
+FlyingRepairGolemFamiliar.cs	307	Enemies
+FollowPlayer.cs	15	Core & other
+FontSizeLocalize.cs	116	Core & other
+FontSizeManager.cs	125	Core & other
+ForestDungeonData.cs	5	Core & other
+ForestLandscaperBehaviour.cs	195	Enemies
+ForestSeederBehaviour.cs	159	Enemies
+ForgeLight.cs	23	Core & other
+FPSCounter.cs	59	Core & other
+FPSDisplayer.cs	38	Core & other
+FruitTreeBehaviour.cs	361	Enemies
+FruitTreeBehaviour_Corrupted.cs	426	Core & other
+FruitTreeProjectile.cs	171	Enemies
+FruitTreeProjectile_Corrupted.cs	151	Enemies
+FruitTreeRoot.cs	195	Core & other
+FruitTreeRoot_Corrupted.cs	204	Core & other
+FruitTreeRootFlower.cs	19	Core & other
+FruitTurretBehaviour.cs	352	Enemies
+FruitTurretProjectile.cs	85	Enemies
+FsJSONManager.cs	88	Core & other
+GameManager.cs	2633	Core & other
+GameSlot.cs	116	UI
+GameSlotGUI.cs	172	UI
+GameSlotGUIData.cs	31	UI
+GasAreaEffect.cs	125	Items & effects
+GasAreaFamiliarEffect.cs	94	Items & effects
+GasSuitBehaviour.cs	245	Enemies
+GasSuitFamiliar.cs	211	Core & other
+GaussianRandom.cs	48	Dungeon generation
+GhostBehaviour.cs	315	Enemies
+GhostEffect.cs	55	Items & effects
+GiantSlimeBehaviour.cs	184	Enemies
+GiantSlimeSounds.cs	13	Enemies
+GizmoBoss.cs	496	Bosses
+GizmoBossPortalAttack.cs	44	Bosses
+GizmoPhase2Boss.cs	479	Bosses
+GlobalAudioManager.cs	119	Core & other
+GlovesWeaponMaster.cs	5	Player
+GoldChecker.cs	24	Core & other
+GoldMimic.cs	227	Enemies
+GoldMimicProjectile.cs	85	Enemies
+GolemButlerBehaviour.cs	209	Enemies
+GolemButlerProjectile.cs	53	Enemies
+GolemDungeonData.cs	5	Enemies
+GolemHeadBehaviour.cs	221	Enemies
+GolemKamikazeBehaviour.cs	164	Enemies
+GolemKingAmuletEffect.cs	64	Bosses
+GolemKingBoss.cs	608	Bosses
+GolemKingBossEye.cs	17	Bosses
+GolemKingBossStickyPunchScale.cs	9	Bosses
+GolemKingForcePushAttack.cs	40	Bosses
+GolemKingPunchBehaviour.cs	118	Bosses
+GolemKingRockAttackBehaviour.cs	4	Bosses
+GolemKingRockBehaviour.cs	197	Bosses
+GolemKingSlimeArm.cs	12	Bosses
+GolemKingSlimeTrap.cs	74	Bosses
+GolemSoldierBehaviour.cs	45	Enemies
+GolemTurretBehaviour.cs	353	Enemies
+GolemTurretFamiliar.cs	270	Enemies
+GolemTurretFamiliarProjectile.cs	91	Enemies
+GolemTurretProjectile.cs	79	Enemies
+GolemWarriorBehaviour.cs	251	Enemies
+GolemWarriorCorruptedBehaviour.cs	414	Enemies
+GoogleAnalyticsManager.cs	71	Core & other
+GraafGeneratorBehaviour.cs	214	Enemies
+GraafGeneratorFamiliar.cs	217	Core & other
+GUIActions.cs	144	UI
+GuidanceDesertPotion.cs	18	Items & effects
+GuidanceForestPotion.cs	18	Items & effects
+GuidanceGolemPotion.cs	18	Enemies
+GuidanceTechPotion.cs	18	Items & effects
+GUIManager.cs	1162	UI
+HagglerTintAplhaAccessor.cs	22	Core & other
+HasReturnedForQuestMessage.cs	8	Core & other
+HawkerInteractive.cs	63	Town, shop & villagers
+HawkerPanel.cs	345	UI
+HawkerSlotGUI.cs	26	UI
+HealingArea.cs	386	Core & other
+Heap.cs	88	Enemies
+HermitSlimeAttackState.cs	24	Enemies
+HermitSlimeBehaviour.cs	134	Enemies
+HermitSlimeBehaviourNEW.cs	134	Enemies
+HeroInventoryPanel.cs	683	UI
+HeroMerchant.cs	1101	Player
+HeroMerchantActions.cs	65	Player
+HeroMerchantController.cs	3677	Player
+HeroMerchantInventory.cs	1382	Player
+HeroMerchantProjectile.cs	153	Enemies
+HeroMerchantStats.cs	143	Player
+HeroMerchantTutorialSounds.cs	33	Player
+HeroStatistics.cs	1006	Core & other
+HideTextDialogMessage.cs	3	UI
+HolePortalToIntermediateLevel.cs	98	Dungeon runtime
+HolographicSignRandomBlink.cs	28	Core & other
+HorizontalOptionSelector.cs	174	Core & other
+HPPotionI.cs	42	Items & effects
+HPPotionII.cs	42	Items & effects
+HPPotionIII.cs	42	Items & effects
+HPPotionIV.cs	42	Items & effects
+HPPotionV.cs	42	Items & effects
+HPPotionVI.cs	42	Items & effects
+HPPotionVII.cs	42	Items & effects
+HPPotionVIII.cs	42	Items & effects
+HUDDebug.cs	1097	UI
+HUDManager.cs	1028	UI
+HyperPotion.cs	23	Items & effects
+I2Conversation.cs	294	Core & other
+I2LChecker.cs	300	Core & other
+I2LocalizeExtensions.cs	30	Core & other
+IActionable.cs	7	Core & other
+IBirdController.cs	11	Core & other
+IFamiliarMovement.cs	18	Core & other
+IHeapItem.cs	5	Enemies
+ImageConfirmationPanel.cs	102	UI
+ImageFillAmountFromSlider.cs	16	UI
+IModifyEnemyDamage.cs	4	Enemies
+IModifyFamiliarDamage.cs	4	Core & other
+IModifyPlayerDamage.cs	5	Core & other
+InfoPopUp.cs	263	Core & other
+InGameNewsReward.cs	10	Core & other
+INIParser.cs	533	Core & other
+InputActionsManager.cs	138	Core & other
+InstaKillAmuletEffect.cs	33	Items & effects
+InteractiveDialog.cs	234	Town, shop & villagers
+IntroLoadScreen.cs	36	Core & other
+InventoryPanel.cs	983	UI
+InventorySlot.cs	53	Items & effects
+InventorySlotAction.cs	192	Items & effects
+InventorySlotGUI.cs	1264	Items & effects
+InventorySlotGUIData.cs	68	Items & effects
+InventorySlotSelectedChecker.cs	48	Items & effects
+InventroyPanelOpenState.cs	37	UI
+InvulnerableEnemy.cs	12	Enemies
+InvulneravilityPotion.cs	12	Items & effects
+InvulneravilityPotionEffect.cs	28	Items & effects
+IronMimic.cs	167	Enemies
+ISMStateAdvisor.cs	5	Core & other
+ItemChartPanel.cs	130	Items & effects
+ItemDatabase.cs	370	Items & effects
+ItemDetailsPanel.cs	10	Items & effects
+ItemDiscoverSaveInfo.cs	14	Items & effects
+ItemDrop.cs	47	Items & effects
+ItemEffectManager.cs	76	Items & effects
+ItemHover.cs	15	Items & effects
+ItemMaster.cs	68	Items & effects
+ItemPriceInfo.cs	29	Items & effects
+ItemPriceManager.cs	349	Items & effects
+ItemPriceManagerInfo.cs	18	Items & effects
+ItemPriceValoration.cs	9	Items & effects
+ItemSaveInfo.cs	73	Items & effects
+ItemSelector.cs	515	Items & effects
+ItemStack.cs	696	Items & effects
+IVisitor.cs	4	Core & other
+KatamariGolemBehaviour.cs	247	Enemies
+KeyPressedChecker.cs	17	Core & other
+LabelTextScroll.cs	91	UI
+LavaCatapultBehaviour.cs	144	Enemies
+LightningBeam.cs	102	Core & other
+LightningBeamMesh.cs	426	Core & other
+LightningMesh.cs	200	Core & other
+LightsRandomAnimationBehaviour.cs	31	Enemies
+Localization.cs	274	Core & other
+LogitechArxControl.cs	82	Core & other
+LogitechGKey.cs	79	Core & other
+LogitechGSDK.cs	513	Core & other
+LogitechLCD.cs	135	Core & other
+LogitechLed.cs	94	Core & other
+LogitechSteeringWheel.cs	279	Core & other
+LongPressActionTrigger.cs	10	Core & other
+LuckAmuletEffect.cs	48	Items & effects
+MagicianPuppetBehaviour.cs	173	Enemies
+MagicianPuppetProyectile.cs	102	Core & other
+MainMenuCloud.cs	60	UI
+MainMenuLogoSequence.cs	38	UI
+MainMenuLowCloud.cs	29	UI
+MainMenuPanel.cs	718	UI
+MakePixelPerfect.cs	18	Core & other
+MedicEmergencyAmuletEffect.cs	44	Items & effects
+MemoryProfiler.cs	33	Core & other
+Mimic.cs	33	Enemies
+Mind.cs	24	Core & other
+Miner.cs	18	Core & other
+MinimapDetailPanel.cs	335	UI
+MinimapPanel.cs	435	UI
+MinimapRoom.cs	84	UI
+MinMaxRangeAttribute.cs	11	Core & other
+Mirror.cs	38	Core & other
+MirrorSounds.cs	27	Core & other
+MonthPanel.cs	95	UI
+Moonlighter.CutsceneUtils/SetMeTriggers.cs	49	Core & other
+Moonlighter.DLC/IDLCController.cs	17	Wanderer DLC
+Moonlighter.DLC/IDLCControllerFamiliarsManager.cs	7	Wanderer DLC
+Moonlighter.DLC/IDLCControllerOverrideRoom.cs	5	Wanderer DLC
+Moonlighter.DLC/IDLCControllerSeasonalSpawner.cs	7	Wanderer DLC
+Moonlighter.DLC/IDLCNotebookController.cs	7	Wanderer DLC
+Moonlighter.DLC.Shop/HaggleVisitorSpawner.cs	44	Wanderer DLC
+Moonlighter.DLC.Shop.Agents/IndecisiveVisitor.cs	23	Wanderer DLC
+Moonlighter.DLC.Shop.Agents/IndecisiveVisitorMind.cs	50	Wanderer DLC
+Moonlighter.DLC.Shop.Agents/WillAttendedCustomerMessage.cs	4	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/AmuletSideInventorySlotGUI.cs	23	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/BlueprintStatsPanel.cs	120	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/DungeonWandererBossRoom.cs	150	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/EmergencyDamageAmuletEffect.cs	49	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/FamiliarAmuletEffect.cs	35	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/HaggleManager.cs	196	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/HaggleOffer.cs	72	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/HaggleOfferSaveInfo.cs	26	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/HagglePanel.cs	688	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/HagglerVisitorPanel.cs	138	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/HeroRingAmuletEffect.cs	93	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/HeroRingAmuletEffect_Projectile.cs	38	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/LifeDrainAmuletEffect.cs	40	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/LiftInventorySlotGUI.cs	41	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/SpikedRollAmuletEffect.cs	62	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererBlueprintItemMaster.cs	50	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererBlueprintSlotCraftAnimationController.cs	52	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDLCController.cs	869	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDLCHagglerSaveInfo.cs	9	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDLCSaveInfo.cs	24	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDungeonLiftAccess.cs	114	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDungeonLiftAccessPanel.cs	80	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDungeonLiftAccessPanel_FloorElement.cs	153	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDungeonLiftUnlock.cs	241	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDungeonLiftUnlock_DecoratorsController.cs	151	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererDungeonLiftUnlockPanel.cs	590	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererEmblemPortal.cs	4	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererHagglerPanel.cs	525	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererHagglerSpawner.cs	33	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererInDisguise.cs	172	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererNotes.cs	28	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererNPCAppearance.cs	227	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererNPCAppearanceExternalController.cs	23	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererPotionSlotCraftAnimationController.cs	51	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererShopperPanel.cs	346	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererShopperSpawner.cs	144	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WandererWitchPanel.cs	406	Wanderer DLC
+Moonlighter.DLC.WandererDungeon/WitchPortal.cs	189	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Cinematics/CinematicUtils.cs	422	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Cinematics/DLCIntroManager.cs	984	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Cinematics/DummyAgentScriptable.cs	18	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Cinematics/EndDLCCinematic.cs	440	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Shop/BirdVisitorSpawner.cs	41	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Shop/HaggleVisitor.cs	17	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Shop/HaggleVisitorMind.cs	214	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Town/DLCSpawner.cs	94	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Town/DLCTownNPCUnlocker.cs	101	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Town/HagglerUnlocker.cs	277	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Town/WandererHaggler.cs	186	Wanderer DLC
+Moonlighter.DLC.WandererDungeon.Town/Worker.cs	264	Wanderer DLC
+Moonlighter.DungeonGeneration/ChestGeneration.cs	204	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonGenerationBreakableProbs.cs	16	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonGenerationData.cs	196	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonGenerationFloorData.cs	50	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonGenerationHoleData.cs	37	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonGenerationLightData.cs	11	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonGenerationProcess.cs	14	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonGenerator.cs	1770	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonRoomConfigurator.cs	108	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonRoomDatabase.cs	43	Dungeon generation
+Moonlighter.DungeonGeneration/DungeonRoomRegistry.cs	145	Dungeon generation
+Moonlighter.DungeonGeneration/EnemyRandomSpawnerController.cs	217	Dungeon generation
+Moonlighter.DungeonGeneration/IPrefabDungeonGenerator.cs	7	Dungeon generation
+Moonlighter.DungeonGeneration/ISavedDungeonGenerator.cs	6	Dungeon generation
+Moonlighter.DungeonGeneration/PrefabDungeonGenerator.cs	10	Dungeon generation
+Moonlighter.DungeonGeneration/RockRandomAnimation.cs	31	Dungeon generation
+Moonlighter.DungeonGeneration/SavedDungeonGenerator.cs	9	Dungeon generation
+Moonlighter.DungeonGeneration/SpecialRoomDatabase.cs	13	Dungeon generation
+Moonlighter.DungeonGeneration/WandererDungeonGenerator.cs	4	Dungeon generation
+Moonlighter.Shop/ConditionalVisitorSpawner.cs	5	Town, shop & villagers
+Moonlighter.Shop/IVisitorSpawner.cs	7	Town, shop & villagers
+Moonlighter.Shop/NormalVisitorSpawner.cs	49	Town, shop & villagers
+Moonlighter.Shop/QuestVisitorSpawner.cs	132	Town, shop & villagers
+Moonlighter.Shop/ThiefVisitorSpawner.cs	49	Town, shop & villagers
+Moonlighter.Shop/TimedVisitorSpawner.cs	38	Town, shop & villagers
+Moonlighter.Shop/VisitorSpawner.cs	22	Town, shop & villagers
+Moonlighter.Shop/WeightedVisitorSpawner.cs	7	Town, shop & villagers
+Moonlighter.Weapons/AnimationCollectionData.cs	7	Core & other
+Moonlighter.Weapons/BoneSwordWeaponEffect.cs	82	Items & effects
+Moonlighter.Weapons/CompositeBowWeaponEffect.cs	69	Items & effects
+Moonlighter.Weapons/ExplosiveBowWeaponEffect.cs	62	Items & effects
+Moonlighter.Weapons/GhostGlovesWeaponEffect.cs	100	Items & effects
+Moonlighter.Weapons/MechanicBigSwordWeaponEffect.cs	193	Items & effects
+Moonlighter.Weapons/MorningStarWeaponEffect.cs	75	Items & effects
+Moonlighter.Weapons/ParasiteSpearWeaponEffect.cs	92	Items & effects
+Moonlighter.Weapons/SporeSwordWeaponEffect.cs	89	Items & effects
+Moonlighter.Weapons/StaffSpearWeaponEffect.cs	187	Items & effects
+Moonlighter.Weapons/StolenItemsList.cs	7	Items & effects
+Moonlighter.Weapons/ThiefGlovesWeaponEffect.cs	123	Items & effects
+Moonlighter.Weapons/TrickAnimationCollection.cs	7	Core & other
+Moonlighter.Weapons/TrickWeapon.cs	242	Core & other
+Moonlighter.Weapons/TrickWeaponEffect.cs	4	Items & effects
+MoonlighterAchievements.cs	634	Core & other
+MoonlighterAchievementsExpansion1.cs	154	Core & other
+MoonlighterAchievmentsWandererDLC.cs	90	Core & other
+MoonlighterAnalytics.cs	456	Core & other
+MoonlighterCalendar.cs	145	Core & other
+MoonlighterConsoleDebugPanel.cs	901	UI
+MoonlighterEffect.cs	275	Items & effects
+MoonlighterEffectRegistry.cs	93	Items & effects
+MoonlighterMenuSelectable.cs	72	UI
+MorningNightFilter.cs	106	Core & other
+MotherGolemBehaviour.cs	224	Enemies
+MotherGolemElementalBehaviour.cs	154	Enemies
+MotherGolemFamiliar.cs	199	Enemies
+MotherGolemFamiliarElemental.cs	242	Enemies
+MotherGolemSounds.cs	25	Enemies
+MoveToMessage.cs	9	Core & other
+MultipleOptionsDialog.cs	492	UI
+MyAudioClip.cs	30	Core & other
+NajaAmuletEffect.cs	56	Items & effects
+NestedPrefabSampleSpawner.cs	13	Core & other
+NewBehaviourScript.cs	10	Core & other
+NewSceneTest.cs	9	Core & other
+NextFloorChest.cs	51	Core & other
+NextLevelDoor.cs	127	Dungeon runtime
+NextLevelPortal.cs	28	Dungeon runtime
+NightTownInstanceHandler.cs	59	Town, shop & villagers
+NormalSlimeBehaviour.cs	299	Enemies
+NotebookInventorySlotGameObject.cs	42	Items & effects
+NotebookPanel.cs	915	UI
+NotebookSlotGUI.cs	100	UI
+NotebookTabHandler.cs	62	Core & other
+NotebookTabInfo.cs	11	Core & other
+NPCShop.cs	4	Town, shop & villagers
+NPCSlot.cs	10	UI
+NudePuppetBehaviour.cs	221	Enemies
+ObstaclePrefabRegister.cs	133	Core & other
+OldManActionable.cs	21	Core & other
+OldManTutorialSounds.cs	13	Core & other
+OptionsControlGamePadButton.cs	40	UI
+OptionsControlSelectable.cs	280	Core & other
+OptionsControlTabContent.cs	244	Core & other
+OptionsDialog.cs	299	UI
+OptionsGameTabContent.cs	90	Core & other
+OptionsGraphicTabContent.cs	122	Core & other
+OptionsManager.cs	134	Core & other
+OptionsPanel.cs	324	UI
+OptionsSelectable.cs	109	Core & other
+OptionsSoundTabContent.cs	126	Core & other
+OptionsTab.cs	164	Core & other
+OptionsTabContent.cs	8	Core & other
+OrbitCamera.cs	104	Core & other
+OscillatorBehaviour.cs	644	Enemies
+OscillatorWave.cs	92	Core & other
+Panel.cs	238	UI
+PanelInstancer.cs	146	UI
+ParticlesDepthOrderRender.cs	71	Core & other
+PatrolGolemBehaviour.cs	266	Enemies
+PatrolRandomWaypoints.cs	49	Core & other
+PatrolWaypoints.cs	49	Core & other
+PausePanel.cs	224	UI
+PendantShortcutHUD.cs	274	UI
+PickOnWalk.cs	160	Player
+PileOfRocksBehaviour.cs	225	Enemies
+PileOfRocksProjectile.cs	230	Enemies
+PirateBossProjectile.cs	100	Bosses
+PirateDungeonMachine.cs	33	Core & other
+PixelBoy.cs	28	Core & other
+PixelGridUtilities.cs	109	Core & other
+PlaceItemTrigger.cs	21	Items & effects
+PlayerDamagedTrigger.cs	43	Core & other
+PlaylistManager.cs	468	Core & other
+PlayParticleOnEnable.cs	13	Core & other
+Playstation4InputDevice.cs	149	Core & other
+Playstation4InputDeviceManager.cs	64	Core & other
+PolyNav2D.cs	456	Enemies
+PolyNav2DBody.cs	59	Enemies
+PolyNavAgent.cs	379	Enemies
+PolynavChecker.cs	38	Core & other
+PolyNavFamiliarMovement.cs	163	Enemies
+PolyNavObstacle.cs	164	Enemies
+PoolManager.cs	173	Core & other
+PositionChecker.cs	18	Core & other
+PostBossSpawnEnemyController.cs	191	Bosses
+PostmanInteractable.cs	128	Core & other
+PrefabRegister.cs	67	Core & other
+PrefabSpawnInfo.cs	7	Core & other
+PreferedPositionAction.cs	79	Core & other
+PriceUpdaterQueueController.cs	39	Core & other
+ProgressBarAttribute.cs	6	Core & other
+ProjectilePool.cs	36	Enemies
+PrototypeBossRoomDoor.cs	10	Bosses
+PS4VideoPlaybackSample.cs	56	Core & other
+PuddleAmuletEffect.cs	105	Items & effects
+QuantitytIndicatorManager.cs	157	Core & other
+Quest.cs	19	Core & other
+QuestGenerationWeightList.cs	5	Core & other
+QuestManager.cs	67	Core & other
+QuestPanel.cs	340	UI
+QuestPoint.cs	46	Core & other
+QuestSaveInfo.cs	8	Core & other
+QuestTransactionComplete.cs	8	Core & other
+QuestVisitor.cs	16	Core & other
+QuestVisitorGenerationParams.cs	7	Core & other
+QuestVisitorMind.cs	269	Core & other
+RadiusTownMusicVariation.cs	58	Town, shop & villagers
+RandomAnimationBehaviour.cs	61	Enemies
+RandomSprite.cs	12	Core & other
+RangedFloat.cs	7	Core & other
+RechargerBehaviour.cs	219	Enemies
+RechargerFamiliar.cs	172	Core & other
+Recipe.cs	205	Items & effects
+RecipeCollection.cs	44	Items & effects
+RecipeDiscoverSaveInfo.cs	20	Items & effects
+RecipeIngredient.cs	54	Items & effects
+RecipeManager.cs	808	Items & effects
+RecipeSlotGUI.cs	34	Items & effects
+RepairDroneBehaviour.cs	153	Enemies
+RequiredIngredientSlotGUI.cs	11	UI
+ResourcesProfiler.cs	43	Core & other
+ResultSlotGUI.cs	54	UI
+ReturnWillToShop.cs	16	Town, shop & villagers
+RevealDesertPotion.cs	26	Items & effects
+RevealForestPotion.cs	26	Items & effects
+RevealGolemPotion.cs	26	Enemies
+RevealTechPotion.cs	26	Items & effects
+ReviewScreenBehaviour.cs	21	Enemies
+RichTextColorTable.cs	61	UI
+RichTextUtils/RichTextData.cs	6	UI
+RichTextUtils/RichTextModifier.cs	4	UI
+RichTextUtils/RichTextParser.cs	7	UI
+RivalInteractive.cs	60	Town, shop & villagers
+RivalPanel.cs	408	UI
+RivalSlotGUI.cs	26	UI
+RivalStandItems.cs	30	Items & effects
+RobertoTest.cs	140	Core & other
+RockMovement.cs	12	Core & other
+RockRandomSprite.cs	28	Core & other
+RocksTween.cs	20	Core & other
+Roomba.cs	58	Dungeon runtime
+RoomEditorCultureButton.cs	10	Dungeon runtime
+RoomEditorEnemyButton.cs	12	Enemies
+RoomEditorEnemyMoveButton.cs	30	Enemies
+RoomEditorObstacleButton.cs	12	Dungeon runtime
+RoomEditorPrefabButton.cs	12	Dungeon runtime
+RoomEditorPrefabInRoom.cs	57	Dungeon runtime
+RoomEditorTileButton.cs	36	Dungeon runtime
+SalesBoxInventoryPanel.cs	312	UI
+SavingPanel.cs	52	UI
+ScenePanelPlacer.cs	31	UI
+SeasonalBehaviours/BirdBehaviourPair.cs	8	Core & other
+SeasonalBehaviours/GameobjectPrefabsPair.cs	10	Core & other
+SeasonalBehaviours/SeasonInfoHolder.cs	15	Core & other
+SeasonalBehaviours/SeasonManager.cs	301	Core & other
+SeasonalBehaviours/Seasons.cs	7	Core & other
+SecondaryAttackWeapon.cs	37	Core & other
+SeederCuttingBehaviour.cs	141	Enemies
+SeederCuttingProjectile.cs	54	Enemies
+SeenSomethingHorribleMessage.cs	5	Core & other
+SelectableEvents.cs	89	Core & other
+SendItemToShopAction.cs	130	Items & effects
+SetSamePositionAndRotationAsGameObject.cs	13	Core & other
+SettingsPanel.cs	16	UI
+ShopDecorativeItem.cs	7	Items & effects
+ShopEntranceDoor.cs	403	Town, shop & villagers
+ShopEntranceDoorVisistorChecker.cs	12	Town, shop & villagers
+ShoperConfirmationPanel.cs	163	Town, shop & villagers
+ShoperQuantityPanel.cs	363	Town, shop & villagers
+ShoperQuantitySimplePanel.cs	202	Town, shop & villagers
+ShopHelper.cs	6	Town, shop & villagers
+ShopHelperEmployer.cs	297	Town, shop & villagers
+ShopHelperMind.cs	330	Town, shop & villagers
+ShopkeeperInteractive.cs	289	Town, shop & villagers
+ShopManager.cs	1378	Town, shop & villagers
+ShopPricesUpdater.cs	256	Town, shop & villagers
+ShopPricesUpdateSlot.cs	135	Town, shop & villagers
+ShopReferences.cs	27	Town, shop & villagers
+ShopResultItemSold.cs	62	Items & effects
+ShopResultsPanel.cs	215	Town, shop & villagers
+ShopResultsPopularityTab.cs	112	Town, shop & villagers
+ShopResultsShopTab.cs	162	Town, shop & villagers
+ShopResultsTab.cs	107	Town, shop & villagers
+ShopSaveInfo.cs	25	Town, shop & villagers
+ShopStats.cs	58	Town, shop & villagers
+ShortSword.cs	101	Player
+ShortSwordWeaponMaster.cs	6	Player
+Showcase.cs	111	Core & other
+ShowcaseInventoryPanel.cs	555	UI
+ShowcasePrizeSaveInfo.cs	12	Core & other
+ShowcaseSlot.cs	110	UI
+ShowcaseSlotGUI.cs	216	UI
+ShowTextDialogMessage.cs	8	UI
+Shrine.cs	46	Core & other
+SideInventoryPanelContainer.cs	293	UI
+SidePanelCarousel.cs	152	UI
+SilhouetteReplacemment.cs	56	Core & other
+SingleCaveRoom.cs	12	Core & other
+Singleton.cs	47	Core & other
+SkeletonNotes.cs	44	Core & other
+Slime2_0Behaviour.cs	265	Enemies
+Slime3DRandomRotation.cs	15	Enemies
+SlimeArea.cs	101	Enemies
+SlimeBehaviour.cs	233	Enemies
+SlimeBossBehaviour.cs	191	Bosses
+SlimeDamageArea.cs	86	Enemies
+SlimeDamageAreaInfo.cs	8	Enemies
+SlimeDrop.cs	21	Enemies
+SlimePet.cs	109	Enemies
+SlimePool.cs	176	Enemies
+SlimeTrapBehaviour.cs	116	Enemies
+SlimeTrapScissorsBehaviour.cs	36	Enemies
+SlimeWaveController.cs	75	Enemies
+SMAnimatorHandler.cs	96	Player
+SMStateAdvisor.cs	21	Core & other
+SMWillDamageState.cs	12	Core & other
+SortInfoController.cs	56	Core & other
+Sound_FruitTree.cs	33	Core & other
+SoundBoneSword.cs	17	Core & other
+SoundBoomerangSkelleton.cs	90	Core & other
+SoundBossDesertDoor.cs	13	Bosses
+SoundBossTeslaDoor.cs	9	Bosses
+SoundExplosiveBowArrow.cs	9	Core & other
+SoundFamiliarTurret.cs	10	Enemies
+SoundFamiliarWindTreeSprout.cs	9	Core & other
+SoundFertilizerSpawn.cs	13	Core & other
+SoundFlyingRepairPick.cs	9	Core & other
+SoundGasSpear.cs	25	Core & other
+SoundGasSuit.cs	9	Core & other
+SoundGhost.cs	13	Core & other
+SoundGhostGloves.cs	9	Core & other
+SoundManager.cs	109	Core & other
+SoundMechanicSword.cs	17	Core & other
+SoundMorningStar.cs	17	Core & other
+SoundPatrolGolem.cs	9	Enemies
+SoundRoots.cs	13	Core & other
+Sounds_FireRhombus.cs	59	Core & other
+Sounds_GolemWarrior.cs	31	Enemies
+SoundsBardPuppet.cs	21	Core & other
+SoundsBedWakeup.cs	9	Core & other
+SoundsBeetly.cs	9	Core & other
+SoundsBigSword.cs	21	Core & other
+SoundsBird.cs	17	Core & other
+SoundsBossChest.cs	9	Bosses
+SoundsBow.cs	21	Core & other
+SoundsBroom.cs	33	Core & other
+SoundsCircle.cs	10	Core & other
+SoundsClothHang.cs	9	Core & other
+SoundsClothTangle.cs	9	Enemies
+SoundsCompositeBow.cs	9	Core & other
+SoundsCorruptedFruit.cs	9	Core & other
+SoundsCutting.cs	13	Core & other
+SoundsDeathGenerator.cs	42	Core & other
+SoundsDesertBoss.cs	108	Bosses
+SoundsDimensionalPolice.cs	128	Core & other
+SoundsDimensionalWizard.cs	21	Core & other
+SoundsDualWeaponSkeleton.cs	17	Core & other
+SoundsElectricPost.cs	42	Core & other
+SoundsElectromagneticBall.cs	34	Core & other
+SoundsElemental.cs	29	Core & other
+SoundsEmblemPortal.cs	27	Core & other
+SoundsEndDLC.cs	9	Core & other
+SoundsEvilWill.cs	45	Core & other
+SoundsFamiliarBladetree.cs	13	Core & other
+SoundsFamiliarBladeTreeLeaf.cs	9	Core & other
+SoundsFamiliarDesert.cs	13	Core & other
+SoundsFamiliarElemental.cs	13	Core & other
+SoundsFamiliarFlyingRepair.cs	13	Core & other
+SoundsFamiliarGassuit.cs	9	Core & other
+SoundsFamiliarGraafGenerator.cs	9	Core & other
+SoundsFamiliarMimic.cs	13	Enemies
+SoundsfamiliarRecharger.cs	17	Core & other
+SoundsFamiliarSpikeChain.cs	9	Core & other
+SoundsFirePuppet.cs	25	Core & other
+SoundsFlyingRepairGolem.cs	7	Enemies
+SoundsForestBoss.cs	41	Bosses
+SoundsForestBossDoor.cs	9	Bosses
+SoundsForestSeeder.cs	9	Core & other
+SoundsGiantSlime.cs	25	Enemies
+SoundsGizmo1.cs	53	Core & other
+SoundsGizmo2.cs	13	Core & other
+SoundsGloves.cs	21	Core & other
+SoundsGoldMimic.cs	17	Enemies
+SoundsGolemBossDoor.cs	9	Bosses
+SoundsGolemTurret.cs	38	Enemies
+SoundsGraafGenerator.cs	26	Core & other
+SoundsIronMimic.cs	21	Enemies
+SoundsKamikaze.cs	13	Enemies
+SoundsKatamari.cs	29	Core & other
+SoundsKingGolem.cs	9	Enemies
+SoundsKingGolemArm.cs	9	Enemies
+SoundsLavaCatapult.cs	29	Core & other
+SoundsLavaScript.cs	12	Core & other
+Soundsleaf.cs	30	Core & other
+SoundsMagicianPuppet.cs	13	Core & other
+SoundsNudepuppet.cs	13	Core & other
+SoundsOscillator.cs	83	Core & other
+SoundsPatrolGolem.cs	41	Enemies
+SoundsPirateDungeonDoor.cs	33	Core & other
+SoundSporeSword.cs	9	Core & other
+SoundsPortalAttack.cs	9	Core & other
+SoundsRecharger.cs	13	Core & other
+SoundsRepairDrone.cs	9	Core & other
+SoundsRoots2.cs	13	Core & other
+SoundsShortSword.cs	17	Core & other
+SoundsShowcase.cs	9	Core & other
+SoundsShrine.cs	9	Core & other
+SoundsSlime.cs	17	Enemies
+SoundsSlimyChest.cs	21	Core & other
+SoundsSpear.cs	37	Core & other
+SoundsSpikeChained.cs	13	Core & other
+SoundsSpinningMushroom.cs	65	Core & other
+SoundsSporeBush.cs	13	Core & other
+SoundsTableDoor.cs	13	Core & other
+SoundStaffSpear.cs	9	Core & other
+SoundsTangleShot.cs	9	Enemies
+SoundsTechSoldier.cs	13	Core & other
+SoundsTechTurret.cs	50	Enemies
+SoundsTeslaBoss.cs	91	Bosses
+SoundsTeslaTangle.cs	13	Enemies
+SoundsThief.cs	21	Core & other
+SoundsVineFlower.cs	13	Core & other
+SoundsVisitors.cs	30	Core & other
+SoundsVisitorsEmpty.cs	24	Core & other
+SoundsVisitorsTutorialPopUp.cs	33	Core & other
+SoundsWandererBoss.cs	41	Bosses
+SoundsWandererChest.cs	13	Core & other
+SoundsWandererEntrance.cs	52	Core & other
+SoundsWandererFallingFloor.cs	9	Core & other
+SoundsWandererLift.cs	9	Core & other
+SoundsWandererNPC.cs	13	Core & other
+SoundsWandererPhase2.cs	69	Core & other
+SoundsWill.cs	17	Core & other
+SoundsWindTree.cs	9	Core & other
+SoundsWindTreeSprout.cs	9	Core & other
+SoundsWoodMimic.cs	17	Enemies
+SoundThiefGloves.cs	9	Core & other
+SoundTreeShake.cs	9	Core & other
+SoundVenomTangleHit.cs	7	Enemies
+SpawnPacksType.cs	6	Core & other
+SpearWeaponMaster.cs	5	Player
+SpecialCitizen.cs	106	Town, shop & villagers
+SpeedEffect.cs	94	Items & effects
+SpeedEmergencyAmuletEffect.cs	73	Items & effects
+SpeedPotion.cs	12	Items & effects
+SpeedPotionEffect.cs	32	Items & effects
+SpikeChainedArmour.cs	210	Core & other
+SpikeChainedBall.cs	111	Core & other
+SpikeChainedBallFamiliar.cs	154	Core & other
+SpikeChainedBehaviourBall.cs	58	Core & other
+SpikeChainFamiliar.cs	229	Core & other
+SpikedChainFamiliarBall.cs	14	Core & other
+SpiningMushroomBehaviour.cs	115	Enemies
+SplashScreenLogic.cs	19	Core & other
+SporeBushBehaviour.cs	273	Enemies
+SporeBushProjectile.cs	94	Enemies
+SpriteAnimation.cs	115	Core & other
+SpriteAnimationData.cs	49	Core & other
+SpriteAnimationDataCollection.cs	73	Core & other
+SpriteAnimationDataLooper.cs	23	Core & other
+SpriteAnimationDataWeightedList.cs	8	Core & other
+SpriteDepthOrderRender.cs	85	Core & other
+SpriteList.cs	8	Core & other
+SpriteRendererMaterialPerPlatform.cs	20	Core & other
+StartAtRandomFrame.cs	20	Core & other
+StartGamePanel.cs	1359	UI
+StartScreenParticle.cs	32	Core & other
+StartTrigger.cs	7	Core & other
+Stat.cs	101	Player
+StatsModificator.cs	10	Core & other
+SteamStoreController.cs	12	Core & other
+StepSlider.cs	232	Core & other
+StopFighting.cs	3	Core & other
+StorySaveInfo.cs	8	Core & other
+StorytellerInteractive.cs	403	Town, shop & villagers
+StorytellerStories.cs	11	Core & other
+StorytellerStory.cs	26	Core & other
+StrengthPotion.cs	13	Items & effects
+StrengthPotionEffect.cs	32	Items & effects
+SystemRealTimeAnalytics.cs	36	Core & other
+TableDoor.cs	26	Core & other
+TallGrass.cs	65	Core & other
+TangleBehaviour.cs	63	Enemies
+TargetPoint.cs	17	Core & other
+TechSoldierBehaviour.cs	289	Enemies
+TechSoldierHand.cs	56	Core & other
+TechTurretBehaviour.cs	291	Enemies
+TemporalTrigger.cs	47	Core & other
+TentacleAdvisor.cs	14	Core & other
+TeslaBoss.cs	534	Bosses
+TeslaDungeonData.cs	5	Core & other
+TeslaTangleBehaviour.cs	100	Enemies
+Test.cs	35	Core & other
+TestButtonAttribute.cs	16	UI
+TESTDetailCreator.cs	80	Core & other
+TestParticles.cs	135	Core & other
+TextLocalization.cs	32	UI
+Thief.cs	15	Core & other
+ThiefCatcher.cs	17	Core & other
+ThiefCaughtByHelperMessage.cs	3	Core & other
+ThiefCaughtByWillMessage.cs	3	Core & other
+ThiefStartRobbing.cs	4	Core & other
+ThiefVisitorMind.cs	760	Core & other
+ThiefWasCaught.cs	4	Core & other
+TimedChestSlime.cs	61	Enemies
+TimeManagerV2.cs	83	Core & other
+TinySlimeBehaviour.cs	40	Enemies
+TownBoardInteractive.cs	67	Town, shop & villagers
+TownBoardPanel.cs	210	Town, shop & villagers
+TownboardSaveInfo.cs	374	Town, shop & villagers
+TownBoardShopData.cs	32	Town, shop & villagers
+TownBoardShopPanel.cs	569	Town, shop & villagers
+TownBoardSlotGUI.cs	44	Town, shop & villagers
+TownboardStaffData.cs	10	Town, shop & villagers
+TownBoardStaffPanel.cs	428	Town, shop & villagers
+TownCinematics.cs	766	Town, shop & villagers
+TownManager.cs	36	Town, shop & villagers
+TrailerScene1.cs	86	Core & other
+TrailerScene2.cs	104	Core & other
+TrailerScene3.cs	68	Core & other
+TrailerScene4.cs	150	Core & other
+TrailRendererOrder.cs	11	Core & other
+TransmuteSlotAction.cs	6	UI
+TravelToDungeonZone.cs	57	Core & other
+TravelToVillageZone.cs	69	Core & other
+TreeBehaviour.cs	68	Enemies
+TreeItemSelector.cs	581	Items & effects
+TrickDisappearEffectAnimationController.cs	20	Items & effects
+TrickDisappearEffectController.cs	3	Items & effects
+TrickEffectActivatedController.cs	24	Items & effects
+TrickGasAreaEffect.cs	71	Items & effects
+TrickWeaponMaster.cs	11	Core & other
+TrickWeaponProjectile.cs	127	Enemies
+TriggerAnimation.cs	47	Core & other
+TutorialBrokenGolemTurretBehaviour.cs	201	Enemies
+TutorialBrokenGolemTurretProjectile.cs	62	Enemies
+TutorialChecker.cs	53	Core & other
+TutorialDialog.cs	135	UI
+TutorialManager.cs	90	Core & other
+TutorialScene.cs	16	Core & other
+TutorialScene0.cs	298	Core & other
+TutorialScene1.cs	377	Core & other
+TutorialScene2.cs	606	Core & other
+TutorialScene3.cs	475	Core & other
+TutorialUtils.cs	281	Core & other
+UIFlip.cs	16	Core & other
+UknownAction.cs	7	Core & other
+UknownDungeonData.cs	5	Core & other
+UnityEditorHelpers.cs	14	Core & other
+UnknownDungeonComputers.cs	10	Core & other
+UnlockUtilityCampGenerator.cs	169	Core & other
+UnlockUtilityItem.cs	10	Items & effects
+UnscaledTimeParticleSystem.cs	34	Core & other
+UpdatePriceBubbleController.cs	38	Core & other
+UpdatePriceElement.cs	20	Core & other
+UpgradeDetailsPanel.cs	608	UI
+UtilityInventorySlot.cs	526	Items & effects
+UtilityInventorySlotGameObject.cs	10	Items & effects
+UtilityItem.cs	6	Items & effects
+Utils.cs	3	Core & other
+ValueChest.cs	49	Core & other
+VampireAmuletEffect.cs	65	Items & effects
+VenomousTangleBehaviour.cs	122	Enemies
+VersionText.cs	12	UI
+VideoSequence.cs	205	Core & other
+VillageCloud.cs	42	Core & other
+VillageCloudGenerator.cs	105	Core & other
+VillageManager.cs	97	Core & other
+VineFlowerBehaviour.cs	173	Enemies
+VineTangleBehaviour.cs	190	Enemies
+Visitor.cs	18	Core & other
+VisitorAnimations.cs	439	Core & other
+VisitorGenerationParams.cs	8	Core & other
+VisitorGenerator.cs	366	Core & other
+VisitorMind.cs	1308	Core & other
+VisitorSpriteFakeIdle.cs	10	Core & other
+Wanderer.cs	285	Core & other
+WandererAmuletEffect.cs	65	Items & effects
+WandererArmsController.cs	85	Core & other
+WandererBossFightDialog.cs	69	Bosses
+WandererBossPhaseOneBehaviour.cs	473	Bosses
+WandererBossPhaseTwoBehaviour.cs	759	Bosses
+WandererBossProjectile.cs	109	Bosses
+WandererDimensionalEnergyProjectile.cs	173	Enemies
+WandererFeedback.cs	71	Core & other
+WandererHologramAnimation.cs	53	Core & other
+WandererHologramRoomSound.cs	41	Core & other
+WandererNestPedestal.cs	86	Core & other
+WandererObstacle.cs	233	Core & other
+WandererTentacle.cs	41	Core & other
+WandererTentaclesController.cs	63	Core & other
+WandererWorldDungeonDoor.cs	99	Core & other
+WaterMesh.cs	196	Core & other
+Weapon.cs	742	Player
+WeaponCollisionDetection.cs	82	Player
+WeaponEquipmentMaster.cs	29	Player
+WeightedList.cs	194	Dungeon generation
+WillHealthBar.cs	364	Player
+WillRotationAnimation.cs	6	Player
+WillStoryteller.cs	60	Player
+WindTreeSproutBehaviour.cs	108	Enemies
+WindTreeSproutFamiliar.cs	220	Core & other
+WindTreeSproutFamiliarProjectile.cs	125	Enemies
+WindTreeSproutProjectile.cs	109	Enemies
+WishlistManager.cs	78	Core & other
+WishlistPanel.cs	290	UI
+WishlistSlotGUI.cs	10	UI
+WitchEnchantmentsPanel.cs	487	Town, shop & villagers
+WitchInteractive.cs	142	Town, shop & villagers
+WitchPanel.cs	203	Town, shop & villagers
+WitchPotionsPanel.cs	426	Items & effects
+WitchSlotGUI.cs	75	Town, shop & villagers
+WoodMimic.cs	213	Enemies
+WoodMimicFamiliar.cs	550	Enemies
+WorkerCinematicActionable.cs	28	Core & other
+WorldDungeonDoor.cs	314	Core & other
+WorldLayout.cs	35	Core & other
+YouAreBeingRobbedMessage.cs	3	Core & other
+ZenonStoryteller.cs	47	Core & other

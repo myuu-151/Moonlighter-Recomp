@@ -1,0 +1,70 @@
+# What the C++ port covers of the game's classes (tools/progress.py). Columns, tab-separated:
+# path (under decomp/Assembly-CSharp)	fraction ported (0-1)	verified by the oracle (y/n)	port	note
+# Partly ported classes are estimates of the share of their code the port has; raise them as work lands.
+#
+# Dungeon generation (every step checked against recorded floors)
+CaveGenerator.cs	1	y	game/Cave	the cave graph
+CaveRoom.cs	1	y	game/Cave
+SingleCaveRoom.cs	1	y	game/Cave
+CaveRoomUnit.cs	1	y	game/Cave
+BossCaveRoom.cs	1	y	game/Cave
+Miner.cs	1	y	game/DungeonLayout
+FixedStepsMiner.cs	1	y	game/DungeonLayout
+CommonRoomMiner.cs	1	y	game/DungeonLayout
+BossRoomMiner.cs	1	y	game/DungeonLayout
+DungeonGenerator.cs	0.85	y	game/DungeonFloor, RoomSelection, RoomPlacement	the floor's generation; not the scene loading
+DungeonRoom.cs	0.45	y	game/RoomFill, RoomDetails, RoomScene, RoomDoors	generation and fill, details, doors; not the runtime room
+DungeonRoomGenerator.cs	0.5	y	game/RoomGenerator, Composite	light/shadow, hole sprites, painted textures
+DungeonRoomInfo.cs	1	y	game/RoomDatabase
+DungeonRoomDatabase.cs	1	y	game/RoomDatabase
+Moonlighter.DungeonGeneration/DungeonRoomDatabase.cs	1	y	game/RoomDatabase
+Moonlighter.DungeonGeneration/SpecialRoomDatabase.cs	1	y	game/RoomDatabase
+Moonlighter.DungeonGeneration/DungeonGenerationData.cs	1	y	game/DungeonFloor
+Moonlighter.DungeonGeneration/DungeonGenerationFloorData.cs	1	y	game/DungeonFloor
+Moonlighter.DungeonGeneration/DungeonGenerationHoleData.cs	1	y	game/RoomGenerator
+Moonlighter.DungeonGeneration/DungeonGenerationLightData.cs	1	y	game/RoomGenerator
+Moonlighter.DungeonGeneration/DungeonGenerationBreakableProbs.cs	1	y	game/RoomFill
+Moonlighter.DungeonGeneration/ChestGeneration.cs	1	y	game/ChestGeneration
+DungeonSpawnPack.cs	1	y	game/RoomFill
+DungeonSpawn.cs	1	y	game/RoomFill
+PrefabSpawnInfo.cs	1	y	game/RoomFill
+DungeonRoomDetailsGenerationInfo.cs	1	y	game/RoomDetails
+DetailsPrefabRegister.cs	0.6	y	game/RoomDetails
+Constants.cs	1	y	game/Constants
+WeightedList.cs	0.8	y	game/RoomSelection	the GetRandom and its sort
+Extensions.cs	0.1	y	cs/List	the list helpers generation uses
+Chest.cs	0.2	y	game/Chest	Awake's drops and shuffle
+DungeonBossRoom.cs	0.15	y	game/BossRoomStart	Start's draws
+Moonlighter.DLC.WandererDungeon/WandererDLCController.cs	0.1	y	game/DungeonFloor	the floor post-process
+# Doors and floors at runtime
+DungeonDoor.cs	0.5	n	game/RoomDoors, MLGC MoonGame	open/close, entering
+NextLevelDoor.cs	0.3	n	MLGC MoonGame	down a floor
+DungeonLastLevelDoor.cs	0.2	n	MLGC MoonGame	the arrival roll
+# The player (walk, roll, fall, main attack, damage: replayed frame by frame)
+HeroMerchantController.cs	0.4	y	game/HeroMerchantController	movement, roll, holes, main attack, damage effects, death
+HeroMerchantStats.cs	0.6	y	game/HeroMerchantStats
+HeroMerchant.cs	0.12	y	game/HeroMerchantController	DealDamageToPlayer
+Stat.cs	0.9	y	game/HeroMerchantStats
+SMAnimatorHandler.cs	0.6	y	game/HeroMerchantController	the state callbacks
+Dash.cs	0.5	y	game/HeroMerchantController
+Ability.cs	0.4	y	game/HeroMerchantController
+Weapon.cs	0.1	n	game/Weapon, MLGC RoomEnemies	the main attack's hits
+SpriteDepthOrderRender.cs	0.6	n	render/DrawList, MLGC MoonGame
+# Enemies (BabySlime replayed against the game; PolyNav's maps and paths)
+Enemy.cs	0.75	y	game/Enemy
+EnemyBehaviour.cs	0.85	y	game/Enemy
+EnemyStats.cs	0.95	y	game/EnemyStats
+EnemyStatManager.cs	0.8	y	game/EnemyStats
+EnemyStatModificator.cs	1	y	game/EnemyStats
+EnemyAttackCollisionDetection.cs	0.9	y	game/Enemy
+BabySlimeBehaviour.cs	1	y	game/BabySlime
+TangleBehaviour.cs	0.2	y	game/SpawnDraws	Init's draws
+PolyNav2D.cs	1	y	game/PolyNav
+PolyNavAgent.cs	0.9	y	game/PolyNavAgent
+PolyNavObstacle.cs	0.9	y	game/PolyNav, RoomPolyNav
+AStar.cs	1	y	game/PolyNav
+Heap.cs	1	y	game/PolyNav
+IHeapItem.cs	1	y	game/PolyNav
+# Items (data)
+ItemMaster.cs	0.5	n	game/Items
+WeaponEquipmentMaster.cs	1	n	game/Weapon

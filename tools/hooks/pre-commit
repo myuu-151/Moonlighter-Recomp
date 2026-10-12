@@ -1,0 +1,12 @@
+#!/bin/sh
+# Every commit refreshes the README's progress section and the badges (tools/progress.py),
+# from progress/classes.tsv and progress/ported.tsv, and adds them to the commit.
+# Installed with: git config core.hooksPath tools/hooks
+for py in "py -3" python3 python; do
+    if $py tools/progress.py >/dev/null 2>&1; then
+        git add progress/badge.json progress/badge_verified.json progress/progress.json README.md
+        exit 0
+    fi
+done
+echo "pre-commit: tools/progress.py didn't run (no Python?); progress not refreshed" >&2
+exit 0
