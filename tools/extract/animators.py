@@ -1,8 +1,16 @@
-"""Animator controllers and their clips, for the port's Animator (unity/Animator): the
-hero's (bundle hero_merchant: the EmptyHeroMerchant controller with the HeroMerchant
-override's clips), and the hero's sprites as a bank of their own.
+"""Animator controllers and their clips, for the port's Animator (unity/Animator), and the
+sprites they show as a bank of their own. Any AnimatorController, or AnimatorOverrideController
+(its controller with the override's clips), found by bundle and name; by default the ones
+the port uses (TARGETS):
+
+  hero_merchant / HeroMerchant (override of EmptyHeroMerchant) -> animators/hero_merchant.json,
+      sprites/hero/ (what the clips show, plus every SpriteRenderer's sprite in the bundle)
+  enemies_golem / BabySlime (controller)                       -> animators/BabySlime.json,
+      sprites/enemies/BabySlime/ (what the clips show, plus its prefab's renderers' sprites
+      and its Enemy's dead sprite)
 
   animators/<name>.json:
+    controller, override (the override's name, null for a plain controller)
     params      [{name, id, type (1 float, 3 int, 4 bool, 9 trigger), default}]
     states      [{name, hash (shortNameHash), fullPathHash, tag, tagHash, speed, speedParam,
                   loop, cycleOffset, clip (index into clips, -1 none), transitions [T]}]
@@ -13,13 +21,24 @@ override's clips), and the hero's sprites as a bank of their own.
                      threshold]]}; mode 1 If, 2 IfNot, 3 Greater, 4 Less, 6 Equals, 7 NotEqual
     clips       [{name, length, loop, rate, sprites [[time, sprite]], events [[time, function,
                   string, float, int]], curves [{path, type, attribute, keys [[time, value]]}]}]
-  sprites/hero/: index.bin and <n>.tex as sprites.py writes them.
+  sprites/<bank>/: index.bin and <n>.tex as sprites.py writes them.
+
+Enemies get a bank each (sprites/enemies/<name>/) rather than one per enemy bundle: a floor
+holds the few enemies its rooms spawn, and an enemy bundle's every clip frame (enemies_golem:
+2050 sprites) would take megabytes of the GameCube's 24 MB beside the dungeon's own sprites;
+per enemy, a floor loads only the banks of the enemies it can spawn.
 
 The compiled clips keep their curves as Unity's streamed clip (per key: curve index and a
 cubic's four coefficients from the key's time), dense samples and constants, in that curve
 order; bindings map them to properties, a sprite curve's value indexing pptrCurveMapping.
 
+One layer, one clip per state: blend trees and further layers are refused (an error naming
+the controller and state), the port's Animator plays neither.
+
     python tools/extract/animators.py --game <the game's folder> --out <folder>
+        (the TARGETS)
+    python tools/extract/animators.py --game ... --out ... --bundle <bundle> --name <name>
+        [--kind controller|override] [--json <file name>] [--sprites <bank folder>]
 """
 import argparse
 import json
@@ -31,6 +50,16 @@ from pathlib import Path
 import UnityPy
 
 from sprites import texels
+
+# (bundle, controller name, kind, json name, sprite bank, where the bank's extra sprites come from:
+#  'bundle' every SpriteRenderer in the bundle, 'prefab' the prefabs whose Animator plays it)
+TARGETS = (
+    ('hero_merchant', 'HeroMerchant', 'override', 'hero_merchant', 'hero', 'bundle'),
+    ('enemies_golem', 'BabySlime', 'controller', 'BabySlime', 'enemies/BabySlime', 'prefab'),
+)
+KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
+# Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).
+SPRITE_FIELDS = ('enemyDeadSprite',)
 
 # Transform attributes take several curves (position, rotation quaternion, scale, euler).
 TRANSFORM_CURVES = {1: 3, 2: 4, 3: 3, 4: 3}
@@ -87,14 +116,21 @@ def clip_curves(clip):
     return out
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--game', required=True)
-    parser.add_argument('--out', required=True)
-    args = parser.parse_args()
-    out = Path(args.out)
-    bundle = Path(args.game) / 'Moonlighter_Data' / 'StreamingAssets' / 'AssetBundles' / 'hero_merchant'
-    env = UnityPy.load(str(bundle))
+def find_controller(env, name, kind=None):
+    """The AnimatorController or AnimatorOverrideController of that name (of that kind, if
+    given). Exits if there's none, or more than one and no kind to choose."""
+    types = [KINDS[kind]] if kind else list(KINDS.values())
+    found = [o for o in env.objects if o.type.name in types and o.peek_name() == name]
+    if not found:
+        raise SystemExit(f"no {' or '.join(types)} named {name}")
+    if len(found) > 1:
+        raise SystemExit(f"{len(found)} controllers named {name} ({', '.join(o.type.name for o in found)}): "
+                         "choose one with --kind")
+    return found[0]
+
+
+def extract(env, name, kind=None):
+    """(controller json, {sprite name: path id} its clips show, the controllers' path ids)."""
     objs = {o.path_id: o for o in env.objects}
     names = {}
 
@@ -105,13 +141,21 @@ def main():
             names[pptr['m_PathID']] = objs[pptr['m_PathID']].read_typetree()['m_Name']
         return names[pptr['m_PathID']]
 
-    override = next(o.read_typetree() for o in env.objects
-                    if o.type.name == 'AnimatorOverrideController' and o.peek_name() == 'HeroMerchant')
-    replace = {p['m_OriginalClip']['m_PathID']: p['m_OverrideClip']['m_PathID'] for p in override['m_Clips']}
-    ac = objs[override['m_Controller']['m_PathID']].read_typetree()
+    found = find_controller(env, name, kind)
+    if found.type.name == 'AnimatorOverrideController':
+        override = found.read_typetree()
+        replace = {p['m_OriginalClip']['m_PathID']: p['m_OverrideClip']['m_PathID'] for p in override['m_Clips']}
+        ac_obj = objs[override['m_Controller']['m_PathID']]
+    else:
+        override, replace, ac_obj = None, {}, found
+    ac = ac_obj.read_typetree()
+    label = ac['m_Name'] + (f" (override {override['m_Name']})" if override else '')
     tos = {int(k): v for k, v in ac['m_TOS']}
     tos.update({zlib.crc32(v.encode()): v for v in tos.values()})
     c = ac['m_Controller']
+    if len(c['m_LayerArray']) != 1 or len(c['m_StateMachineArray']) != 1:
+        raise SystemExit(f"{label}: {len(c['m_LayerArray'])} layers, {len(c['m_StateMachineArray'])} state machines: "
+                         "only one layer is supported")
     values = c['m_Values']['data']['m_ValueArray']
     defaults = c['m_DefaultValues']['data']
     param_index = {v['m_ID']: i for i, v in enumerate(values)}
@@ -167,29 +211,87 @@ def main():
     states = []
     for s in sm['m_StateConstantArray']:
         s = s['data']
+        if len(s['m_BlendTreeConstantArray']) > 1:
+            raise SystemExit(f"{label}: state {tos.get(s['m_NameID'], s['m_NameID'])} has "
+                             f"{len(s['m_BlendTreeConstantArray'])} blend trees: blend trees aren't supported")
         nodes = s['m_BlendTreeConstantArray'][0]['data']['m_NodeArray'] if s['m_BlendTreeConstantArray'] else []
-        clip_id = nodes[0]['data']['m_ClipID'] if len(nodes) == 1 else -1
         if len(nodes) > 1:
-            raise SystemExit(f"state {tos.get(s['m_NameID'])}: blend trees aren't supported")
+            raise SystemExit(f"{label}: state {tos.get(s['m_NameID'], s['m_NameID'])} is a blend tree ({len(nodes)} nodes): "
+                             "blend trees aren't supported (the port's Animator plays one clip per state)")
+        clip_id = nodes[0]['data']['m_ClipID'] if len(nodes) == 1 else -1
         states.append({'name': tos.get(s['m_NameID'], str(s['m_NameID'])), 'hash': signed(s['m_NameID']), 'fullPathHash': signed(s['m_FullPathID']),
                        'tag': tos.get(s['m_TagID'], '') if s['m_TagID'] else '', 'tagHash': signed(s['m_TagID']), 'speed': s['m_Speed'],
                        'speedParam': param_index.get(s['m_SpeedParamID'], -1), 'loop': bool(s['m_Loop']),
                        'cycleOffset': s['m_CycleOffset'],
                        'clip': clip(ac['m_AnimationClips'][clip_id]['m_PathID']) if clip_id >= 0 and clip_id != 4294967295 else -1,
                        'transitions': [transition(t['data']) for t in s['m_TransitionConstantArray']]})
-    controller = {'controller': ac['m_Name'], 'override': override['m_Name'], 'params': params,
+    controller = {'controller': ac['m_Name'], 'override': override['m_Name'] if override else None, 'params': params,
                   'defaultState': sm['m_DefaultState'], 'states': states,
                   'anyState': [transition(t['data']) for t in sm['m_AnyStateTransitionConstantArray']], 'clips': clips}
-    (out / 'animators').mkdir(parents=True, exist_ok=True)
-    (out / 'animators' / 'hero_merchant.json').write_text(json.dumps(controller), encoding='utf-8')
+    return controller, sprites_wanted, {found.path_id, ac_obj.path_id}, name_of
 
-    # The hero's sprites: what its clips show plus its prefab's SpriteRenderers.
+
+def extra_sprites(env, mode, controller_ids, name_of):
+    """{sprite name: path id} the bank needs beside the clips': every SpriteRenderer's in the
+    bundle ('bundle'), or what the prefabs whose Animator plays the controller show
+    ('prefab': their SpriteRenderers' sprites and SPRITE_FIELDS)."""
+    objs = {o.path_id: o for o in env.objects}
+    out = {}
+
+    def add(pptr):
+        if pptr and pptr['m_FileID'] == 0 and pptr['m_PathID'] in objs:
+            out.setdefault(name_of(pptr), pptr['m_PathID'])
+
+    if mode == 'bundle':
+        for o in env.objects:
+            if o.type.name == 'SpriteRenderer':
+                add(o.read_typetree()['m_Sprite'])
+        return out
+    transforms = {}
     for o in env.objects:
-        if o.type.name == 'SpriteRenderer':
-            r = o.read_typetree()
-            if r['m_Sprite']['m_FileID'] == 0 and r['m_Sprite']['m_PathID'] in objs:
-                sprites_wanted.setdefault(name_of(r['m_Sprite']), r['m_Sprite']['m_PathID'])
-    folder = out / 'sprites' / 'hero'
+        if o.type.name in ('Transform', 'RectTransform'):
+            t = o.read_typetree()
+            transforms[t['m_GameObject']['m_PathID']] = t
+    roots = set()
+    for o in env.objects:
+        if o.type.name == 'Animator':
+            a = o.read_typetree()
+            if a['m_Controller']['m_FileID'] == 0 and a['m_Controller']['m_PathID'] in controller_ids:
+                t = transforms[a['m_GameObject']['m_PathID']]
+                while t['m_Father']['m_PathID'] != 0:
+                    t = objs[t['m_Father']['m_PathID']].read_typetree()
+                roots.add(t['m_GameObject']['m_PathID'])
+    if not roots:
+        raise SystemExit('no prefab plays this controller (an Animator with it)')
+
+    def walk(go_id):
+        go = objs[go_id].read_typetree()
+        for comp in go['m_Component']:
+            ref = comp['component']
+            o = objs.get(ref['m_PathID']) if ref['m_FileID'] == 0 else None
+            if o is None:
+                continue
+            if o.type.name == 'SpriteRenderer':
+                add(o.read_typetree()['m_Sprite'])
+            elif o.type.name == 'MonoBehaviour':
+                try:
+                    mb = o.read_typetree()
+                except Exception:  # noqa: BLE001 - no type tree
+                    continue
+                for f in SPRITE_FIELDS:
+                    if isinstance(mb.get(f), dict):
+                        add(mb[f])
+        for child in transforms[go_id]['m_Children']:
+            walk(objs[child['m_PathID']].read_typetree()['m_GameObject']['m_PathID'])
+
+    for root in sorted(roots):
+        walk(root)
+    return out
+
+
+def write_bank(env, folder, sprites_wanted):
+    """sprites.py's bank (index.bin, <n>.tex) of those sprites, in name order: (count, bytes)."""
+    objs = {o.path_id: o for o in env.objects}
     if folder.exists():
         shutil.rmtree(folder)
     folder.mkdir(parents=True)
@@ -208,7 +310,43 @@ def main():
         count += 1
         total += len(data)
     (folder / 'index.bin').write_bytes(b'MLSI' + struct.pack('>II', 2, count) + bytes(index))
-    print(f'   hero: {len(states)} states, {len(clips)} clips, {count} sprites, {total // 1024} KB', flush=True)
+    return count, total
+
+
+def run(game, out, bundle, name, kind, json_name, bank, mode):
+    env = UnityPy.load(str(Path(game) / 'Moonlighter_Data' / 'StreamingAssets' / 'AssetBundles' / bundle))
+    controller, sprites_wanted, ids, name_of = extract(env, name, kind)
+    (out / 'animators').mkdir(parents=True, exist_ok=True)
+    (out / 'animators' / f'{json_name}.json').write_text(json.dumps(controller), encoding='utf-8')
+    count = total = 0
+    if bank:
+        for n, path_id in extra_sprites(env, mode, ids, name_of).items():
+            sprites_wanted.setdefault(n, path_id)
+        count, total = write_bank(env, out / 'sprites' / bank, sprites_wanted)
+    print(f"   {json_name}: {len(controller['states'])} states, {len(controller['clips'])} clips, "
+          f"{count} sprites, {total // 1024} KB", flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--game', required=True)
+    parser.add_argument('--out', required=True)
+    parser.add_argument('--bundle', help='one controller, from this bundle (else the TARGETS)')
+    parser.add_argument('--name', help="the controller's or override's name")
+    parser.add_argument('--kind', choices=sorted(KINDS), help='if the name is both a controller and an override')
+    parser.add_argument('--json', help='the output file name, without .json (default: --name)')
+    parser.add_argument('--sprites', help="the sprite bank's folder below sprites/ (default: none)")
+    parser.add_argument('--sprites-from', choices=('bundle', 'prefab'), default='prefab',
+                        help="the bank's sprites beside the clips': every renderer in the bundle, or the prefabs playing it")
+    args = parser.parse_args()
+    out = Path(args.out)
+    if args.bundle:
+        if not args.name:
+            parser.error('--bundle needs --name')
+        run(args.game, out, args.bundle, args.name, args.kind, args.json or args.name, args.sprites, args.sprites_from)
+    else:
+        for target in TARGETS:
+            run(args.game, out, *target)
 
 
 if __name__ == '__main__':

@@ -14,9 +14,14 @@ Needs UnityPy.
     -> <folder>/prefabs.json  {"sortingLayers": [...], "bundles": {bundle: {prefab: [rows]}}}
        row: [path, active, x, y, scale x, scale y, sprite, layer, order, flipX, flipY, rgba, enabled,
             rotation z (degrees), behaviours: [[class, {fields}], ...],
-            [game object layer, tag, colliders: [[type, enabled, trigger, offset x, offset y, ...]]]]
-       (fields only for the classes in FIELDS: what their Start() draws depend on; a collider
-       ends with size x, size y for a box, the radius for a circle, the paths for a polygon)
+            [game object layer, tag, colliders: [[type, enabled, trigger, offset x, offset y, ...]]],
+            rigidbody: {bodyType (0 dynamic, 1 kinematic, 2 static), simulated, mass, linearDrag,
+            angularDrag, gravityScale, constraints (bits: 1 freeze x, 2 y, 4 rotation),
+            collisionDetection (0 discrete, 1 continuous), interpolation (0 none, 1 interpolate,
+            2 extrapolate), sleepingMode (0 never, 1 start awake, 2 start asleep)} or null]
+       (fields only for the classes in FIELDS; a LayerMask as its bits, a reference as whether
+       it's set, a list as its length, but for the STRUCTURED fields; a collider ends with
+       size x, size y for a box, the radius for a circle, the paths for a polygon)
 """
 import argparse
 import json
@@ -29,7 +34,9 @@ BUNDLE_PREFIXES = ('dungeon_', 'enemies_', 'hero_merchant')
 # PrefabRegister's prefabs the dungeon spawns by name (SpawnChest), from the player's files.
 PLAYER_FILE = 'sharedassets0.assets'
 # MonoBehaviours whose Start() draws from Random when a room comes to life, and the fields
-# that decide how many draws and what they pick.
+# that decide how many draws and what they pick; and the settings of what the port runs
+# (the hero, the enemies).
+ENEMY_BEHAVIOUR = ('canMove', 'fallInHoles', 'attackPushBackwardsForce', 'soundWhenHit')
 FIELDS = {
     'BreakableDetail': ('destroyAtStartProb',),
     'GolemKingRockBehaviour': ('RandomRockSprites',),
@@ -41,6 +48,33 @@ FIELDS = {
     # The hero's movement settings (layer masks as their bits).
     'HeroMerchantController': ('collisionDetectionLayers', 'slideCollisionDetectionLayers', 'godModeCollisionDetectionLayers',
                                'holesMask', 'items', 'speedFactor', 'itemAttrackRadius'),
+    # The enemies: what they drop (and where), how they move (PolyNav), what their attacks hit.
+    'Enemy': ('itemDrops', 'dropRadius', 'dropOffset'),
+    'EnemyBehaviour': ENEMY_BEHAVIOUR,
+    'BabySlimeBehaviour': ENEMY_BEHAVIOUR,  # an EnemyBehaviour
+    'PolyNavAgent': ('maxSpeed', 'mass', 'stoppingDistance', 'slowingDistance', 'accelerationRate', 'decelerationRate',
+                     'avoidRadius', 'lookAheadDistance', 'repath', 'restrict', 'closerPointOnInvalid', 'roundCorners',
+                     'rotateTransform'),
+    'PolyNavObstacle': ('invertPolygon', 'extraOffset', 'shapeType'),  # shapeType 0 polygon, 1 box
+    'EnemyAttackCollisionDetection': ('dealDamageToBreakables', 'gameObjectToAdvise'),
+}
+
+
+def item_drops(value, go_path):
+    return [{'item': d['item'], 'dropProbability': d['dropProbability'], 'min': d['minDropRate'], 'max': d['maxDropRate']}
+            for d in value]
+
+
+def object_path(value, go_path):
+    """A GameObject reference as its path below the prefab's root ('' the root), null if
+    unset or outside the prefab."""
+    return go_path.get(value['m_PathID']) if value['m_FileID'] == 0 else None
+
+
+# Fields kept whole rather than as field() has them: (class, field) -> f(value, {game object: path}).
+STRUCTURED = {
+    ('Enemy', 'itemDrops'): item_drops,
+    ('EnemyAttackCollisionDetection', 'gameObjectToAdvise'): object_path,
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 
@@ -78,6 +112,13 @@ def collider_row(kind, c):
     elif kind == 'PolygonCollider2D':
         row += [[[[p['x'], p['y']] for p in path] for path in c['m_Points']['m_Paths']]]
     return row
+
+
+def rigidbody_row(rb):
+    return {'bodyType': rb['m_BodyType'], 'simulated': bool(rb['m_Simulated']), 'mass': rb['m_Mass'],
+            'linearDrag': rb['m_LinearDrag'], 'angularDrag': rb['m_AngularDrag'], 'gravityScale': rb['m_GravityScale'],
+            'constraints': rb['m_Constraints'], 'collisionDetection': rb['m_CollisionDetection'],
+            'interpolation': rb['m_Interpolate'], 'sleepingMode': rb['m_SleepingMode']}
 
 
 def main():
@@ -164,6 +205,18 @@ def main():
             if only is not None and root_name not in only:
                 continue
             rows = []
+            go_path = {}
+
+            def paths(transform_id, path):
+                tr = tree(transform_id)
+                go_path[tr['m_GameObject']['m_PathID']] = path
+                for child in tr['m_Children']:
+                    ctr = tree(child['m_PathID'])
+                    if ctr is not None:
+                        cname = tree(ctr['m_GameObject']['m_PathID'])['m_Name']
+                        paths(child['m_PathID'], cname if path == '' else f'{path}/{cname}')
+
+            paths(obj.path_id, '')
 
             # The root's own row has path '', the rest paths below it.
             def walk_node(transform_id, path):
@@ -192,11 +245,14 @@ def main():
                     if mb is None:
                         continue
                     cls = class_name(mb['m_Script'])
-                    behaviours.append([cls, {f: field(mb.get(f)) for f in FIELDS.get(cls, ())}])
+                    behaviours.append([cls, {f: STRUCTURED[cls, f](mb[f], go_path) if (cls, f) in STRUCTURED and f in mb
+                                             else field(mb.get(f)) for f in FIELDS.get(cls, ())}])
                 row.append(behaviours)
                 colliders = [collider_row(comp.type.name, tree(comp.path_id)) for comp in components(go)
                              if comp.type.name in ('BoxCollider2D', 'CircleCollider2D', 'PolygonCollider2D')]
                 row.append([go['m_Layer'], tag_name(manager, go['m_Tag']), colliders])
+                bodies = [rigidbody_row(tree(comp.path_id)) for comp in components(go) if comp.type.name == 'Rigidbody2D']
+                row.append(bodies[0] if bodies else None)
                 rows.append(row)
                 for child in tr['m_Children']:
                     ctr = tree(child['m_PathID'])
