@@ -47,6 +47,10 @@ add_library(mlcore STATIC
     src/game/HoleColliders.cpp
     src/game/Items.cpp
     src/game/RoomDoors.cpp
+    src/game/PolyNav.cpp
+    src/game/PolyNavAgent.cpp
+    src/game/HoleOutlines.cpp
+    src/game/RoomPolyNav.cpp
 )
 target_include_directories(mlcore PUBLIC src)
 
@@ -91,6 +95,12 @@ add_test(NAME player_roll
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME player_diagonals
          COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_diag.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+add_executable(polynav_test tests/polynav_test.cpp)
+target_link_libraries(polynav_test PRIVATE mlcore)
+add_test(NAME polynav
+         COMMAND polynav_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/polynav.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.

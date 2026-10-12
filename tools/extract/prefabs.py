@@ -58,7 +58,8 @@ FIELDS = {
     'PolyNavAgent': ('maxSpeed', 'mass', 'stoppingDistance', 'slowingDistance', 'accelerationRate', 'decelerationRate',
                      'avoidRadius', 'lookAheadDistance', 'repath', 'restrict', 'closerPointOnInvalid', 'roundCorners',
                      'rotateTransform'),
-    'PolyNavObstacle': ('invertPolygon', 'extraOffset', 'shapeType'),  # shapeType 0 polygon, 1 box
+    # shapeType 0 polygon, 1 box; m_Enabled: the behaviour's enabled flag (only enabled ones join the map)
+    'PolyNavObstacle': ('invertPolygon', 'extraOffset', 'shapeType', 'm_Enabled'),
     'EnemyAttackCollisionDetection': ('dealDamageToBreakables', 'gameObjectToAdvise'),
     # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
     'WeaponCollisionDetection': ('weaponAttackType',),
