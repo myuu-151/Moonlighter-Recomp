@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "game/BossRoomStart.h"
 #include "game/DungeonLayout.h"
 #include "game/RoomPlacement.h"
 #include "game/RoomSelection.h"
@@ -60,6 +61,8 @@ public:
     DungeonLayout layout;
     std::vector<PlacedCell> cells;
     int nextLevelDoor = -1; // floorGenerationSaveInfo.lastDoorDirectionIndex chosen by AddNextLevelDoor
+    // The boss room's Start() picks (a defeated boss's room only).
+    std::vector<StartPick> bossStart;
     // Desert hard-enemies shrine: the room (index into `cells`) and tile, or -1.
     int shrineCell = -1, shrineTile = -1;
 

@@ -31,6 +31,8 @@ add_library(mlcore STATIC
     src/game/RoomPlacement.cpp
     src/game/RoomScene.cpp
     src/game/PrefabCatalog.cpp
+    src/game/Prefabs.cpp
+    src/game/BossRoomStart.cpp
     src/game/DungeonFloor.cpp
 )
 target_include_directories(mlcore PUBLIC src)

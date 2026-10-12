@@ -1,0 +1,86 @@
+#include "game/Prefabs.h"
+
+namespace game {
+
+namespace {
+
+struct Library {
+    std::map<std::string, std::map<std::string, Prefab>> byBundle; // bundle -> name -> prefab
+    std::vector<std::string> layers;
+};
+
+Library& Lib()
+{
+    static Library lib;
+    return lib;
+}
+
+float F(const json::Value& v) { return v.IsInt() || v.IsDouble() ? static_cast<float>(v.AsDouble()) : 0.0f; }
+
+} // namespace
+
+void PrefabLibrary::Load(const json::Value& extracted)
+{
+    Library& lib = Lib();
+    lib.byBundle.clear();
+    lib.layers.clear();
+    for (const json::Value& l : extracted["sortingLayers"].arr) lib.layers.push_back(l.s);
+    for (const auto& [bundle, prefabs] : extracted["bundles"].obj) {
+        auto& out = lib.byBundle[bundle];
+        for (const auto& [name, rows] : prefabs.obj) {
+            Prefab& p = out[name];
+            p.name = name;
+            p.bundle = bundle;
+            for (const json::Value& r : rows.arr) {
+                PrefabNode n;
+                n.path = r[0].s;
+                n.active = r[1].b;
+                n.x = F(r[2]);
+                n.y = F(r[3]);
+                n.sx = F(r[4]);
+                n.sy = F(r[5]);
+                if (r[6].IsString()) n.sprite = r[6].s;
+                if (r[7].IsString()) n.layer = r[7].s;
+                n.order = static_cast<int>(r[8].i);
+                n.flipX = r[9].b;
+                n.flipY = r[10].b;
+                if (r[11].IsArray())
+                    for (int c = 0; c < 4; c++) n.color[c] = F(r[11][static_cast<size_t>(c)]);
+                n.rendererEnabled = r[12].b;
+                if (r.size() > 13) n.rotation = F(r[13]);
+                if (r.size() > 14)
+                    for (const json::Value& b : r[14].arr) {
+                        Behaviour beh;
+                        if (b[0].IsString()) beh.cls = b[0].s;
+                        for (const auto& [field, v] : b[1].obj)
+                            beh.fields[field] = v.kind == json::Value::Kind::Bool ? (v.b ? 1.0 : 0.0) : static_cast<double>(F(v));
+                        n.behaviours.push_back(beh);
+                    }
+                p.nodes.push_back(n);
+            }
+        }
+    }
+}
+
+bool PrefabLibrary::Loaded() { return !Lib().byBundle.empty(); }
+
+const Prefab* PrefabLibrary::Find(const std::string& name, const std::string& bundle)
+{
+    const Library& lib = Lib();
+    if (!bundle.empty()) {
+        auto b = lib.byBundle.find(bundle);
+        if (b != lib.byBundle.end()) {
+            auto p = b->second.find(name);
+            if (p != b->second.end()) return &p->second;
+        }
+    }
+    for (const auto& [b, prefabs] : lib.byBundle) {
+        auto p = prefabs.find(name);
+        if (p != prefabs.end()) return &p->second;
+    }
+    return nullptr;
+}
+
+const std::vector<std::string>& PrefabLibrary::SortingLayers() { return Lib().layers; }
+
+} // namespace game

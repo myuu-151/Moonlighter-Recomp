@@ -27,6 +27,7 @@
 #include "game/ChestGeneration.h"
 #include "game/DungeonFloor.h"
 #include "game/PrefabCatalog.h"
+#include "game/Prefabs.h"
 #include "game/RoomScene.h"
 #include "unity/Random.h"
 #include "util/Json.h"
@@ -596,6 +597,7 @@ int main(int argc, char** argv)
     Value wandererRooms = json::Parse(ReadFile(wandererPath));
     std::string bundlesPath = argc > 4 ? argv[4] : "data/extracted/bundle_assets.json";
     PrefabCatalog::Load(json::Parse(ReadFile(bundlesPath)));
+    PrefabLibrary::Load(json::Parse(ReadFile(data + "/prefabs.json")));
     const Value* wandererIntermediate = nullptr;
     if (const Value* sr = wandererRooms.Find("specialRooms"))
         for (const Value& r : sr->arr)

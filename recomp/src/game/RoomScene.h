@@ -33,6 +33,25 @@ struct SceneObject {
     std::string sprite; // its SpriteRenderer's sprite, where that's what generation decides ("" = none)
 };
 
+// One object of a room's tree, as the scene holds it: its path below the room's root and its
+// local transform and SpriteRenderer (what the oracle's floor snapshot records per object).
+struct SceneRow {
+    std::string path;
+    bool active = true;
+    float x = 0.0f, y = 0.0f, sx = 1.0f, sy = 1.0f, rotation = 0.0f;
+    std::string sprite, layer; // layer empty: no SpriteRenderer
+    int order = 0;
+    bool flipX = false, flipY = false, rendererEnabled = false;
+    float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+// The whole room: the DungeonRoom prefab (as RoomPlaced leaves it) and everything
+// generation put in it, prefabs expanded (PrefabLibrary). Rows in no particular order.
+std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPosition = {});
+
+// The suffix of a culture's dungeon and enemy bundles ("golem", ..., "tesla").
+const char* CultureBundle(Culture c);
+
 // Objects RoomPlaced creates for `room` (after PlaceRoom), in creation order. `roomPosition`
 // is where the room is in the floor (RoomPosition): details are instantiated at a world
 // position and then parented to the room, and that round trip rounds.

@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
+#include "game/BossRoomStart.h"
 #include "game/Constants.h"
+#include "game/Prefabs.h"
 #include "game/RoomScene.h"
 #include "unity/Random.h"
 #include "unity/Vector2.h"
@@ -71,7 +74,7 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
             // AddBossRoom (level 3): instantiating the boss room prefab wakes its boss chest
             // (Chest.Awake, engine side). DungeonBossRoom.RoomPlaced then depends on the save:
             // if this culture's boss is already defeated, noBossEnemyController.InitEnemies()
-            // spawns the post-boss room's enemies, whose spawn makes one roll.
+            // picks the post-boss enemy set (a weighted pick: one roll) and spawns it.
             engine.BossRoomPlaced();
             bool defeated = engine.BossDefeated();
             if (defeated) (void)Random::Range(0.0f, 1.0f);
@@ -79,12 +82,13 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
             boss->x = x;
             boss->y = y;
             sel._roomsGenerated->Add(boss);
-            // `yield return null`: the boss room stays active and its scripts' Start() run. With
-            // the boss defeated these draw a prefab-fixed amount (measured, constant on every
-            // recorded floor: Golem 132, Forest 72); with the boss alive, none were seen. Until
-            // those scripts are ported, the port consumes the measured counts.
-            int bossStartDraws = !defeated ? 0 : culture_ == Culture::Golem ? 132 : culture_ == Culture::Forest ? 72 : 0;
-            for (int d = 0; d < bossStartDraws; d++) (void)Random::value();
+            // `yield return null`: with the boss defeated the room is live and its objects'
+            // Start() run (BossRoomStart); with the boss alive none of them draw.
+            if (defeated) {
+                const Prefab* room = PrefabLibrary::Find("DungeonLevelRoom_3_4_boss", std::string("dungeon_") + CultureBundle(culture_));
+                if (!room) throw std::runtime_error("no boss room prefab (data/extracted/prefabs.json)");
+                bossStart = BossRoomStart(*room);
+            }
             engine.BossStartFrame();
             continue;
         }
