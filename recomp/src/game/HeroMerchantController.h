@@ -103,6 +103,7 @@ public:
         unity::Vector2 stick; // LeftStick.X, .Y
         bool roll = false;    // LeftTrigger.WasPressed
         bool attack = false;  // Action1.WasPressed
+        bool potion = false;  // RightTrigger.WasPressed (the potion hotkey)
         float unscaledDeltaTime = -1.0f; // Time.unscaledDeltaTime (the weapon's Animator's, DOTween's unscaled); < 0: deltaTime
         // The physics steps before this frame's scripts, where they're known (a recording's);
         // < 0: every 0.01 s of the game time accumulated since the first frame. Unity's fixed
@@ -155,6 +156,15 @@ public:
     float flashAmount = 0.0f;  // the art's _FlashAmount (the damaged effect)
     bool flashTinted = false;  // its _Color: the health bar's colour (true) or white
     bool deathAnimationEnded = false; // OnWillDeathAnimationEnded
+    // The equipped potion (HeroMerchantInventory's Potion slot): its stack and its effect's
+    // recovery (an HPPotion<N>: Constants' "HPPotion<N>" health).
+    struct Potion {
+        std::string item;
+        int quantity = 0;
+        float recovery = 0.0f;
+    } potion;
+    // ConsumeHotkeyItem: the potion, if it can be drunk (below full health); false if not.
+    bool ConsumeHotkeyItem();
     unity::Animator animator;
     int layer = unity::kLayerDefault; // gameObject.layer
 

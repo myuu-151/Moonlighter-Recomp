@@ -278,6 +278,9 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
     // early on.
     if (canMove && canAttack && input.roll && !isFalling && abilityAvailable && CanRollFromAttack()) UseAbility(stick);
 
+    // The potion hotkey (with health left; the inventory isn't open here).
+    if (input.potion && stats.currentHealth.value > 0.0f) ConsumeHotkeyItem();
+
     // Objects destroyed during Update go before the animation pass; those the Animator's events
     // destroy wait for the end of the frame (after LateUpdate).
     for (float m : restoreAtFrameEnd_) speedFactor *= 1.0f / m;
@@ -735,6 +738,25 @@ void HeroMerchantController::Die()
     animator.SetTrigger("Death");
     stats.SetInvencible(tweens);
     ResetSpeedFactor();
+}
+
+// ConsumeHotkeyItem -> Consumable.SendConsumeEvent -> HPPotion<N>: CanConsume below full health
+// (in the dungeon), then Consume: the health up by the recovery even while invincible (the
+// stat made variable for it), a stack used up (an empty slot when it's gone). Not yet: NG+'s
+// factors, the Medic amulet, DestroyEffects, the effect and sound.
+bool HeroMerchantController::ConsumeHotkeyItem()
+{
+    bool consumed = false;
+    if (potion.quantity > 0 && stats.currentHealth.value < stats.currentHealth.maxValue) {
+        const bool variable = stats.currentHealth.variableStat;
+        stats.currentHealth.variableStat = true;
+        stats.currentHealth.Set(stats.currentHealth.value + potion.recovery + potion.recovery * 0.0f);
+        stats.currentHealth.variableStat = variable;
+        if (--potion.quantity <= 0) potion = Potion{};
+        consumed = true;
+    }
+    previousHealth_ = stats.currentHealth.value;
+    return consumed;
 }
 
 // Stat's subscriber: a drop sets the Animator's Damaged trigger (no transition reads it).

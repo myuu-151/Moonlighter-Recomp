@@ -69,3 +69,6 @@ IHeapItem.cs	1	y	game/PolyNav
 # Items (data)
 ItemMaster.cs	0.5	n	game/Items
 WeaponEquipmentMaster.cs	1	n	game/Weapon
+HPPotionI.cs	0.8	n	game/HeroMerchantController	the heal (not NG+ factors, amulets)
+Consumable.cs	0.5	n	game/HeroMerchantController	SendConsumeEvent, the stack
+ConsumableItemMaster.cs	1	n	MLGC MoonGame	the potion data

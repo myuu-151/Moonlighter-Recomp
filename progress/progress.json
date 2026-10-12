@@ -1,18 +1,18 @@
 {
  "lines": 160682,
- "ported": 10739,
+ "ported": 10802,
  "verified": 10321,
- "percent": 6.68,
+ "percent": 6.72,
  "verifiedPercent": 6.42,
  "classes": 1173,
- "classesDone": 33,
+ "classesDone": 34,
  "categories": {
   "Items & effects": {
    "lines": 13388,
-   "ported": 34.0,
+   "ported": 75.6,
    "verified": 0.0,
    "classes": 132,
-   "done": 0
+   "done": 1
   },
   "Player": {
    "lines": 9277,
@@ -23,7 +23,7 @@
   },
   "Core & other": {
    "lines": 44306,
-   "ported": 405.9,
+   "ported": 427.4,
    "verified": 354.9,
    "classes": 487,
    "done": 5
