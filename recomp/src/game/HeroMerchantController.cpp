@@ -141,6 +141,9 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
         }
     }
 
+    // DOTween's update runs before his (a tween he starts this frame first moves the next).
+    tweens.Update(deltaTime);
+
     stick_ = input.stick;
     const Vector2 stick = input.stick;
     now_ += deltaTime;
@@ -175,7 +178,6 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
     // destroy wait for the end of the frame (after LateUpdate).
     for (float m : restoreAtFrameEnd_) speedFactor *= 1.0f / m;
     restoreAtFrameEnd_.clear();
-    tweens.Update(deltaTime); // DOTween's own Update
     animator.Update(deltaTime);
 }
 

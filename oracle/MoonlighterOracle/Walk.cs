@@ -293,6 +293,9 @@ namespace MoonlighterOracle
                 DungeonManager.Instance.ChangeRoomTo(holes, door);
                 ctrl.TeleportTo(door.playerEnterDestinyRoomPoint.position);
                 yield return new WaitForSecondsRealtime(2.5f);
+                // Its enemies off: the hero alone (they'd hit him; enemies aren't ported yet).
+                foreach (var e in holes.roomEnemies)
+                    if (e != null) e.gameObject.SetActive(false);
                 ctrl.TeleportTo(stand);
                 yield return new WaitForSecondsRealtime(1f);
                 Script = FallScript(toward);
@@ -312,6 +315,12 @@ namespace MoonlighterOracle
             setup.Key("moveSpeed").Bits(ctrl.currentPlayerMoveSpeed).Key("speedFactor").Bits(ctrl.speedFactor);
             setup.Prop("godModeLayers", ctrl.godModeCollisionDetectionLayers.value).Prop("script", script);
             setup.Prop("holesMask", tr.Field("holesMask").GetValue<LayerMask>().value);
+            // DOTween's globals (the fall's tweens): how its clock runs.
+            setup.Prop("dotweenSmoothDeltaTime", DG.Tweening.DOTween.useSmoothDeltaTime)
+                .Prop("dotweenEase", DG.Tweening.DOTween.defaultEaseType.ToString())
+                .Prop("dotweenUpdate", DG.Tweening.DOTween.defaultUpdateType.ToString());
+            setup.Key("dotweenTimeScale").Bits(DG.Tweening.DOTween.timeScale);
+            setup.Key("maxSmoothUnscaledTime").Bits(DG.Tweening.DOTween.maxSmoothUnscaledTime);
             var cur = DungeonManager.Instance.currentDungeonRoom;
             setup.Prop("room", cur != null ? cur.name : "");
             V2(setup, "roomPos", cur != null ? (Vector2)cur.transform.position : Vector2.zero);
@@ -390,6 +399,7 @@ namespace MoonlighterOracle
                 var info = anim.GetCurrentAnimatorStateInfo(0);
                 var j = new Json().Obj().Prop("ev", "walk").Prop("f", f);
                 j.Key("dt").Bits(Time.deltaTime);
+                j.Key("udt").Bits(Time.unscaledDeltaTime).Key("sdt").Bits(Time.smoothDeltaTime);
                 Vector2 given = s.toward ? lastStick : new Vector2(s.x, s.y);
                 j.Key("in").Arr().Bits(given.x).Bits(given.y).Val(first ? s.buttons : 0).EndArr();
                 j.Key("stick").Arr().Bits(a.LeftStick.X).Bits(a.LeftStick.Y).EndArr();
