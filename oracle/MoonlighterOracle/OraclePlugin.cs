@@ -75,6 +75,13 @@ namespace MoonlighterOracle
                     StartCoroutine(EnemyOracle.Run(this, quit, room, enemy, false));
                 }
             }
+            // The Tangle lane (TangleOracle.cs; to join the generic enemy oracle).
+            string tangleArg = Array.Find(args, a => a.StartsWith("-oracle-tangle"));
+            if (tangleArg != null)
+            {
+                Harvest.InstallSafety(harmony);
+                StartCoroutine(TangleOracle.Run(this, quit, tangleArg.Contains("=") ? tangleArg.Substring(tangleArg.IndexOf('=') + 1) : ""));
+            }
         }
 
         private IEnumerator RunAll(bool quit)

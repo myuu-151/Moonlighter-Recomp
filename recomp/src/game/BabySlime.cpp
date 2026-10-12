@@ -1,5 +1,7 @@
 #include "game/BabySlime.h"
 
+#include "game/Tangle.h"
+
 namespace game {
 
 void BabySlimeBehaviour::Init()

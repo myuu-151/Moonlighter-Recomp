@@ -118,6 +118,79 @@ RaycastHit2D Physics2D::BoxCast(Vector2 origin, Vector2 size, float, Vector2 dir
     return best;
 }
 
+namespace {
+
+// b2PolygonShape::RayCast of a box [mn, mx] (b2PolygonShape::SetAsBox's vertices and normals,
+// in its order: (0, -1) at the bottom, (1, 0) right, (0, 1) top, (-1, 0) left) from p1 by d
+// (p2 - p1), maxFraction 1: whether it enters, at which fraction, through which edge.
+bool RayBox(Vector2 p1, Vector2 d, Vector2 mn, Vector2 mx, float& fraction, Vector2& normal)
+{
+    const Vector2 vertices[4] = {{mn.x, mn.y}, {mx.x, mn.y}, {mx.x, mx.y}, {mn.x, mx.y}};
+    const Vector2 normals[4] = {{0.0f, -1.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}};
+    float lower = 0.0f, upper = 1.0f;
+    int index = -1;
+    for (int i = 0; i < 4; i++) {
+        // b2Dot(normals[i], vertices[i] - p1), b2Dot(normals[i], d): floats, as Box2D has them.
+        const float ex = vertices[i].x - p1.x, ey = vertices[i].y - p1.y;
+        const float numerator = normals[i].x * ex + normals[i].y * ey;
+        const float denominator = normals[i].x * d.x + normals[i].y * d.y;
+        if (denominator == 0.0f) {
+            if (numerator < 0.0f) return false;
+        } else if (denominator < 0.0f && numerator < lower * denominator) {
+            lower = numerator / denominator;
+            index = i;
+        } else if (denominator > 0.0f && numerator < upper * denominator) {
+            upper = numerator / denominator;
+        }
+        if (upper < lower) return false;
+    }
+    if (index < 0) return false;
+    fraction = lower;
+    normal = normals[index];
+    return true;
+}
+
+// b2PolygonShape::TestPoint of a box: outside only past an edge.
+bool BoxHolds(Vector2 p, Vector2 mn, Vector2 mx) { return p.x >= mn.x && p.x <= mx.x && p.y >= mn.y && p.y <= mx.y; }
+
+} // namespace
+
+RaycastHit2D Physics2D::Raycast(Vector2 origin, Vector2 direction, float distance, int layerMask) const
+{
+    RaycastHit2D best;
+    const float len = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+    if (!(len > 1e-05f)) return best; // Vector2.normalized: zero below kEpsilon
+    const Vector2 d{direction.x / len, direction.y / len};
+    const Vector2 p2{origin.x + d.x * distance, origin.y + d.y * distance};
+    const Vector2 delta{p2.x - origin.x, p2.y - origin.y};
+    float bestFraction = std::numeric_limits<float>::infinity();
+    for (const Collider2D& c : colliders_) {
+        if (!InMask(c, layerMask) || (c.trigger && !queriesHitTriggers)) continue;
+        const size_t boxes = c.parts.empty() ? 1 : c.parts.size();
+        for (size_t b = 0; b < boxes; b++) {
+            const Vector2 mn = c.parts.empty() ? c.Min() : c.parts[b].first, mx = c.parts.empty() ? c.Max() : c.parts[b].second;
+            float fraction;
+            Vector2 normal;
+            if (queriesStartInColliders && BoxHolds(origin, mn, mx)) {
+                fraction = 0.0f;
+                normal = -d;
+            } else if (!RayBox(origin, delta, mn, mx, fraction, normal)) {
+                continue;
+            }
+            if (!(fraction < bestFraction)) continue;
+            bestFraction = fraction;
+            best.collider = &c;
+            best.fraction = fraction;
+            best.distance = fraction * distance;
+            best.normal = normal;
+            // b2World::RayCast's point: (1 - fraction) * p1 + fraction * p2.
+            best.point = fraction == 0.0f ? origin : Vector2{(1.0f - fraction) * origin.x + fraction * p2.x, (1.0f - fraction) * origin.y + fraction * p2.y};
+            best.centroid = best.point;
+        }
+    }
+    return best;
+}
+
 const Collider2D* Physics2D::OverlapBox(Vector2 point, Vector2 size, float, int layerMask) const
 {
     Vector2 mn{point.x - std::fabs(size.x) / 2.0f, point.y - std::fabs(size.y) / 2.0f};

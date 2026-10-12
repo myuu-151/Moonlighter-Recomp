@@ -1,6 +1,7 @@
 #pragma once
 // Physics2D's queries over a room's colliders, as the game's scripts use them: BoxCast and
-// OverlapBox for the hero's movement, OverlapCircle for pickups. The project's settings
+// OverlapBox for the hero's movement, OverlapCircle for pickups, Raycast for the enemies'
+// looks ahead (TangleBehaviour's weave). The project's settings
 // (globalgamemanagers): queries hit triggers, queries starting inside a collider hit it at
 // distance 0, transforms aren't synced to physics automatically.
 //
@@ -51,6 +52,12 @@ public:
     // bound the recordings can't tell values apart.
     static constexpr float kCastReach = 0.005f;
 
+    // Physics2DSettings (physics2d.json): whether queries see triggers, and whether a ray
+    // starting inside a collider hits it. Raycast reads them (the other queries assume both on,
+    // as the project has them).
+    bool queriesHitTriggers = true;
+    bool queriesStartInColliders = true;
+
     Collider2D& Add(const Collider2D& c);
     void Clear() { colliders_.clear(); }
     const std::deque<Collider2D>& Colliders() const { return colliders_; }
@@ -58,6 +65,16 @@ public:
 
     // A box (angle 0) swept from `origin` along `direction` up to `distance`: the nearest hit.
     RaycastHit2D BoxCast(Vector2 origin, Vector2 size, float angle, Vector2 direction, float distance, int layerMask) const;
+    // Physics2D.Raycast(origin, direction, distance, layerMask): the nearest collider in the
+    // mask (enabled; a trigger only with queriesHitTriggers) that the ray from `origin` along
+    // `direction` (normalized; zero: no hit) meets within `distance`. Box2D's
+    // b2PolygonShape::RayCast against each box's core, in floats (a ray ignores the skin; an
+    // edge it only grazes counts), from p1 = origin to p2 = origin + direction * distance: the
+    // hit's fraction along that, point (1 - fraction) p1 + fraction p2, the edge's normal,
+    // distance fraction * distance. With queriesStartInColliders, a collider holding the
+    // origin (its edges included, b2PolygonShape::TestPoint) is hit at fraction 0: point the
+    // origin, normal -direction (Unity's documented normal there).
+    RaycastHit2D Raycast(Vector2 origin, Vector2 direction, float distance, int layerMask) const;
     // A collider overlapping the box (the one overlapping it most), or nullptr.
     const Collider2D* OverlapBox(Vector2 point, Vector2 size, float angle, int layerMask) const;
     // Whether two colliders touch (Collider2D.IsTouching: within the skins).

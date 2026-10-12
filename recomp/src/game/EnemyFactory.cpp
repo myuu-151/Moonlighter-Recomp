@@ -2,6 +2,7 @@
 
 #include "game/BabySlime.h"
 #include "game/GolemSoldier.h"
+#include "game/Tangle.h"
 
 namespace game {
 
@@ -34,7 +35,10 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
     enemy->rigidbody = root.rigidbody;
     const Behaviour* behaviourFields = nullptr;
     for (const Behaviour& b : root.behaviours) {
-        if (!enemy->enemyBehaviour) {
+        if (!enemy->enemyBehaviour && b.cls == "TangleBehaviour") { // (its fields: game/Tangle.h)
+            enemy->enemyBehaviour = MakeTangleBehaviour(*enemy, b);
+            behaviourFields = &b;
+        } else if (!enemy->enemyBehaviour) {
             if (auto behaviour = MakeBehaviour(b.cls, prefab.name, *enemy)) {
                 enemy->enemyBehaviour = std::move(behaviour);
                 behaviourFields = &b;

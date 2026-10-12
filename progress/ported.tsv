@@ -52,13 +52,14 @@ Weapon.cs	0.1	n	game/Weapon, MLGC RoomEnemies	the main attack's hits
 SpriteDepthOrderRender.cs	0.6	n	render/DrawList, MLGC MoonGame
 # Enemies (BabySlime replayed against the game; PolyNav's maps and paths)
 Enemy.cs	0.75	y	game/Enemy
-EnemyBehaviour.cs	0.85	y	game/Enemy
+EnemyBehaviour.cs	0.9	y	game/Enemy
 EnemyStats.cs	0.95	y	game/EnemyStats
 EnemyStatManager.cs	0.8	y	game/EnemyStats
 EnemyStatModificator.cs	1	y	game/EnemyStats
 EnemyAttackCollisionDetection.cs	0.9	y	game/Enemy
 BabySlimeBehaviour.cs	1	y	game/BabySlime
-TangleBehaviour.cs	0.2	y	game/SpawnDraws	Init's draws
+GolemSoldierBehaviour.cs	1	n	game/GolemSoldier	waits on its recording
+TangleBehaviour.cs	1	n	game/Tangle	the weave; waits on its recording
 PolyNav2D.cs	1	y	game/PolyNav
 PolyNavAgent.cs	0.9	y	game/PolyNavAgent
 PolyNavObstacle.cs	0.9	y	game/PolyNav, RoomPolyNav
