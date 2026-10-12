@@ -7,8 +7,9 @@ git ignores), for the port and its tests.
    download, say, which Steam doesn't list), else through Steam (app 606150); and checks
    some of its files are the Steam copy's.
 2. Extracts from it (tools/extract/), into data/extracted/:
-   - constants.json, rooms.json, specialRooms.json: the text assets the game loads from
-     Resources (the Constants table, the room designs, the special rooms);
+   - constants.json, rooms.json, specialRooms.json, enemy_stats.json: the text assets the
+     game loads from Resources (the Constants table, the room designs, the special rooms,
+     the enemies' base stats);
    - items.json: the item masters (Resources "items" and "ngpitems", the Wanderer DLC's
      if installed) and a new game's starting items (GameManager's initial save lists);
    - roomdb_asset.json: the room database as the generator sees it;
@@ -21,7 +22,9 @@ git ignores), for the port and its tests.
    - packs/<dungeon>/: the room database and prefabs split by dungeon (what one floor loads);
    - tiles/: the textures the game paints rooms' runtime textures from (exact);
    - sprites/<dungeon>/: every sprite a dungeon shows, as a GameCube texture;
-   - animators/hero_merchant.json, sprites/hero/: the hero's Animator controller, clips and sprites.
+   - physics2d.json: the 2D physics settings (the layer collision matrix, the layers' names);
+   - animators/hero_merchant.json, sprites/hero/: the hero's Animator controller, clips and sprites;
+     animators/BabySlime.json, sprites/enemies/BabySlime/: the same for the enemies the port has.
 
 Nothing from the game is stored in this repository. Needs Python 3 with UnityPy
 (py -m pip install UnityPy).
@@ -138,10 +141,11 @@ def main():
     step("the dungeons' details", [EXTRACT / 'details.py', '--game', game, '--out', OUT])
     step("the Wanderer DLC's rooms", [EXTRACT / 'wanderer_rooms.py', '--game', game, '--out', OUT])
     step('the prefabs', [EXTRACT / 'prefabs.py', '--game', game, '--out', OUT])
+    step('the 2D physics settings', [EXTRACT / 'physics2d.py', '--game', game, '--out', OUT])
     step('the per-dungeon packs', [EXTRACT / 'packs.py', '--out', OUT])
     step("the painted textures' tiles", [EXTRACT / 'tiles.py', '--game', game, '--out', OUT])
     step('the sprites', [EXTRACT / 'sprites.py', '--game', game, '--out', OUT])
-    step("the hero's animator and sprites", [EXTRACT / 'animators.py', '--game', game, '--out', OUT])
+    step("the hero's and enemies' animators and sprites", [EXTRACT / 'animators.py', '--game', game, '--out', OUT])
     print(f'-- done: {OUT}', flush=True)
 
 

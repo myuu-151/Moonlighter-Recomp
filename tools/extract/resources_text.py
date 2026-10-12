@@ -1,18 +1,20 @@
 """The text assets the game reads with Resources.Load<TextAsset>: "constants" (the
 Constants table, FullSerializer JSON), "rooms" (the dungeon room database) and
-"specialRooms" (initial room, camp, healing room, ...), as the game has them.
+"specialRooms" (initial room, camp, healing room, ...) and "enemy_stats" (each enemy's base
+stats by name, EnemyStatManager's: size, tint, maxHealth, speed, strength, defense, weight,
+shieldPushForce, culture, isModifiedByFloor), as the game has them.
 
 Needs UnityPy.
 
     python tools/extract/resources_text.py --game <the game's folder> --out <folder>
-    -> <folder>/constants.json, rooms.json, specialRooms.json
+    -> <folder>/constants.json, rooms.json, specialRooms.json, enemy_stats.json
 """
 import argparse
 from pathlib import Path
 
 import UnityPy
 
-WANTED = ('constants', 'rooms', 'specialRooms')
+WANTED = ('constants', 'rooms', 'specialRooms', 'enemy_stats')
 
 
 def text_of(asset):
