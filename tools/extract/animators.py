@@ -22,6 +22,12 @@ the port uses (TARGETS):
   enemies_golem / HermitSlime (controller), exact              -> animators/HermitSlime.json,
       sprites/enemies/HermitSlime/ (its clips also drive the root's BoxCollider2D and the
       AttackCollider's)
+  enemies_golem / BrokenGolemTurret (override of GolemTurret), exact
+                                                               -> animators/BrokenGolemTurret.json,
+      sprites/enemies/BrokenGolemTurret/ (its looks and shots; the bank also holds the
+      GolemTurret prefab's renderers, which play the same base controller)
+  enemies_golem / GolemTurretProjectile (controller), exact    -> animators/GolemTurretProjectile.json,
+      sprites/enemies/GolemTurretProjectile/ (the turrets' shot: its flight and its crash)
 
   animators/<name>.json:
     controller, override (the override's name, null for a plain controller)
@@ -94,6 +100,8 @@ TARGETS = (
     ('items', 'NewGlovesForestGloves', 'override', 'forest_gloves', 'weapons/forest_gloves', 'prefab', True),
     ('enemies_golem', 'Tangle', 'controller', 'Tangle', 'enemies/Tangle', 'prefab', True),
     ('enemies_golem', 'HermitSlime', 'controller', 'HermitSlime', 'enemies/HermitSlime', 'prefab', True),
+    ('enemies_golem', 'BrokenGolemTurret', 'override', 'BrokenGolemTurret', 'enemies/BrokenGolemTurret', 'prefab', True),
+    ('enemies_golem', 'GolemTurretProjectile', 'controller', 'GolemTurretProjectile', 'enemies/GolemTurretProjectile', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).

@@ -20,6 +20,8 @@ namespace MoonlighterOracle
         public Json Val(uint v) { Sep(); sb.Append(v.ToString(CultureInfo.InvariantCulture)); needComma = true; return this; }
         public Json Val(bool v) { Sep(); sb.Append(v ? "true" : "false"); needComma = true; return this; }
         public Json Val(string v) { Sep(); if (v == null) sb.Append("null"); else Str(v); needComma = true; return this; }
+        /// A value already written as JSON (another Json's text).
+        public Json Raw(string json) { Sep(); sb.Append(json); needComma = true; return this; }
 
         /// Floats are written as their exact IEEE bits so comparisons are bit-for-bit.
         public Json Bits(float v) { return Val(FloatBits(v)); }

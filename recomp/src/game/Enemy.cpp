@@ -795,15 +795,19 @@ void EnemyPhysics::ReportTriggers()
 void EnemyPhysics::Step(float dt)
 {
     Sync();
+    for (Companion* c : companions_) c->Sync();
     hits_.clear();
     world_.Step(dt);
+    for (Companion* c : companions_) c->AfterWorldStep();
     // Unity's trigger pass after the solve: a trigger paired at the step's end (FindNewContacts,
     // after the solve) reports in this step, not the next (slime.jsonl: the hero back on Default
     // inside a slime's trigger is hit in the first step, while his body only meets theirs in
     // the second, where he's intangible again).
     world_.UpdateContacts();
     WriteBack();
+    for (Companion* c : companions_) c->WriteBack();
     ReportTriggers();
+    for (Companion* c : companions_) c->Report();
     carried_.clear();
 }
 

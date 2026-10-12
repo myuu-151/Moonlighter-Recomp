@@ -74,6 +74,9 @@ add_library(mlcore STATIC
     src/game/HermitSlime.cpp
     src/game/EnemyColliders.cpp
     src/game/HeroDamage.cpp
+    src/game/PoolManager.cpp
+    src/game/EnemyProjectile.cpp
+    src/game/BrokenGolemTurret.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -177,6 +180,12 @@ add_test(NAME enemy_golem_soldier
 # The HermitSlime (its patrol, its slam, its trigger root the clips drive, its hurtbox, ItemDrain).
 add_test(NAME enemy_hermit_slime
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_HermitSlime.jsonl HermitSlime
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# The BrokenGolemTurret and its shots (game/BrokenGolemTurret.h, game/EnemyProjectile.h): turrets in a
+# box (the look's raycasts, the shots' pool, flight, crash and return), and against the game
+# (`-oracle-enemy=BrokenGolemTurret`; skipped if there's none).
+add_test(NAME enemy_broken_turret
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_BrokenGolemTurret.jsonl BrokenGolemTurret
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The Tangle against the game (data/oracle/tangle.jsonl, `-oracle-tangle`; skipped if there's

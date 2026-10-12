@@ -129,6 +129,31 @@ struct ReplayEnemy {
     std::unique_ptr<game::Enemy> enemy;
 };
 
+struct ReplayData;
+struct Tally;
+
+// What one enemy's replay adds to the common one (tests/turret_replay.h: the Broken turret's
+// shots), called at the points named; each gets the tally to add its rows to.
+struct ReplayHooks {
+    virtual ~ReplayHooks() = default;
+    // The scene is made, before the enemies: its services (scene.projectiles, scene.queries).
+    virtual void OnScene(const Value& /*start*/, game::EnemyScene& /*scene*/, game::EnemyHero& /*hero*/, unity::PhysicsWorld& /*world*/,
+                         game::EnemyPhysics& /*physics*/, unity::Physics2D& /*roomColliders*/, unity::Rigidbody2D& /*heroBody*/, Tally& /*t*/) {}
+    // An enemy built and set as its recorded line has it; then all of them.
+    virtual void OnEnemy(game::Enemy& /*enemy*/, int /*id*/, const Value& /*line*/, Tally& /*t*/) {}
+    virtual void OnEnemiesBuilt(const Value& /*start*/, Tally& /*t*/) {}
+    // A frame begins (its line, before its fixed steps).
+    virtual void BeginFrame(long long /*frame*/, const Value& /*frameLine*/) {}
+    // A fixed step's start (the hero's body set, before the step) and end (after the delayed
+    // calls' fixed pass): step k of the frame's line.
+    virtual void BeforeStep(long long /*frame*/, size_t /*k*/, const Value& /*frameLine*/, Tally& /*t*/) {}
+    virtual void AfterStep(long long /*frame*/, size_t /*k*/, const Value& /*frameLine*/, Tally& /*t*/) {}
+    // The frame's animation pass begins (before the enemies' Animators).
+    virtual void BeforeAnimators(float /*deltaTime*/) {}
+    // The frame's end (after the enemies' rows).
+    virtual void AtFrameEnd(long long /*frame*/, const Value& /*frameLine*/, Tally& /*t*/) {}
+};
+
 // What a replay needs of the game's data.
 struct ReplayData {
     Value enemyStats, physics2d;
@@ -138,6 +163,7 @@ struct ReplayData {
     std::string debugEnv = "ML_SLIME_DEBUG", contactsEnv = "ML_SLIME_CONTACTS";
     // sound_groups.json (tools/extract/sound_groups.py): MasterAudio's draws (none: no draws).
     Value soundGroups;
+    ReplayHooks* hooks = nullptr; // the enemy's own part (none: the common replay alone)
 };
 
 // The hero's own triggers (his ActionAreas, his weapon's "Collider"): not in the replay's
@@ -386,6 +412,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - GolemDungeon", "Sounds - GeneralDungeons"})) scene.audio = &audio;
     else std::printf("(no sound_groups.json: MasterAudio's draws not made)\n");
     scene.spawnEnemyDeadSprite = [&](const std::string&, Vector2 p) { portDeadSprites.emplace_back(-1, p); };
+    if (data.hooks) data.hooks->OnScene(start, scene, hero, world, physics, roomColliders, heroBody, t);
     // The Animator's clip events: the port's per enemy, in order, against the game's (the
     // methods it saw called from no script), each from the game's Random state before it
     // (resynced) and compared after it.
@@ -481,7 +508,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
               Same(e.rigidbody.mass, Bits(rb["mass"])) && Same(e.rigidbody.linearDrag, Bits(rb["drag"])) &&
                   e.rigidbody.constraints == static_cast<int>(rb["constraints"].AsInt()) && e.colliderSize.x == Bits(v["box"][2]) &&
                   // (An animated attack box is as the clip has it now: "attack trigger" rows.)
-                  (v.Find("attack") || e.attackSize.x == Bits(v["attackBox"][2])),
+                  // (No AttackCollider, the turret's: "attackBox" is empty.)
+                  (v.Find("attack") || (v["attackBox"].size() < 4 ? !e.hasAttackCollider : e.attackSize.x == Bits(v["attackBox"][2]))),
               "enemy " + std::to_string(s.id));
         e.rigidbody.mass = Bits(rb["mass"]);
         e.rigidbody.linearDrag = Bits(rb["drag"]);
@@ -525,8 +553,10 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         e.flashAmount = Bits(v["flash"]);
         for (int k = 0; k < 4; k++) e.color[k] = Bits(v["color"][static_cast<size_t>(k)]);
         e.navAgent.OnDisable(); // (re-enabled below in allAgents' order)
+        if (data.hooks) data.hooks->OnEnemy(e, s.id, v, t);
         enemies.push_back(std::move(s));
     }
+    if (data.hooks) data.hooks->OnEnemiesBuilt(start, t);
     for (const Value& name : start["agents"].arr) {
         bool found = false;
         for (ReplayEnemy& s : enemies)
@@ -616,6 +646,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             unity::Random::SetState(State(f["rng"]));
         }
         nav.BeginFrame();
+        if (data.hooks) data.hooks->BeginFrame(fn, f);
         const Value& events = f["events"];
         // The hero's weapon hitbox (not in this world) came on since the last step if its first
         // touch lands in this frame's first step: its new fixture has Box2D pair every moved
@@ -658,6 +689,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                           Str({Bits(ss[1]), Bits(ss[2])}) + " body " + Str({Bits(ss[3]), Bits(ss[4])}) + " v " + Str({Bits(ss[5]), Bits(ss[6])}));
             }
             ColliderReplay::StepStart(t, st, enemyById, fn, k);
+            if (data.hooks) data.hooks->BeforeStep(fn, k, f, t);
             portDamage.clear();
             colliderRows.portTypes.clear();
             physics.Step(fixedDt);
@@ -724,6 +756,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             colliderRows.StepTypes(t, events, k, fn);
             calls.UpdateFixed(fixedClock);
             calls.inFixedStep = false;
+            if (data.hooks) data.hooks->AfterStep(fn, k, f, t);
             // Which enemies hit him, how hard; then in which order. Two triggers that start in the
             // same step report in Box2D's contact-list order, which follows the broadphase's proxy
             // ids, which follow every collider Unity ever made: not modelled.
@@ -777,6 +810,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         animFrame = fn;
         for (const Value& ev : events.arr)
             if (ev["k"].s == "anim" && !(ev.Find("caller") && ev["caller"].IsString())) gameAnim[static_cast<int>(ev["s"].AsInt())].push_back(&ev);
+        if (data.hooks) data.hooks->BeforeAnimators(dt);
         for (ReplayEnemy& s : enemies) s.enemy->UpdateAnimator(dt);
         for (ReplayEnemy& s : enemies) {
             const auto g = gameAnim.find(s.id);
@@ -884,6 +918,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             if (t.debug)
                 std::printf("frame %lld enemy %d: %s %s | game %s\n", fn, id, Str(e->position()).c_str(), e->sprite.c_str(), Str(V2(v["pos"])).c_str());
         }
+        if (data.hooks) data.hooks->AtFrameEnd(fn, f, t);
     }
     game::PolyNav2D::current = nullptr;
     std::printf("\n");

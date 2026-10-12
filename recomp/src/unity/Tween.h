@@ -40,14 +40,19 @@ public:
     // transform.DOMove(end, duration): from the position when it starts. (Any tween of one or
     // two floats: DOTween.To, DOColor as two pairs.) ignoreTimeScale: SetUpdate(true), or the
     // project's default for tweens that don't say (see EnemyBehaviour.OnDeath's).
-    void Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease = Ease::OutQuad,
-              float delay = 0.0f, bool ignoreTimeScale = false);
+    // Returns its handle.
+    int Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease = Ease::OutQuad,
+             float delay = 0.0f, bool ignoreTimeScale = false);
     // DOTween.To of floats, material.DOFloat, material.DOColor (the colour as two pairs): Move,
     // but each component is FloatPlugin's `startValue + changeValue * easeVal` (ColorPlugin's
     // `startValue.r += changeValue.r * easeVal`): one expression on the game's Mono, in doubles,
     // rounded once (DOMove's Vector2/Vector3 operators round the product first).
-    void To(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
-            bool ignoreTimeScale);
+    // (Also DOMoveX / DOMoveY: Vector3Plugin's axis constraint sets the one component as
+    // `startValue.x + changeValue.x * easeVal`, the others as the getter reads them now.)
+    int To(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
+           bool ignoreTimeScale);
+    // Tween.OnComplete(callback) on a handle (one that's done or killed: ignored).
+    void OnComplete(int id, std::function<void()> callback);
     // A tween we only need the end of (OnComplete after `delay` + `duration`).
     int Timer(float duration, float delay, std::function<void()> onComplete);
 
