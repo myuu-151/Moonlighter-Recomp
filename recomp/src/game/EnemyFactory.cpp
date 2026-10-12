@@ -2,6 +2,7 @@
 
 #include "game/BabySlime.h"
 #include "game/BrokenGolemTurret.h"
+#include "game/FlyingKamikazeGolem.h"
 #include "game/GolemSoldier.h"
 #include "game/HermitSlime.h"
 #include "game/Tangle.h"
@@ -32,6 +33,7 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
             enemy->colliderOffset = {c.ox, c.oy};
             enemy->colliderSize = {c.sx, c.sy};
             enemy->colliderTrigger = c.trigger; // (the HermitSlime's: game/EnemyColliders.h)
+            enemy->colliderEnabled = c.enabled; // (the FlyingKamikazeGolem's is off: game/EnemyRootCollider.cpp)
             break;
         }
     enemy->hasRigidbody = root.hasRigidbody;
@@ -45,6 +47,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
             enemy->enemyBehaviour = MakeHermitSlimeBehaviour(*enemy, b);
         } else if (!enemy->enemyBehaviour && b.cls == "BrokenGolemTurretBehaviour") { // (game/BrokenGolemTurret.h)
             enemy->enemyBehaviour = MakeBrokenGolemTurretBehaviour(*enemy, b);
+            behaviourFields = &b;
+        } else if (!enemy->enemyBehaviour && b.cls == "FlyingKamikazeGolemBehaviour") { // (game/FlyingKamikazeGolem.h)
+            enemy->enemyBehaviour = MakeFlyingKamikazeGolemBehaviour(*enemy, b);
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour) {
             if (auto behaviour = MakeBehaviour(b.cls, prefab.name, *enemy)) {

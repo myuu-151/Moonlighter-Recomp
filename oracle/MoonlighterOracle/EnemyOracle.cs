@@ -608,6 +608,7 @@ namespace MoonlighterOracle
             j.Key("playerOffset"); V2(j, tr.Field("playerOffset").GetValue<Vector3>());
             j.EndObj();
             TurretOracle.WriteEnemy(j, b);
+            FlyKamiOracle.WriteEnemy(j, b);
             var mat = sr != null ? sr.material : null;
             j.Key("flash").Bits(mat != null && mat.HasProperty("_FlashAmount") ? mat.GetFloat("_FlashAmount") : 0f);
             Color col = mat != null && mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
@@ -714,6 +715,7 @@ namespace MoonlighterOracle
             stepTime.Clear();
             stepBoxes.Clear();
             TurretOracle.Clear();
+            FlyKamiOracle.Clear();
         }
 
         private static void WriteFrame(int f)
@@ -805,6 +807,7 @@ namespace MoonlighterOracle
             }
             j.EndArr();
             TurretOracle.WriteFrame(j);
+            FlyKamiOracle.WriteFrame(j);
             Emit(j);
         }
 
@@ -834,6 +837,7 @@ namespace MoonlighterOracle
                 stepSlimes.Add(list);
                 StepBoxes();
                 TurretOracle.OnStep();
+                FlyKamiOracle.OnStep(slimes);
             }
         }
 
@@ -952,6 +956,7 @@ namespace MoonlighterOracle
             HookDOTween();
             HookAnimationEvents();
             TurretOracle.Begin(prefab);
+            FlyKamiOracle.Begin(prefab);
             var rec = new GameObject("OracleEnemyRecorder").AddComponent<Recorder>();
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
             // The start, at a frame's end.
@@ -985,6 +990,7 @@ namespace MoonlighterOracle
             recording = false;
             Active = false;
             TurretOracle.End();
+            FlyKamiOracle.End();
             UnityEngine.Object.Destroy(rec.gameObject);
             writer.Flush();
             writer.Close();

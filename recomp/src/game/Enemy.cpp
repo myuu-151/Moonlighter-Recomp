@@ -677,6 +677,10 @@ void EnemyPhysics::Add(Enemy& e)
     if (!e.hasRigidbody) return;
     e.body = &world_.AddBody(e.rigidbody, e.position(), e.layer, e.colliderOffset, e.colliderSize);
     AddChildColliders(e); // (a trigger root, the hurtboxes: game/EnemyColliders.cpp)
+    if (!e.colliderEnabled) { // (a root box off in the prefab: game/EnemyRootCollider.cpp)
+        e.colliderEnabled = true;
+        SetRootColliderEnabled(e, false);
+    }
     SyncAttackCollider(e);
     if (!e.active || e.destroyed) e.body->Body()->SetActive(false);
     e.synced_ = e.position();

@@ -73,6 +73,10 @@ FIELDS = {
     # starts with (HeroMerchantController.Direction); the crash's wait, the art the shot turns.
     'BrokenGolemTurretBehaviour': ENEMY_BEHAVIOUR + ('projectilePrefab', 'shootDelay', 'spawnProyectilePositions', 'enemyDirection'),
     'BrokenGolemTurretProjectile': ('timeToDestroyAfterCrash', 'projectileArt'),
+    # The FlyingKamikazeGolem (an EnemyBehaviour): the look it starts with
+    # (HeroMerchantController.Direction), the attack object it switches on and off (its path),
+    # its trails (how many: particles, presentation).
+    'FlyingKamikazeGolemBehaviour': ENEMY_BEHAVIOUR + ('enemyDirection', 'Attack', 'Trails'),
     # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
     'WeaponCollisionDetection': ('weaponAttackType',),
 }
@@ -114,6 +118,7 @@ STRUCTURED = {
     ('BrokenGolemTurretBehaviour', 'projectilePrefab'): object_name,
     ('BrokenGolemTurretBehaviour', 'spawnProyectilePositions'): vector2_list,
     ('BrokenGolemTurretProjectile', 'projectileArt'): object_path,
+    ('FlyingKamikazeGolemBehaviour', 'Attack'): object_path,
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 
