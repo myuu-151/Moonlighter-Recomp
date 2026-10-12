@@ -517,7 +517,7 @@ void HeroMerchantController::MainAttackUseStart()
         weapon->animator.SetTrigger(kTriggers[heroDirection]);
         weapon->animator.SetInteger("ComboCounter", comboCounter);
     }
-    comboCounter++; // IncreaseComboCounter
+    comboCounter = std::min(comboCounter + 1, maxComboCounter); // IncreaseComboCounter (the property caps it)
     animator.SetInteger("ComboCounter", comboCounter);
 }
 

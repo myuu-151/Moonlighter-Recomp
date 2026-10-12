@@ -103,7 +103,11 @@ public:
         bool continuousPhysics = true;  // b2World's TOI pass
     };
 
-    explicit PhysicsWorld(const Physics2DSettings& settings = Physics2DSettings(), const Options& options = Options());
+    // (Two constructors, not a defaulted Options argument: GCC wants Options' member
+    // initializers parsed before a default argument inside this class uses them.)
+    PhysicsWorld() : PhysicsWorld(Physics2DSettings(), Options{}) {}
+    explicit PhysicsWorld(const Physics2DSettings& settings) : PhysicsWorld(settings, Options{}) {}
+    PhysicsWorld(const Physics2DSettings& settings, const Options& options);
     ~PhysicsWorld();
     PhysicsWorld(const PhysicsWorld&) = delete;
     PhysicsWorld& operator=(const PhysicsWorld&) = delete;

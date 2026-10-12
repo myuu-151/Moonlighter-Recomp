@@ -124,7 +124,7 @@ public:
     unity::Vector2 respawn;
     unity::Tweens tweens; // DOTween's, for him
     Weapon* weapon = nullptr; // the equipped one, nullptr bare-handed
-    int comboCounter = 0;
+    int comboCounter = 0, maxComboCounter = 3;
     bool canAttack = true, attackInputEnabled = true;
     const unity::Collider2D* doorEntered = nullptr; // this frame's
     unity::Animator animator;
