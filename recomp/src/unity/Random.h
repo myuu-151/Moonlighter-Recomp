@@ -34,5 +34,14 @@ int32_t Range(int32_t min, int32_t max);
 // engine's are its compiler's: a platform whose sinf/cosf round differently drifts here.
 Vector2 insideUnitCircle();
 
+// Random.insideUnitSphere: three draws, as the engine's RandomPointInsideUnitSphere makes it:
+// RandomUnitVector (z = Range(-1, 1), an angle Range(0, 2 pi), x and y on the circle of radius
+// sqrt(1 - z z)), scaled by the cube root of value(). The draws are what the port needs (the
+// screen shake's direction only moves the camera); the values are unchecked against the game.
+struct Vector3 {
+    float x = 0.0f, y = 0.0f, z = 0.0f;
+};
+Vector3 insideUnitSphere();
+
 } // namespace Random
 } // namespace unity

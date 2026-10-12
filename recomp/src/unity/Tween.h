@@ -18,6 +18,14 @@ enum class Ease { Linear, OutQuad, InCirc, InCubic };
 // EaseManager.Evaluate: the eased fraction at `time` of `duration`.
 float EaseEvaluate(Ease ease, float time, float duration);
 
+// DOTween.Shake's UnityEngine.Random draws (DOTween 1.2.283, the game's), made when a shake
+// tween is created (DOShakePosition and the others): Range(0, 360) for the first angle, then
+// for each of the (int)(vibrato * duration) (at least 2) waypoints but the last, a
+// Range(-randomness, randomness) turning the angle (from the second on) and, vectorBased (a
+// Vector3 strength) or not ignoring z, another for the rotation about y. The shake itself
+// (the camera's offsets) is presentation: only the draws are made. Returns how many.
+int ShakeDraws(float duration, int vibrato, float randomness, bool vectorBased, bool ignoreZAxis);
+
 class Tweens {
 public:
     // DOVirtual.DelayedCall(delay, callback, ignoreTimeScale): the callback once `delay` has

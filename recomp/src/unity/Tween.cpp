@@ -2,7 +2,30 @@
 
 #include <cmath>
 
+#include "unity/Random.h"
+
 namespace unity {
+
+int ShakeDraws(float duration, int vibrato, float randomness, bool vectorBased, bool ignoreZAxis)
+{
+    // int num2 = (int)((float)vibrato * duration) (Mono: the product in double).
+    int count = static_cast<int>(static_cast<double>(static_cast<float>(vibrato)) * static_cast<double>(duration));
+    if (count < 2) count = 2;
+    int draws = 0;
+    Random::Range(0.0f, 360.0f);
+    draws++;
+    for (int k = 0; k < count - 1; k++) {
+        if (k > 0) {
+            Random::Range(0.0f - randomness, randomness);
+            draws++;
+        }
+        if (vectorBased || !ignoreZAxis) {
+            Random::Range(0.0f - randomness, randomness);
+            draws++;
+        }
+    }
+    return draws;
+}
 
 float EaseEvaluate(Ease ease, float time, float duration)
 {

@@ -56,6 +56,7 @@ FIELDS = {
     'Enemy': ('itemDrops', 'dropRadius', 'dropOffset'),
     'EnemyBehaviour': ENEMY_BEHAVIOUR,
     'BabySlimeBehaviour': ENEMY_BEHAVIOUR,  # an EnemyBehaviour
+    'GolemSoldierBehaviour': ENEMY_BEHAVIOUR + ('iDirectionLocked',),  # an EnemyBehaviour
     'PolyNavAgent': ('maxSpeed', 'mass', 'stoppingDistance', 'slowingDistance', 'accelerationRate', 'decelerationRate',
                      'avoidRadius', 'lookAheadDistance', 'repath', 'restrict', 'closerPointOnInvalid', 'roundCorners',
                      'rotateTransform'),

@@ -1,10 +1,13 @@
 #include "game/Enemy.h"
 
+#include <cmath>
+
 #include <Box2D/Box2D.h>
 
 #include "game/Constants.h"
 #include "unity/Mathf.h"
 #include "unity/Random.h"
+#include "unity/Tween.h"
 
 namespace game {
 
@@ -18,6 +21,11 @@ constexpr int kLayerRisenObstacle = 8, kLayerLevelBoundary = 11, kLayerSunkenObs
 // Weapon.PushEnemyBackwards leaves the heavy ones alone.
 constexpr float kPushMaxWeight = 48.0f;
 
+// The attack trigger's object below the root, and the properties of it a clip can drive.
+const char* const kAttackPath = "AttackCollider";
+const char* const kAttackAttributes[8] = {"m_IsActive", "m_Enabled", "m_Offset.x", "m_Offset.y", "m_Size.x", "m_Size.y",
+                                          "m_LocalPosition.x", "m_LocalPosition.y"};
+
 const float kRed[4] = {1.0f, 0.0f, 0.0f, 1.0f};
 const float kWhite[4] = {1.0f, 1.0f, 1.0f, 1.0f};
 
@@ -27,7 +35,9 @@ const float kWhite[4] = {1.0f, 1.0f, 1.0f, 1.0f};
 
 Enemy::Enemy(EnemyScene& sceneIn, const unity::AnimatorController* controller) : scene(sceneIn), controller_(controller)
 {
-    if (controller_) enemyAnimator = std::make_unique<unity::Animator>(*controller_);
+    if (controller_)
+        for (int i = 0; i < 8; i++) attackProps_[i] = controller_->Property(kAttackPath, kAttackAttributes[i]);
+    ResetAnimator();
     // EnemyStats.Die -> MarkEnemyAsDefeated -> DungeonRoom.EnemyDefeated: out of roomEnemies,
     // the room's events, and (if it was there) out of its spawn point.
     enemyStats.OnDie = [this] {
@@ -80,7 +90,7 @@ void Enemy::SetActive(bool value)
         navAgent.OnEnable();
         if (physics) physics->SetBodyActive(*this, true);
         // The Animator starts over: its default state, its parameters' defaults.
-        if (controller_) enemyAnimator = std::make_unique<unity::Animator>(*controller_);
+        ResetAnimator();
         animatorEnabled = true;
     }
 }
@@ -135,10 +145,49 @@ void Enemy::PushBackwards(Vector2 heroPosition, float attackPushForce)
     AddImpulse(vector * attackPushForce);
 }
 
+void Enemy::ResetAnimator()
+{
+    if (!controller_) return;
+    enemyAnimator = std::make_unique<unity::Animator>(*controller_);
+    unity::Animator& a = *enemyAnimator;
+    // What Unity binds as the defaults (write defaults put them back): the values now.
+    const float now[8] = {attackActive ? 1.0f : 0.0f, attackEnabled ? 1.0f : 0.0f, attackOffset.x, attackOffset.y,
+                          attackSize.x,           attackSize.y,           attackPosition.x, attackPosition.y};
+    for (int i = 0; i < 8; i++)
+        if (attackProps_[i] >= 0) a.SetDefault(kAttackPath, kAttackAttributes[i], now[i]);
+    // Clip events: SendMessage to the object's scripts (the behaviour).
+    a.onEvent = [this](const unity::AnimationEvent& e) {
+        if (scene.onAnimationEvent) scene.onAnimationEvent(*this, e, false);
+        if (enemyBehaviour) enemyBehaviour->OnAnimationEvent(e);
+        if (scene.onAnimationEvent) scene.onAnimationEvent(*this, e, true);
+    };
+}
+
+void Enemy::ApplyAnimatedProperties()
+{
+    unity::Animator& a = *enemyAnimator;
+    auto apply = [&](int i, float& to) {
+        const int p = attackProps_[i];
+        if (p >= 0 && a.Driven(p)) to = a.Property(p);
+    };
+    float active = attackActive ? 1.0f : 0.0f, enabled = attackEnabled ? 1.0f : 0.0f;
+    apply(0, active);
+    apply(1, enabled);
+    attackActive = active > 0.5f;
+    attackEnabled = enabled > 0.5f;
+    apply(2, attackOffset.x);
+    apply(3, attackOffset.y);
+    apply(4, attackSize.x);
+    apply(5, attackSize.y);
+    apply(6, attackPosition.x);
+    apply(7, attackPosition.y);
+}
+
 void Enemy::UpdateAnimator(float deltaTime)
 {
     if (!enemyAnimator || !animatorEnabled || !active || destroyed) return;
     enemyAnimator->Update(deltaTime);
+    if (hasAttackCollider) ApplyAnimatedProperties();
     if (const std::string* s = enemyAnimator->Sprite()) sprite = *s;
 }
 
@@ -488,6 +537,44 @@ void EnemyBehaviour::OnEnemyDestroyed()
 
 void EnemyBehaviour::OnPlayerLeaveRoom() { SetVencible(); }
 
+void EnemyBehaviour::DoScreenShakeFromEnemyAnimation()
+{
+    // CameraManager.Instance.Rumble(duration, value, Random.insideUnitSphere.normalized, vibration):
+    // the arguments in order, then Rumble's DOShakePosition(duration, strength * direction,
+    // vibration, 0) (a Vector3 strength: vectorBased, randomness 0).
+    const float duration = Constants::GetFloat("enemyDefaultAttackScreenShakeDuration");
+    const float strength = Constants::GetFloat("enemyDefaultAttackScreenShakeValue");
+    const unity::Random::Vector3 v = unity::Random::insideUnitSphere();
+    const int vibration = Constants::GetInt("golemKingAttacksShakeVibration");
+    unity::ShakeDraws(duration, vibration, 0.0f, true, false);
+    if (enemy.scene.rumble) {
+        const double x = v.x, y = v.y, z = v.z;
+        const double m = std::sqrt(x * x + y * y + z * z);
+        const Vector2 direction = m > 1e-05 ? Vector2{static_cast<float>(x / m), static_cast<float>(y / m)} : Vector2::zero();
+        enemy.scene.rumble(duration, strength, direction, vibration);
+    }
+}
+
+bool EnemyBehaviour::OnAnimationEvent(const unity::AnimationEvent& e)
+{
+    const std::string& f = e.function;
+    if (f == "ForbidEnemyMovement") ForbidEnemyMovement();
+    else if (f == "AllowEnemyMovement") AllowEnemyMovement();
+    else if (f == "DoScreenShakeFromEnemyAnimation") DoScreenShakeFromEnemyAnimation();
+    else if (f == "SetInvencible") SetInvencible();
+    else if (f == "SetVencible") SetVencible();
+    else if (f == "PlayDamagedEffect") PlayDamagedEffect();
+    else if (f == "SpawnDeathParticles") SpawnDeathParticles();
+    else if (f == "StartTargetingPlayer") StartTargetingPlayer();
+    else if (f == "StopTargetingPlayer") StopTargetingPlayer();
+    else if (f == "StopEnemy") StopEnemy();
+    else if (f == "AttackPlayer") AttackPlayer();
+    else if (f == "LookToPosition") LookToPosition();
+    else if (f == "EnemyDashTowardsThePlayer") EnemyDashTowardsThePlayer(e.floatParameter);
+    else return false;
+    return true;
+}
+
 void EnemyBehaviour::OnDeath()
 {
     const float num = 0.6f;
@@ -550,6 +637,9 @@ public:
             if (!e->attackFixture) continue;
             b2Fixture* other = a == e->attackFixture ? b : b == e->attackFixture ? a : nullptr;
             if (!other || other->GetBody() == e->attackFixture->GetBody()) continue;
+            bool carried = false;
+            for (const auto& c : owner_.carried_) carried = carried || (c.first == e->attackFixture && c.second == other);
+            if (carried) continue;
             Hit hit;
             hit.enemy = e;
             hit.player = owner_.hero_ && other->GetBody() == owner_.hero_->Body() && !other->IsSensor();
@@ -579,23 +669,54 @@ void EnemyPhysics::Add(Enemy& e)
     enemies_.push_back(&e);
     if (!e.hasRigidbody) return;
     e.body = &world_.AddBody(e.rigidbody, e.position(), e.layer, e.colliderOffset, e.colliderSize);
-    if (e.hasAttackCollider) {
-        // The child's trigger on the parent's body (it has no Rigidbody2D of its own); no
-        // density, so the mass set by hand stays.
-        const float hx = e.attackSize.x / 2.0f, hy = e.attackSize.y / 2.0f;
-        const float x0 = e.attackOffset.x - hx, x1 = e.attackOffset.x + hx, y0 = e.attackOffset.y - hy, y1 = e.attackOffset.y + hy;
-        const b2Vec2 corners[4] = {b2Vec2(x0, y0), b2Vec2(x1, y0), b2Vec2(x1, y1), b2Vec2(x0, y1)};
-        b2PolygonShape shape;
-        shape.Set(corners, 4);
-        b2FixtureDef fd;
-        fd.shape = &shape;
-        fd.density = 0.0f;
-        fd.isSensor = true;
-        fd.userData = &e.attackLayer;
-        e.attackFixture = e.body->Body()->CreateFixture(&fd);
-    }
+    SyncAttackCollider(e);
     if (!e.active || e.destroyed) e.body->Body()->SetActive(false);
     e.synced_ = e.position();
+}
+
+void EnemyPhysics::SyncAttackCollider(Enemy& e)
+{
+    if (!e.body) return;
+    // The child's box on the parent's body (it has no Rigidbody2D of its own), in the body's
+    // frame: the child's local position plus the box's offset.
+    const bool on = e.hasAttackCollider && e.attackEnabled && e.attackActive;
+    const Vector2 center{e.attackPosition.x + e.attackOffset.x, e.attackPosition.y + e.attackOffset.y};
+    const Vector2 size = e.attackSize;
+    if (on == e.attackBuilt_ && (!on || (center.x == e.attackBuiltCenter_.x && center.y == e.attackBuiltCenter_.y &&
+                                         size.x == e.attackBuiltSize_.x && size.y == e.attackBuiltSize_.y)))
+        return;
+    b2Body* b = e.body->Body();
+    if (e.attackFixture) {
+        // Remade while on: what it touched, if that isn't to enter again.
+        if (on && !options_.reenterOnReshape)
+            for (const b2ContactEdge* ce = b->GetContactList(); ce; ce = ce->next) {
+                const b2Contact* c = ce->contact;
+                if (!c->IsTouching()) continue;
+                if (c->GetFixtureA() == e.attackFixture) carried_.emplace_back(nullptr, c->GetFixtureB());
+                else if (c->GetFixtureB() == e.attackFixture) carried_.emplace_back(nullptr, c->GetFixtureA());
+            }
+        b->DestroyFixture(e.attackFixture);
+        e.attackFixture = nullptr;
+    }
+    e.attackBuilt_ = on;
+    e.attackBuiltCenter_ = center;
+    e.attackBuiltSize_ = size;
+    if (!on) return;
+    // No density, so the mass set by hand stays.
+    const float hx = size.x / 2.0f, hy = size.y / 2.0f;
+    const float x0 = center.x - hx, x1 = center.x + hx, y0 = center.y - hy, y1 = center.y + hy;
+    const b2Vec2 corners[4] = {b2Vec2(x0, y0), b2Vec2(x1, y0), b2Vec2(x1, y1), b2Vec2(x0, y1)};
+    b2PolygonShape shape;
+    shape.Set(corners, 4);
+    b2FixtureDef fd;
+    fd.shape = &shape;
+    fd.density = 0.0f;
+    fd.isSensor = true;
+    fd.userData = &e.attackLayer;
+    e.attackFixture = b->CreateFixture(&fd);
+    if (options_.wakeOnAttackChange) b->SetAwake(true);
+    for (auto& c : carried_)
+        if (!c.first) c.first = e.attackFixture;
 }
 
 void EnemyPhysics::PlaceBody(Enemy& e, Vector2 bodyPosition)
@@ -618,9 +739,11 @@ void EnemyPhysics::SetBodyActive(Enemy& e, bool active)
 
 void EnemyPhysics::Sync()
 {
-    // Physics2D syncs the transforms the scripts moved since the last write-back.
+    // Physics2D syncs the transforms the scripts moved since the last write-back, and the
+    // attack triggers the Animator changed get their new fixtures.
     for (Enemy* e : enemies_) {
         if (!e->body || e->destroyed || !e->active) continue;
+        SyncAttackCollider(*e);
         const Vector2 p = e->position();
         if (p.x != e->synced_.x || p.y != e->synced_.y || e->transformDirty_) {
             world_.SyncTransform(*e->body, p);
@@ -661,6 +784,7 @@ void EnemyPhysics::Step(float dt)
     world_.UpdateContacts();
     WriteBack();
     ReportTriggers();
+    carried_.clear();
 }
 
 } // namespace game

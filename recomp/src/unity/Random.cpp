@@ -81,5 +81,21 @@ Vector2 insideUnitCircle()
     return {v.x * r, v.y * r};
 }
 
+Vector3 insideUnitSphere()
+{
+    const float z = Range(-1.0f, 1.0f);
+    const float a = Range(0.0f, 3.14159274f * 2.0f);
+    const float r = std::sqrt(1.0f - z * z);
+    Vector3 v;
+    v.x = r * std::cos(a);
+    v.y = r * std::sin(a);
+    v.z = z;
+    const float k = std::pow(value(), 1.0f / 3.0f);
+    v.x *= k;
+    v.y *= k;
+    v.z *= k;
+    return v;
+}
+
 } // namespace Random
 } // namespace unity
