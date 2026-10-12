@@ -21,7 +21,8 @@
 //     coroutines (PolyNav2D::ResumeCoroutines: paths arrive);
 //   - each Animator's Update (Enemy::UpdateAnimator): its clip events go to the behaviour
 //     (EnemyBehaviour::OnAnimationEvent, by the event's function name, as Unity's SendMessage),
-//     and the curves it drives onto the object (the "AttackCollider" child's box and transform);
+//     and the curves it drives onto the object (the "AttackCollider" child's box and transform,
+//     the root's box: game/EnemyColliders.h);
 //   - PolyNav2D::LateUpdate and each agent's LateUpdate (the move).
 // The clocks: scene.calls (the frame's Time.time, the fixed step's, and which one an Invoke made
 // now counts from: unity/DelayedCalls.h); the driver also runs its pass after each fixed step.
@@ -34,6 +35,7 @@
 #include <vector>
 
 #include "game/EnemyStats.h"
+#include "game/HeroDamage.h"
 #include "game/PolyNavAgent.h"
 #include "unity/Animator.h"
 #include "unity/DelayedCalls.h"
@@ -69,6 +71,9 @@ struct EnemyHero {
     std::function<void(float attackStrength, const std::string& damageSource, Enemy& enemy)> dealDamage;
     // HeroMerchantController.AddForce(force) (an Impulse on his body: EnemyBehaviour.PushPlayerBackwards).
     std::function<void(unity::Vector2 force)> addForce;
+    // DealDamageToPlayer with its DamageType (ItemDrain: the HermitSlime's; game/HeroDamage.h's
+    // DealDamageToPlayer calls this, else dealDamage).
+    std::function<void(float attackStrength, const std::string& damageSource, HeroDamageType type, Enemy& enemy)> dealTypedDamage;
 };
 
 // The scene an enemy lives in: the engine's schedulers, physics, the hero and the room.
@@ -98,6 +103,27 @@ struct EnemyScene {
     // Each clip event the Animator fires, before (after = false) and after the behaviour's
     // method has run (for checks; the behaviour gets it either way).
     std::function<void(Enemy&, const unity::AnimationEvent&, bool after)> onAnimationEvent;
+    // The DungeonRoom: transform.position, roomFloorWidth / roomFloorHeight, roomCenterYOffset
+    // (where a patrol picks its tiles: HermitSlimeBehaviourNEW.ChooseNewDestination).
+    unity::Vector2 roomPosition;
+    int roomFloorWidth = 484, roomFloorHeight = 268, roomCenterYOffset = 0;
+};
+
+// A child hurtbox: a trigger BoxCollider2D with an EnemyDamageReceiver, tagged
+// "EnemyDamageReceiver" (the HermitSlime's "Collidere"). The weapon's hits on it go to the
+// enemy it advises without the push (game/EnemyColliders.h: WeaponMainAttackHit). Its box is a
+// sensor on the root's body (the child has no Rigidbody2D), at its local position plus offset.
+struct EnemyDamageReceiver {
+    std::string path;        // below the root ("Collidere")
+    Enemy* advise = nullptr; // gameObjectToAdvise's enemy (none: the hits go nowhere)
+    bool active = true, enabled = true, trigger = true;
+    unity::Vector2 position, offset, size{1.0f, 1.0f}; // the child's local position, the box
+    int layer = kLayerGroundEnemy;
+    std::string tag = "EnemyDamageReceiver";
+    b2Fixture* fixture = nullptr; // once EnemyPhysics::Add made it (none while off)
+    // EnemyDamageReceiver.DealDamageToEnemy(damage, type): Enemy.DealDamageToEnemy on the advised
+    // enemy (its damageReceiver only places the floating number). Returns the damage dealt.
+    float DealDamageToEnemy(float damage, EnemyDamageReceivedType type = EnemyDamageReceivedType::Normal) const;
 };
 
 class Enemy {
@@ -155,6 +181,13 @@ public:
     unity::Rigidbody2D* body = nullptr; // once EnemyPhysics::Add made it
     b2Fixture* attackFixture = nullptr;
     EnemyPhysics* physics = nullptr;
+    // The root box as a trigger, its offset and size driven by the clips, and the child
+    // hurtboxes (game/EnemyColliders.cpp; the HermitSlime's). A trigger root is a sensor with no
+    // mass: the body's centre of mass is its origin. A clip that changes the box remakes its
+    // fixture as the Animator writes it (the body's rest restarts, as the attack trigger's).
+    bool colliderTrigger = false;
+    std::vector<EnemyDamageReceiver> damageReceivers;
+    b2Fixture* rootFixture = nullptr; // the root box's (EnemyPhysics::Add)
 
     // transform.position (through the parents) and its setter.
     unity::Vector2 position() const { return navAgent.position(); }
@@ -202,6 +235,12 @@ public:
 private:
     friend class EnemyPhysics;
     void ApplyAnimatedProperties();
+    // The root box's animated properties (game/EnemyColliders.cpp): bound with the Animator's
+    // defaults, applied after its pass.
+    void BindRootBox();
+    void ApplyRootBox();
+    int rootProps_[4] = {-1, -1, -1, -1}; // the root's m_Offset.x/y, m_Size.x/y (-1: not animated)
+    unity::Vector2 rootBuiltOffset_, rootBuiltSize_; // the root fixture as last built
     const unity::AnimatorController* controller_ = nullptr;
     // The controller's properties for the attack trigger (-1: no clip animates it): m_IsActive,
     // m_Enabled, m_Offset.x/y, m_Size.x/y, m_LocalPosition.x/y.
@@ -365,6 +404,11 @@ public:
     // The attack trigger as the object has it now: its fixture made (the body's rest
     // restarted), remade (what it touched doesn't enter again) or taken away.
     void SyncAttackCollider(Enemy& enemy);
+    // The root box as the Animator left it: remade if its offset or size changed (the body's
+    // rest restarted); and the hurtboxes' fixtures (Add). game/EnemyColliders.cpp.
+    void SyncRootCollider(Enemy& enemy);
+    // The hurtbox whose fixture this is (none: not one).
+    EnemyDamageReceiver* ReceiverOf(const b2Fixture* fixture);
 
     // The attack triggers that began touching in the last step, in Box2D's order (for checks).
     struct Hit {
@@ -376,6 +420,7 @@ public:
 
 private:
     class Listener;
+    void AddChildColliders(Enemy& enemy); // a trigger root, the hurtboxes (game/EnemyColliders.cpp)
     unity::PhysicsWorld& world_;
     Options options_;
     Listener* listener_ = nullptr;

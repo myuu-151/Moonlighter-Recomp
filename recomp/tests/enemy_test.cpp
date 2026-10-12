@@ -10,16 +10,21 @@
 //     each swing hitting him once (the box turned on again enters again; remade as it grows, it
 //     doesn't), MasterAudio's draw for the sword's crash (sound_groups.json: its loops'
 //     Range(1, 6));
+//     The HermitSlime's (prefab HermitSlime): tests/enemy_hermit_checks.h (its patrol, its slam,
+//     its root box, its hurtbox, ItemDrain's draws);
 //  2. with the oracle's recording (data/oracle/enemy_<prefab>.jsonl, `-oracle-enemy=<prefab>`;
 //     skipped if there's none): tests/enemy_replay.h's replay, with the attack trigger per fixed
-//     step and frame, the look lock, and the clip events and their Random draws.
+//     step and frame, the look lock, and the clip events and their Random draws (and
+//     tests/enemy_replay_colliders.h's rows: the root box, the hurtboxes, the patrol, ItemDrain).
 //
-// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier)]
+// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime)]
+//        (ML_HERMIT_BOX=1: the hermit's root box in its attack frames)
 //        (ML_ENEMY_DEBUG=1: every mismatch; ML_ENEMY_CONTACTS=<frame>: the enemies' Box2D
 //        contacts after each of that frame's steps; ML_ENEMY_BOX=1: the soldier in a box's
 //        frames with its attack box on)
 
 #include "enemy_replay.h"
+#include "enemy_hermit_checks.h" // (the HermitSlime's self-checks)
 
 namespace {
 
@@ -260,6 +265,7 @@ int main(int argc, char** argv)
         if (name == "GolemSoldier") {
             CheckSoldierInABox(data);
         }
+        if (name == "HermitSlime") CheckHermitSlime(*data.prefab, *data.controller, data.enemyStats, data.physics2d, data.soundGroups);
     } else {
         std::printf("(no %s data in %s (ML_DATA; animators/%s.json from tools/extract/animators.py): skipping the soldier in a box)\n",
                     name.c_str(), data.dir.c_str(), name.c_str());

@@ -16,7 +16,8 @@ namespace MoonlighterOracle
     /// they always were: "slimeStart", "slime", a frame's "slimes"; the generic mode's are
     /// "enemyStart", "enemy", "enemies"). Loads the first save slot like the harvest (saving and
     /// stats blocked), takes the Golem gate on a fixed seed (7919, as the walks; generation isn't
-    /// fully seeded, so the floor can differ between sessions), and goes through a door
+    /// fully seeded, so the floor can differ between sessions; with none of the enemy on it and
+    /// no room named, the next floor's, up to floor 3), and goes through a door
     /// (DungeonManager.ChangeRoomTo, as the PolyNav oracle) into the room with the most of the
     /// enemy (ties: the fewest other enemies; or the room named). Its other enemies leave
     /// roomEnemies and are switched off before EnableEnemies (half a second later) can wake them,
@@ -58,7 +59,7 @@ namespace MoonlighterOracle
     /// Not deterministic: the frame times (60 fps asked, real time measured: deltaTime is
     /// recorded), and so how many fixed steps each frame has (recorded too); the hit-stop
     /// GameManager.SetGameSpeedForTime puts on weapon hits (timeScale, recorded through dt).
-    internal static class EnemyOracle
+    internal static partial class EnemyOracle // (the HermitSlime's additions: EnemyOracleColliders.cs)
     {
         public static bool Active;     // the hero's script is driving the input
         private static bool recording; // between the setup line and the last frame
@@ -298,9 +299,9 @@ namespace MoonlighterOracle
         [HarmonyPatch(typeof(HeroMerchant), "DealDamageToPlayer")]
         private static class DamageToPlayerHook
         {
-            private static void Prefix(float attackStrength, Enemy enemySource)
+            private static void Prefix(float attackStrength, HeroMerchant.DamageType type, Enemy enemySource)
             {
-                Add(new Ev { k = "dmgToPlayer", s = enemySource != null ? Id(enemySource) : -1, step = Step, a = attackStrength });
+                Add(new Ev { k = "dmgToPlayer", s = enemySource != null ? Id(enemySource) : -1, step = Step, a = attackStrength, type = (int)type });
             }
 
             // God mode the plain way: his health back after the hit (the hit itself as in play).
@@ -313,12 +314,13 @@ namespace MoonlighterOracle
         [HarmonyPatch(typeof(Enemy), "DealDamageToEnemy")]
         private static class DamageToEnemyHook
         {
-            private static void Prefix(Enemy __instance, float attackStrength, Enemy.EnemyDamageReceivedType enemyDamageReceivedType, out Ev __state)
+            private static void Prefix(Enemy __instance, float attackStrength, EnemyDamageReceiver damageReceiver, Enemy.EnemyDamageReceivedType enemyDamageReceivedType, out Ev __state)
             {
                 __state = null;
                 int id = Id(__instance);
                 if (id < 0 || !recording) return;
-                __state = new Ev { k = "dmgToEnemy", s = id, step = Step, a = attackStrength, type = (int)enemyDamageReceivedType, hp0 = __instance.enemyStats.CurrentHealth, hero = HeroPos };
+                __state = new Ev { k = "dmgToEnemy", s = id, step = Step, a = attackStrength, type = (int)enemyDamageReceivedType, hp0 = __instance.enemyStats.CurrentHealth, hero = HeroPos,
+                                   other = damageReceiver != null ? damageReceiver.name : null };
                 Add(__state);
             }
 
@@ -552,6 +554,7 @@ namespace MoonlighterOracle
                 j.EndArr().Prop("attackLayer", ac != null ? ac.gameObject.layer : -1);
             }
             WriteAttack(j, t);
+            WriteColliders(j, b, setup);
             j.Key("hp").Bits(e.enemyStats.CurrentHealth).Prop("alive", e.enemyStats.isAlive).Prop("inv", e.enemyStats.Invencible)
                 .Prop("layer", b.gameObject.layer);
             var rb = b.GetComponent<Rigidbody2D>();
@@ -595,6 +598,7 @@ namespace MoonlighterOracle
                 .Prop("dmgFx", b.IsEnemyPlayingDamagedEffect()).Prop("fallInHoles", b.fallInHoles)
                 .Prop("deadForce", tr.Field("deadForce").GetValue<int>()).Prop("enabled", b.enabled);
             if (b is GolemSoldierBehaviour soldier) j.Prop("locked", soldier.iDirectionLocked);
+            WriteHermit(j, b);
             j.Key("playerOffset"); V2(j, tr.Field("playerOffset").GetValue<Vector3>());
             j.EndObj();
             var mat = sr != null ? sr.material : null;
@@ -636,6 +640,7 @@ namespace MoonlighterOracle
             var j = new Json().Obj().Prop("ev", legacy ? "slimeStart" : "enemyStart").Prop("session", Trace.Session).Prop("floor", Trace.Floor)
                 .Prop("room", room.name).Prop("roomInfo", room.roomInfo != null ? room.roomInfo.name : "").Prop("enemy", prefab);
             j.Key("roomPos"); V2(j, room.transform.position);
+            WriteRoomFloor(j, room);
             // EnemyStats.Init's inputs.
             var info = dm.intermediateInfo;
             var culture = info.dungeonType == DungeonManager.DungeonType.Intermediate ? info.intermediateCulture : dm.culture;
@@ -699,6 +704,7 @@ namespace MoonlighterOracle
             stepHero.Clear();
             stepSlimes.Clear();
             stepTime.Clear();
+            stepBoxes.Clear();
         }
 
         private static void WriteFrame(int f)
@@ -734,7 +740,9 @@ namespace MoonlighterOracle
                     }
                     j.EndArr();
                 }
-                j.EndArr().EndObj();
+                j.EndArr();
+                WriteStepBoxes(j, k);
+                j.EndObj();
             }
             j.EndArr();
             j.Key("events").Arr();
@@ -744,9 +752,9 @@ namespace MoonlighterOracle
                 switch (e.k)
                 {
                     case "attackHit": j.Prop("player", e.player).Prop("other", e.other); break;
-                    case "dmgToPlayer": j.Key("str").Bits(e.a); break;
+                    case "dmgToPlayer": j.Key("str").Bits(e.a).Prop("type", e.type); break;
                     case "dmgToEnemy":
-                        j.Key("str").Bits(e.a).Prop("type", e.type).Key("hp0").Bits(e.hp0).Key("hp1").Bits(e.hp1);
+                        j.Key("str").Bits(e.a).Prop("type", e.type).Key("hp0").Bits(e.hp0).Key("hp1").Bits(e.hp1).Prop("recv", e.other);
                         j.Key("hero"); V2(j, e.hero);
                         break;
                     case "push":
@@ -761,6 +769,7 @@ namespace MoonlighterOracle
                         Rng.WriteState(j.Key("rng0"), e.rng0);
                         Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
                         break;
+                    default: WriteEventExtra(j, e); break;
                 }
                 j.EndObj();
             }
@@ -813,6 +822,7 @@ namespace MoonlighterOracle
                     list.Add(row.ToArray());
                 }
                 stepSlimes.Add(list);
+                StepBoxes();
             }
         }
 
@@ -861,31 +871,42 @@ namespace MoonlighterOracle
             yield return Harvest.LoadSlot();
             bool generated = false;
             Action done = () => generated = true;
-            DungeonGenerator.OnGeneratedDungeon += done;
             UnityEngine.Random.InitState(7919);
-            HeroMerchant.Instance.LoadDungeonScene(ItemMaster.Culture.Golem);
-            float start = Time.realtimeSinceStartup;
-            while (!generated && Time.realtimeSinceStartup - start < 120f) yield return null;
-            DungeonGenerator.OnGeneratedDungeon -= done;
-            if (!generated) { log.LogError(Tag + ": floor timed out"); yield break; }
-            yield return new WaitForSecondsRealtime(3f);
-            for (int tries = 0; tries < 5 && GUIManager.Instance.currentInventory != null; tries++)
+            DungeonRoom room = null;
+            DungeonDoor door = null;
+            // Floor 1, and (no room named) floors 2 and 3 through the next-floor door until one has
+            // the enemy (the HermitSlime: 3% of floor 1's rooms, 16% and 25% further down).
+            for (int floor = 0; ; floor++)
             {
-                GUIManager.Instance.DisableCurrentPanel();
-                yield return new WaitForSecondsRealtime(0.5f);
+                generated = false;
+                DungeonGenerator.OnGeneratedDungeon += done;
+                if (floor == 0) HeroMerchant.Instance.LoadDungeonScene(ItemMaster.Culture.Golem);
+                else HeroMerchant.Instance.LoadNextLevelDungeonScene(ItemMaster.Culture.Golem);
+                float start = Time.realtimeSinceStartup;
+                while (!generated && Time.realtimeSinceStartup - start < 120f) yield return null;
+                DungeonGenerator.OnGeneratedDungeon -= done;
+                if (!generated) { log.LogError(Tag + ": floor timed out"); yield break; }
+                yield return new WaitForSecondsRealtime(3f);
+                for (int tries = 0; tries < 5 && GUIManager.Instance.currentInventory != null; tries++)
+                {
+                    GUIManager.Instance.DisableCurrentPanel();
+                    yield return new WaitForSecondsRealtime(0.5f);
+                }
+                if (GameManager.Instance.isGamePaused) GameManager.Instance.UnpauseGame();
+                var stale = GUIManager.Instance.currentInventory;
+                if (stale != null && !stale.IsActive()) GUIManager.Instance.currentInventory = null;
+                yield return new WaitForSecondsRealtime(2f);
+                if (PickRoom(roomArg, out room, out door)) break;
+                if (roomArg != "" || floor >= 2)
+                {
+                    log.LogError(Tag + ": no room with a " + prefab + " and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""));
+                    yield break;
+                }
+                log.LogInfo(Tag + ": no " + prefab + " on floor " + (floor + 1) + ": the next floor");
             }
-            if (GameManager.Instance.isGamePaused) GameManager.Instance.UnpauseGame();
-            var stale = GUIManager.Instance.currentInventory;
-            if (stale != null && !stale.IsActive()) GUIManager.Instance.currentInventory = null;
-            yield return new WaitForSecondsRealtime(2f);
 
             var dm = DungeonManager.Instance;
             var ctrl = HeroMerchant.Instance.heroMerchantController;
-            if (!PickRoom(roomArg, out DungeonRoom room, out DungeonDoor door))
-            {
-                log.LogError(Tag + ": no room with a " + prefab + " and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""));
-                yield break;
-            }
             // The familiars off (their agents would join allAgents; they attack enemies).
             foreach (var fam in UnityEngine.Object.FindObjectsOfType<FamiliarBase>())
                 fam.gameObject.SetActive(false);

@@ -2,6 +2,7 @@
 
 #include "game/BabySlime.h"
 #include "game/GolemSoldier.h"
+#include "game/HermitSlime.h"
 #include "game/Tangle.h"
 
 namespace game {
@@ -29,6 +30,7 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
         if (c.type == "BoxCollider2D") {
             enemy->colliderOffset = {c.ox, c.oy};
             enemy->colliderSize = {c.sx, c.sy};
+            enemy->colliderTrigger = c.trigger; // (the HermitSlime's: game/EnemyColliders.h)
             break;
         }
     enemy->hasRigidbody = root.hasRigidbody;
@@ -37,6 +39,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
     for (const Behaviour& b : root.behaviours) {
         if (!enemy->enemyBehaviour && b.cls == "TangleBehaviour") { // (its fields: game/Tangle.h)
             enemy->enemyBehaviour = MakeTangleBehaviour(*enemy, b);
+            behaviourFields = &b;
+        } else if (!enemy->enemyBehaviour && b.cls == "HermitSlimeBehaviourNEW") { // (game/HermitSlime.h)
+            enemy->enemyBehaviour = MakeHermitSlimeBehaviour(*enemy, b);
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour) {
             if (auto behaviour = MakeBehaviour(b.cls, prefab.name, *enemy)) {
@@ -86,6 +91,28 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
                     enemy->attackLayer = n.objectLayer;
                     break;
                 }
+        // A child hurtbox (EnemyDamageReceiver, game/Enemy.h): its box, and the behaviour it
+        // advises (gameObjectToAdvise: the root's; data without the field: the root's too).
+        for (const Behaviour& b : n.behaviours) {
+            if (b.cls != "EnemyDamageReceiver" || n.path.empty()) continue;
+            for (const ColliderDef& c : n.colliders) {
+                if (c.type != "BoxCollider2D") continue;
+                EnemyDamageReceiver r;
+                r.path = n.path;
+                const auto advise = b.raw.find("gameObjectToAdvise");
+                r.advise = advise == b.raw.end() || (advise->second.IsString() && advise->second.s.empty()) ? enemy.get() : nullptr;
+                r.active = n.active;
+                r.enabled = c.enabled;
+                r.trigger = c.trigger;
+                r.position = {n.x, n.y};
+                r.offset = {c.ox, c.oy};
+                r.size = {c.sx, c.sy};
+                r.layer = n.objectLayer;
+                r.tag = n.tag;
+                enemy->damageReceivers.push_back(r);
+                break;
+            }
+        }
         // Enemy.enemySprite: the first SpriteRenderer below the root (GetComponentInChildren).
         if (enemy->sprite.empty() && n.HasRenderer() && !n.sprite.empty()) enemy->sprite = n.sprite;
     }

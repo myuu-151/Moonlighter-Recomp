@@ -178,8 +178,11 @@ public:
     // DungeonLoadingPanel.Disable on a new floor: his input direction set, then UseAbility (he
     // rolls out of the door he came in by).
     void RollInto(Direction direction);
-    // HeroMerchant.DealDamageToPlayer (no shield, absorption or amulets yet).
+    // HeroMerchant.DealDamageToPlayer (no shield, absorption or amulets yet). ItemDrain (the
+    // HermitSlime's) ends with heroMerchantInventory.DropRandomItems(3, false): dropRandomItems
+    // (the port has no inventory yet: game/HeroDamage.h's DropRandomItemsDraws makes its draws).
     void DealDamageToPlayer(float attackStrength, const char* damageSource, DamageType type = DamageType::Normal);
+    std::function<void(int number)> dropRandomItems;
     void TeleportTo(unity::Vector2 to);
     bool CheckForHoles();
     void PlayFallAnimation();
