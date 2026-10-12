@@ -48,6 +48,12 @@ namespace MoonlighterOracle
                 Harvest.InstallSafety(harmony);
                 StartCoroutine(Walk.Run(this, quit, walkArg.Contains("=") ? walkArg.Substring(walkArg.IndexOf('=') + 1) : ""));
             }
+            string navArg = Array.Find(args, a => a.StartsWith("-oracle-polynav"));
+            if (navArg != null)
+            {
+                Harvest.InstallSafety(harmony);
+                StartCoroutine(PolyNavOracle.Run(this, quit, navArg.Contains("=") ? navArg.Substring(navArg.IndexOf('=') + 1) : ""));
+            }
         }
 
         private IEnumerator RunAll(bool quit)

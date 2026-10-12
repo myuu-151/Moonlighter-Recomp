@@ -57,6 +57,10 @@ add_library(mlcore STATIC
     src/game/Items.cpp
     src/game/RoomDoors.cpp
     src/unity/PhysicsWorld.cpp
+    src/game/PolyNav.cpp
+    src/game/PolyNavAgent.cpp
+    src/game/HoleOutlines.cpp
+    src/game/RoomPolyNav.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -115,6 +119,12 @@ add_test(NAME player_attack
          COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_attack.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set_tests_properties(player_attack PROPERTIES ENVIRONMENT "ML_WALK_WEAPON=Forest Spirit Gloves")
+
+add_executable(polynav_test tests/polynav_test.cpp)
+target_link_libraries(polynav_test PRIVATE mlcore)
+add_test(NAME polynav
+         COMMAND polynav_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/polynav.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
 add_executable(preview tools/preview.cpp)
