@@ -173,6 +173,12 @@ public:
     // round-trip his position through the centre of mass, as Box2D does without contacts.
     unity::PhysicsWorld* physicsWorld = nullptr;
     unity::Rigidbody2D* Body() const { return body_; }
+    // Physics2D.OverlapBox's ties (unity/Physics2D.h: when several colliders overlap a box the
+    // game returns its broad phase's first, not modelled). When the corner slide's probes meet
+    // several and the choice changes the nudge, its outcomes go here (`axis` 0: velX, 1: velY;
+    // the port's own choice first) and the one returned is taken (player_walk_test: the
+    // recording's). Unset: the first.
+    std::function<size_t(int axis, const std::vector<float>& outcomes)> slideTie;
 
     void SetDirection(Direction direction);
     // DungeonLoadingPanel.Disable on a new floor: his input direction set, then UseAbility (he
@@ -182,6 +188,10 @@ public:
     // HermitSlime's) ends with heroMerchantInventory.DropRandomItems(3, false): dropRandomItems
     // (the port has no inventory yet: game/HeroDamage.h's DropRandomItemsDraws makes its draws).
     void DealDamageToPlayer(float attackStrength, const char* damageSource, DamageType type = DamageType::Normal);
+    // GameManager.IsTownSceneLoaded(): with the town's scene loaded a hit does nothing (no
+    // strength, the shield kept). The town unloads as the dungeon opens; the oracle's walks record
+    // it ("town") since walk_fall.jsonl's fall cost the game nothing.
+    bool townSceneLoaded = false;
     std::function<void(int number)> dropRandomItems;
     void TeleportTo(unity::Vector2 to);
     bool CheckForHoles();

@@ -462,7 +462,10 @@ namespace MoonlighterOracle
                     .Key("abs").Bits(hst.absorption.Value).Key("shield").Bits(hst.shield.Value)
                     .Prop("art", ctrl.heroMerchantArt != null && ctrl.heroMerchantArt.activeSelf)
                     .Prop("damaged", tr.Field("playingDamagedEffect").GetValue<bool>())
-                    .Prop("holesIntangible", tr.Field("isHolesIntangible").GetValue<bool>());
+                    .Prop("holesIntangible", tr.Field("isHolesIntangible").GetValue<bool>())
+                    // GameManager.IsTownSceneLoaded(): while the town's scene is loaded a hit on him
+                    // does nothing (HeroMerchant.DealDamageToPlayer).
+                    .Prop("town", GameManager.Instance != null && GameManager.Instance.IsTownSceneLoaded());
                 // The weapon: its Animator, the combo, the main attack's hitbox.
                 j.Prop("combo", ctrl.comboCounter);
                 var wa = ctrl.weaponAnimator;

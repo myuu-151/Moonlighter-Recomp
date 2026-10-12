@@ -482,7 +482,7 @@ void Animator::FireAt(int state, float time)
         if (e.time == t) onEvent(e);
 }
 
-void Animator::Take(const AnimatorTransition& t, float overshoot)
+void Animator::Take(const AnimatorTransition& t, float overshoot, float elapsed)
 {
     for (const AnimatorCondition& c : t.conditions)
         if (c.param >= 0 && c_.params[static_cast<size_t>(c.param)].type == AnimatorParameter::Trigger) values_[static_cast<size_t>(c.param)] = 0.0f;
@@ -503,9 +503,23 @@ void Animator::Take(const AnimatorTransition& t, float overshoot)
     inTransition_ = true;
     next_ = t.dest;
     nextTime_ = start;
-    transitionProgress_ = 0.0f;
     transitionDuration_ = t.fixedDuration ? t.duration : t.duration * Length(current_);
+    // A crossfade taken at an exit time starts as far in as the frame went past it (the gloves'
+    // punch into Idle, 0.1 s: walk_attack.jsonl's transition times are the overshoot over the
+    // duration, the frame's after, so the sprite turns at half way a frame sooner); one a
+    // condition starts, from the frame after.
+    transitionProgress_ = elapsed > 0.0f ? elapsed / transitionDuration_ : 0.0f;
     if (onStateEnter) onStateEnter(c_.states[static_cast<size_t>(next_)].hash);
+    // A frame that goes past the whole crossfade ends it (a hitch: walk_attack.jsonl's frame
+    // 474, 0.389 s, is in Idle at the punch's overshoot).
+    if (transitionProgress_ >= 1.0f) {
+        if (onStateExit) onStateExit(c_.states[static_cast<size_t>(current_)].hash);
+        current_ = next_;
+        time_ = nextTime_;
+        next_ = -1;
+        inTransition_ = false;
+        transitionProgress_ = 0.0f;
+    }
 }
 
 void Animator::Play(const std::string& state, float normalizedTime)
@@ -565,7 +579,7 @@ void Animator::Step(float deltaTime)
         float crossing = t->exitTime < 1.0f ? std::floor(norm - t->exitTime) + t->exitTime : t->exitTime;
         Advance(current_, prev * len, crossing * len, false);
         const float rest = (norm - crossing) * len / s.speed; // seconds (times the Animator's speed)
-        Take(*t, rest * c_.states[static_cast<size_t>(t->dest)].speed);
+        Take(*t, rest * c_.states[static_cast<size_t>(t->dest)].speed, rest);
         return;
     }
     Advance(current_, prev * len, time_ * len, true);
