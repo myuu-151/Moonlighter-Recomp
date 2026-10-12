@@ -56,6 +56,31 @@ void PrefabLibrary::Load(const json::Value& extracted)
                             beh.fields[field] = v.kind == json::Value::Kind::Bool ? (v.b ? 1.0 : 0.0) : static_cast<double>(F(v));
                         n.behaviours.push_back(beh);
                     }
+                if (r.size() > 15) {
+                    const json::Value& phys = r[15];
+                    n.objectLayer = static_cast<int>(phys[0].AsInt());
+                    n.tag = phys[1].s;
+                    for (const json::Value& c : phys[2].arr) {
+                        ColliderDef d;
+                        d.type = c[0].s;
+                        d.enabled = c[1].b;
+                        d.trigger = c[2].b;
+                        d.ox = F(c[3]);
+                        d.oy = F(c[4]);
+                        if (d.type == "BoxCollider2D") {
+                            d.sx = F(c[5]);
+                            d.sy = F(c[6]);
+                        } else if (d.type == "CircleCollider2D") {
+                            d.radius = F(c[5]);
+                        } else if (d.type == "PolygonCollider2D") {
+                            for (const json::Value& path : c[5].arr) {
+                                d.paths.emplace_back();
+                                for (const json::Value& pt : path.arr) d.paths.back().emplace_back(F(pt[0]), F(pt[1]));
+                            }
+                        }
+                        n.colliders.push_back(std::move(d));
+                    }
+                }
                 p.nodes.push_back(n);
             }
         }

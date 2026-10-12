@@ -5,59 +5,17 @@
 #include <map>
 
 #include "game/Prefabs.h"
+#include "game/SceneTransform.h"
 
 namespace render {
 
 namespace {
-
-// A 2D affine transform: (x, y) -> (a x + c y + tx, b x + d y + ty).
-struct Affine {
-    float a = 1, b = 0, c = 0, d = 1, tx = 0, ty = 0;
-    Affine Then(const Affine& local) const // this * local
-    {
-        Affine r;
-        r.a = a * local.a + c * local.b;
-        r.b = b * local.a + d * local.b;
-        r.c = a * local.c + c * local.d;
-        r.d = b * local.c + d * local.d;
-        r.tx = a * local.tx + c * local.ty + tx;
-        r.ty = b * local.tx + d * local.ty + ty;
-        return r;
-    }
-    void Apply(float x, float y, float& ox, float& oy) const
-    {
-        ox = a * x + c * y + tx;
-        oy = b * x + d * y + ty;
-    }
-};
-
-Affine Local(const game::SceneRow& r)
-{
-    float rad = r.rotation * 3.14159265358979f / 180.0f;
-    float cs = std::cos(rad), sn = std::sin(rad);
-    Affine m;
-    m.a = cs * r.sx;
-    m.b = sn * r.sx;
-    m.c = -sn * r.sy;
-    m.d = cs * r.sy;
-    m.tx = r.x;
-    m.ty = r.y;
-    return m;
-}
 
 const game::Behaviour* DepthOrder(const game::SceneRow& r)
 {
     for (const game::Behaviour& b : r.behaviours)
         if (b.cls == "SpriteDepthOrderRender") return &b;
     return nullptr;
-}
-
-// "Details/WallDetails/DetailSpawn@3" -> ("Details/WallDetails/DetailSpawn", 3); no '@': -1.
-std::pair<std::string, int> Indexed(const std::string& path)
-{
-    size_t at = path.rfind('@');
-    if (at == std::string::npos || path.find('/', at) != std::string::npos) return {path, -1};
-    return {path.substr(0, at), std::atoi(path.c_str() + at + 1)};
 }
 
 } // namespace
@@ -72,34 +30,13 @@ std::vector<DrawQuad> BuildDrawList(const std::vector<game::SceneRow>& rows, uni
         return 0;
     };
 
-    // Each row's parent: the latest row before it with its parent's path ("@n": the n-th row
-    // with that path).
-    std::vector<int> parent(rows.size(), -1);
-    std::map<std::string, std::vector<int>> seen; // path -> rows with it, in order
-    for (size_t i = 0; i < rows.size(); i++) {
-        const std::string& path = rows[i].path;
-        size_t slash = path.rfind('/');
-        if (slash != std::string::npos) {
-            auto [p, n] = Indexed(path.substr(0, slash));
-            auto it = seen.find(p);
-            if (it != seen.end() && !it->second.empty())
-                parent[i] = n >= 0 ? (n < static_cast<int>(it->second.size()) ? it->second[static_cast<size_t>(n)] : -1) : it->second.back();
-        }
-        seen[Indexed(path).first].push_back(static_cast<int>(i));
-    }
-
-    Affine room;
-    room.tx = roomPosition.x;
-    room.ty = roomPosition.y;
-    std::vector<Affine> world(rows.size());
-    std::vector<char> active(rows.size());
+    const game::SceneWorld scene = game::ResolveScene(rows, roomPosition);
+    const std::vector<game::Affine>& world = scene.world;
     std::vector<int> order(rows.size());
     std::vector<DrawQuad> out;
     for (size_t i = 0; i < rows.size(); i++) {
         const game::SceneRow& r = rows[i];
-        const int p = parent[i];
-        world[i] = (p >= 0 ? world[static_cast<size_t>(p)] : room).Then(Local(r));
-        active[i] = r.active && (p < 0 || active[static_cast<size_t>(p)]);
+        const int p = scene.parent[i];
         order[i] = r.order;
         if (const game::Behaviour* d = DepthOrder(r)) {
             if (d->Field("forceOrderValue") != 0.0) {
@@ -112,7 +49,7 @@ std::vector<DrawQuad> BuildDrawList(const std::vector<game::SceneRow>& rows, uni
                 order[i] = 15000 + static_cast<int>(y * 10.0f) * -1;
             }
         }
-        if (!active[i] || !r.rendererEnabled || r.sprite.empty()) continue;
+        if (!scene.active[i] || !r.rendererEnabled || r.sprite.empty()) continue;
         const Sprite* s = bank.Find(r.sprite);
         if (!s) {
             if (missing) missing->push_back(r.sprite);

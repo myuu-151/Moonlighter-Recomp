@@ -23,6 +23,17 @@ struct Behaviour {
     }
 };
 
+// A Collider2D on a prefab object (local to it): BoxCollider2D (size), CircleCollider2D
+// (radius) or PolygonCollider2D (paths).
+struct ColliderDef {
+    std::string type;
+    bool enabled = true, trigger = false;
+    float ox = 0.0f, oy = 0.0f;   // offset
+    float sx = 0.0f, sy = 0.0f;   // box size
+    float radius = 0.0f;
+    std::vector<std::vector<std::pair<float, float>>> paths;
+};
+
 struct PrefabNode {
     std::string path;  // below the prefab's root ("" for the root itself)
     bool active = true;
@@ -35,6 +46,9 @@ struct PrefabNode {
     bool flipX = false, flipY = false, rendererEnabled = false;
     float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     std::vector<Behaviour> behaviours;
+    int objectLayer = 0; // the GameObject's (physics) layer
+    std::string tag;
+    std::vector<ColliderDef> colliders;
     bool HasRenderer() const { return !layer.empty(); }
 };
 

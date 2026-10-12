@@ -13,8 +13,10 @@ Needs UnityPy.
     python tools/extract/prefabs.py --game <the game's folder> --out <folder>
     -> <folder>/prefabs.json  {"sortingLayers": [...], "bundles": {bundle: {prefab: [rows]}}}
        row: [path, active, x, y, scale x, scale y, sprite, layer, order, flipX, flipY, rgba, enabled,
-            rotation z (degrees), behaviours: [[class, {fields}], ...]]
-       (fields only for the classes in FIELDS: what their Start() draws depend on)
+            rotation z (degrees), behaviours: [[class, {fields}], ...],
+            [game object layer, tag, colliders: [[type, enabled, trigger, offset x, offset y, ...]]]]
+       (fields only for the classes in FIELDS: what their Start() draws depend on; a collider
+       ends with size x, size y for a box, the radius for a circle, the paths for a polygon)
 """
 import argparse
 import json
@@ -40,13 +42,39 @@ FIELDS = {
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 
 
-def sorting_layers(game):
+def tag_manager(game):
     env = UnityPy.load(str(Path(game) / 'Moonlighter_Data' / 'globalgamemanagers'))
     for obj in env.objects:
         if obj.type.name == 'TagManager':
-            tree = obj.read_typetree()
-            return [(layer['name'], layer['uniqueID']) for layer in tree.get('m_SortingLayers', [])]
-    return []
+            return obj.read_typetree()
+    return {}
+
+
+def sorting_layers(manager):
+    return [(layer['name'], layer['uniqueID']) for layer in manager.get('m_SortingLayers', [])]
+
+
+# GameObject.m_Tag: Unity's built-in tags by number, the project's from 20000 on.
+BUILTIN_TAGS = {0: 'Untagged', 1: 'Respawn', 2: 'Finish', 3: 'EditorOnly', 5: 'MainCamera', 6: 'Player', 7: 'GameController'}
+
+
+def tag_name(manager, tag):
+    if tag >= 20000:
+        tags = manager.get('tags', [])
+        return tags[tag - 20000] if tag - 20000 < len(tags) else str(tag)
+    return BUILTIN_TAGS.get(tag, str(tag))
+
+
+def collider_row(kind, c):
+    off = c.get('m_Offset', {'x': 0.0, 'y': 0.0})
+    row = [kind, bool(c.get('m_Enabled', 1)), bool(c.get('m_IsTrigger', 0)), off['x'], off['y']]
+    if kind == 'BoxCollider2D':
+        row += [c['m_Size']['x'], c['m_Size']['y']]
+    elif kind == 'CircleCollider2D':
+        row += [c['m_Radius']]
+    elif kind == 'PolygonCollider2D':
+        row += [[[[p['x'], p['y']] for p in path] for path in c['m_Points']['m_Paths']]]
+    return row
 
 
 def main():
@@ -54,7 +82,8 @@ def main():
     parser.add_argument('--game', required=True)
     parser.add_argument('--out', required=True)
     args = parser.parse_args()
-    layers = sorting_layers(args.game)
+    manager = tag_manager(args.game)
+    layers = sorting_layers(manager)
     layer_name = {uid & 0xFFFFFFFF: name for name, uid in layers}
     bundles_dir = Path(args.game) / 'Moonlighter_Data' / 'StreamingAssets' / 'AssetBundles'
     out = {'sortingLayers': [name for name, _ in layers], 'bundles': {}}
@@ -71,6 +100,19 @@ def main():
             if path_id not in trees:
                 trees[path_id] = by_id[path_id].read_typetree() if path_id in by_id else None
             return trees[path_id]
+
+        # Prefabs the game references directly win over others of their name (dungeon_common
+        # has two DungeonRoom prefabs; the room database's dungeonRoomPrefab is the one used).
+        referenced = set()
+        for obj in env.objects:
+            if obj.type.name == 'MonoBehaviour':
+                try:
+                    mb = obj.read_typetree()
+                except Exception:  # noqa: BLE001 - no type tree
+                    continue
+                ref = mb.get('dungeonRoomPrefab') if isinstance(mb, dict) else None
+                if isinstance(ref, dict) and ref.get('m_FileID') == 0:
+                    referenced.add(ref['m_PathID'])
 
         def components(go):
             for c in go['m_Component']:
@@ -147,6 +189,9 @@ def main():
                     cls = class_name(mb['m_Script'])
                     behaviours.append([cls, {f: field(mb.get(f)) for f in FIELDS.get(cls, ())}])
                 row.append(behaviours)
+                colliders = [collider_row(comp.type.name, tree(comp.path_id)) for comp in components(go)
+                             if comp.type.name in ('BoxCollider2D', 'CircleCollider2D', 'PolygonCollider2D')]
+                row.append([go['m_Layer'], tag_name(manager, go['m_Tag']), colliders])
                 rows.append(row)
                 for child in tr['m_Children']:
                     ctr = tree(child['m_PathID'])
@@ -156,7 +201,10 @@ def main():
                     walk_node(child['m_PathID'], cname if path == '' else f'{path}/{cname}')
 
             walk_node(obj.path_id, '')
-            prefabs.setdefault(root_name, rows)  # first of a name wins (the game's lookups take the first)
+            if t['m_GameObject']['m_PathID'] in referenced:
+                prefabs[root_name] = rows
+            else:
+                prefabs.setdefault(root_name, rows)  # first of a name wins (the game's lookups take the first)
         out['bundles'][bundle.name] = prefabs
         total += len(prefabs)
         print(f'   {bundle.name}: {len(prefabs)} prefabs', flush=True)

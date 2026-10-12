@@ -21,6 +21,10 @@ struct Collider2D {
     bool enabled = true, trigger = false;
     Vector2 position, scale{1.0f, 1.0f}; // the transform's, world
     Vector2 offset, size{1.0f, 1.0f};    // BoxCollider2D's, local
+    // The world box when it was placed through a rotated parent (RoomPhysics); else it's
+    // the transform's position and scale applied to offset and size.
+    bool hasWorldBox = false;
+    Vector2 worldMin, worldMax;
     // World box, without the skin.
     Vector2 Min() const;
     Vector2 Max() const;

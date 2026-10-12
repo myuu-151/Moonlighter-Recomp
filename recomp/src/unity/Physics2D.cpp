@@ -7,12 +7,14 @@ namespace unity {
 
 Vector2 Collider2D::Min() const
 {
+    if (hasWorldBox) return worldMin;
     float w = std::fabs(size.x * scale.x), h = std::fabs(size.y * scale.y);
     return {position.x + offset.x * scale.x - w / 2.0f, position.y + offset.y * scale.y - h / 2.0f};
 }
 
 Vector2 Collider2D::Max() const
 {
+    if (hasWorldBox) return worldMax;
     float w = std::fabs(size.x * scale.x), h = std::fabs(size.y * scale.y);
     return {position.x + offset.x * scale.x + w / 2.0f, position.y + offset.y * scale.y + h / 2.0f};
 }

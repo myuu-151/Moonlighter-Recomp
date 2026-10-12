@@ -142,6 +142,9 @@ SceneRow RowFrom(const PrefabNode& n, const std::string& path)
     r.rendererEnabled = n.rendererEnabled;
     for (int c = 0; c < 4; c++) r.color[c] = n.color[c];
     r.behaviours = n.behaviours;
+    r.objectLayer = n.objectLayer;
+    r.tag = n.tag;
+    r.colliders = n.colliders;
     return r;
 }
 

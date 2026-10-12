@@ -42,6 +42,8 @@ add_library(mlcore STATIC
     src/unity/Animator.cpp
     src/unity/Physics2D.cpp
     src/game/HeroMerchantController.cpp
+    src/game/SceneTransform.cpp
+    src/game/RoomPhysics.cpp
 )
 target_include_directories(mlcore PUBLIC src)
 

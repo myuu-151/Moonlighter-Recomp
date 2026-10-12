@@ -45,6 +45,9 @@ struct SceneRow {
     bool flipX = false, flipY = false, rendererEnabled = false;
     float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     std::vector<Behaviour> behaviours; // the prefab object's (SpriteDepthOrderRender, ...)
+    int objectLayer = 0;               // physics layer
+    std::string tag;
+    std::vector<ColliderDef> colliders;
 };
 
 // The whole room: the DungeonRoom prefab (as RoomPlaced leaves it) and everything

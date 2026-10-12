@@ -5,6 +5,10 @@
 // had, and compares his position (bit for bit), velocity, direction, Animator state, its
 // normalized time and the sprite shown.
 //
+// The room's colliders come from the DungeonRoom prefab (prefabs.json) placed where the
+// game's room is, each checked against the game's own (the recording's first lines); doors
+// the floor removed are the ones missing there. ML_WALK_DUMPED=1 uses the game's instead.
+//
 // Usage: player_walk_test [walk.jsonl] [hero_merchant.json]   (ML_WALK_DEBUG=1: every frame)
 
 #include <cmath>
@@ -17,6 +21,9 @@
 #include <vector>
 
 #include "game/HeroMerchantController.h"
+#include "game/Prefabs.h"
+#include "game/RoomPhysics.h"
+#include "game/SceneTransform.h"
 #include "unity/Animator.h"
 #include "unity/Physics2D.h"
 #include "util/Json.h"
@@ -59,7 +66,7 @@ int main(int argc, char** argv)
         return 1;
     }
     Value start;
-    unity::Physics2D physics;
+    unity::Physics2D dumped, physics;
     std::vector<Value> frames;
     for (std::string line; std::getline(in, line);) {
         if (line.empty()) continue;
@@ -79,12 +86,89 @@ int main(int argc, char** argv)
             c.offset = V2(v["offset"]);
             c.size = V2(v["size"]);
             if (c.path.rfind("HeroMerchant", 0) == 0) continue; // his own
-            physics.Add(c);
+            dumped.Add(c);
         }
     }
     if (frames.size() < 2) {
         std::printf("walk.jsonl has no frames\n");
         return 1;
+    }
+
+    // The room's colliders from the prefab, placed like the game's.
+    game::PrefabLibrary::Load(json::Parse(ReadFile(data + "/prefabs.json")));
+    const game::Prefab* roomPrefab = game::PrefabLibrary::Find("DungeonRoom", "dungeon_common");
+    if (!roomPrefab) {
+        std::printf("no DungeonRoom prefab in %s/prefabs.json\n", data.c_str());
+        return 1;
+    }
+    std::vector<game::SceneRow> rows;
+    for (const game::PrefabNode& n : roomPrefab->nodes) {
+        game::SceneRow r;
+        r.path = n.path;
+        r.active = n.active;
+        r.x = n.x;
+        r.y = n.y;
+        r.sx = n.sx;
+        r.sy = n.sy;
+        r.rotation = n.rotation;
+        r.objectLayer = n.objectLayer;
+        r.tag = n.tag;
+        r.colliders = n.colliders;
+        rows.push_back(r);
+    }
+    // Where the game's room is: its "Dungeon/<room>/" objects against the prefab's at the origin.
+    std::string prefix;
+    Vector2 roomPos;
+    {
+        unity::Physics2D atOrigin;
+        game::AddRoomColliders(rows, {}, atOrigin);
+        for (const unity::Collider2D& c : dumped.Colliders()) {
+            size_t at = c.path.find("/DungeonLevelBoundaries/");
+            if (c.path.rfind("Dungeon/", 0) != 0 || at == std::string::npos) continue;
+            for (const unity::Collider2D& o : atOrigin.Colliders())
+                if (o.path == c.path.substr(at + 1)) {
+                    prefix = c.path.substr(0, at + 1);
+                    roomPos = {c.position.x - o.position.x, c.position.y - o.position.y};
+                }
+            if (!prefix.empty()) break;
+        }
+    }
+    if (prefix.empty()) {
+        std::printf("the recording has no room boundaries\n");
+        return 1;
+    }
+    // Objects with colliders the game's room no longer has (doors the floor removed): gone.
+    for (game::SceneRow& r : rows) {
+        if (r.colliders.empty()) continue;
+        bool there = false;
+        for (const unity::Collider2D& c : dumped.Colliders()) there |= c.path == prefix + r.path;
+        if (!there) r.active = false;
+    }
+    int built = game::AddRoomColliders(rows, roomPos, physics, prefix);
+    // Doors and the boundaries in their openings change at runtime (DungeonRoom opens and
+    // closes them with the room's enemies; the doors' Animators size their colliders): not
+    // ported yet, so counted apart.
+    int same = 0, differ = 0, doorState = 0;
+    for (const unity::Collider2D& c : physics.Colliders()) {
+        if (c.path.find("/DungeonLevelDoors/") != std::string::npos || c.path.find("/DoorBoundary") != std::string::npos) {
+            doorState++;
+            continue;
+        }
+        const unity::Collider2D* g = nullptr;
+        for (const unity::Collider2D& d : dumped.Colliders())
+            if (d.path == c.path) g = &d;
+        bool ok = g && g->layer == c.layer && g->tag == c.tag && g->enabled == c.enabled && g->trigger == c.trigger &&
+                  g->Min().x == c.Min().x && g->Min().y == c.Min().y && g->Max().x == c.Max().x && g->Max().y == c.Max().y;
+        if (ok) same++;
+        else {
+            differ++;
+            std::printf("collider %s: port [%g %g]-[%g %g] layer %d %s; game %s\n", c.path.c_str(), c.Min().x, c.Min().y, c.Max().x, c.Max().y,
+                        c.layer, c.tag.c_str(), g ? (std::to_string(g->Min().x) + " " + std::to_string(g->Min().y) + " - " + std::to_string(g->Max().x) + " " + std::to_string(g->Max().y) + " layer " + std::to_string(g->layer) + " " + g->tag).c_str() : "none");
+        }
+    }
+    if (std::getenv("ML_WALK_DUMPED")) {
+        physics.Clear();
+        for (const unity::Collider2D& c : dumped.Colliders()) physics.Add(c);
     }
 
     unity::AnimatorController controller = unity::AnimatorController::FromJson(json::Parse(ReadFile(animPath)));
@@ -152,14 +236,17 @@ int main(int argc, char** argv)
                         hero.heroDirection, sprite ? sprite->c_str() : "-");
         }
     }
-    std::printf("\nframes replayed                %5d\n", checked);
+    std::printf("\nroom colliders from the prefab %5d match %5d differ   (room at %g, %g; %d door colliders: door state not ported)\n",
+                same, differ, roomPos.x, roomPos.y, doorState);
+    std::printf("frames replayed                %5d\n", checked);
     std::printf("position (bit-exact)           %5d match %5d differ\n", checked - posBad, posBad);
     std::printf("velocity                       %5d match %5d differ\n", checked - velBad, velBad);
     std::printf("direction                      %5d match %5d differ\n", checked - dirBad, dirBad);
     std::printf("Animator state                 %5d match %5d differ\n", checked - stateBad, stateBad);
     std::printf("Animator normalized time       %5d match %5d differ   (worst %.2e)\n", checked - stateBad - timeBad, timeBad, worstTime);
     std::printf("sprite                         %5d match %5d differ\n", checked - spriteBad, spriteBad);
-    bool ok = !posBad && !velBad && !dirBad && !stateBad && !timeBad && !spriteBad;
+    (void)built;
+    bool ok = !differ && !posBad && !velBad && !dirBad && !stateBad && !timeBad && !spriteBad;
     std::printf("\n%s\n", ok ? "ALL MATCH" : "MISMATCHES");
     return ok ? 0 : 1;
 }
