@@ -3,8 +3,6 @@
 # Moonlighter recomp
 
 Native C++ reimplementation of Moonlighter (Steam, v1.15.8, Unity 2019.2.7f2 / Mono),
-aimed at a GameCube build on Octave-libogc. Game logic is translated from the decompiled
-C# and checked against the real game by an injected oracle, rather than by eye.
 
 It also builds for the GameCube:
 [Moonlighter GC](https://github.com/myuu-151/Moonlighter-GC) compiles this code for the console.
