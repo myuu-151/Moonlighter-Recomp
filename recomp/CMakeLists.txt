@@ -67,6 +67,7 @@ add_library(mlcore STATIC
     src/game/Enemy.cpp
     src/game/BabySlime.cpp
     src/game/GolemSoldier.cpp
+    src/game/MasterAudio.cpp
     src/game/EnemyFactory.cpp
     src/game/Tangle.cpp
 )

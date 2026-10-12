@@ -97,7 +97,7 @@ void CheckDelayedCalls()
 
 struct Data {
     std::string dir;
-    Value enemyStats, physics2d;
+    Value enemyStats, physics2d, soundGroups;
     std::unique_ptr<unity::AnimatorController> controller;
     const game::Prefab* prefab = nullptr;
     bool ok = false;
@@ -114,6 +114,8 @@ Data LoadData()
     game::Constants::LoadFromText(constants);
     d.enemyStats = json::Parse(stats);
     if (!physics.empty()) d.physics2d = json::Parse(physics);
+    const std::string sounds = ReadFile(d.dir + "/sound_groups.json");
+    if (!sounds.empty()) d.soundGroups = json::Parse(sounds);
     game::PrefabLibrary::Load(json::Parse(prefabs));
     d.prefab = game::PrefabLibrary::Find("BabySlime", "enemies_golem");
     d.controller = std::make_unique<unity::AnimatorController>(unity::AnimatorController::FromJson(json::Parse(anim)));
@@ -304,6 +306,7 @@ int main(int argc, char** argv)
     replay.physics2d = data.physics2d;
     replay.prefab = data.prefab;
     replay.controller = data.controller.get();
+    replay.soundGroups = data.soundGroups;
     const int replayed = ReplayRecording(file, replay);
     return gFailed || replayed ? 1 : 0;
 }

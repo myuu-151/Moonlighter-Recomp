@@ -49,6 +49,7 @@ namespace game {
 class Enemy;
 class EnemyBehaviour;
 class EnemyPhysics;
+class MasterAudio;
 
 enum class EnemyDamageReceivedType { Normal, Effect, Familiar, Trick };
 
@@ -87,7 +88,9 @@ struct EnemyScene {
     std::function<void(Enemy&)> spawnDeathParticles;
     // Enemy.OnEnemyRecivesDamage(enemy, totalDamage, type).
     std::function<void(Enemy&, float, EnemyDamageReceivedType)> onEnemyReceivesDamage;
-    // MasterAudio.PlaySound(name) (its Random draws, if the group has any, aren't made here).
+    // MasterAudio (game/MasterAudio.h): PlaySound's Random draws (none: no draws).
+    MasterAudio* audio = nullptr;
+    // MasterAudio.PlaySound(name) for presentation (the draws are `audio`'s).
     std::function<void(Enemy&, const std::string& sound)> playSound;
     // CameraManager.Rumble(duration, strength, direction, vibration): the camera's shake. The
     // Random draws its DOShakePosition makes are the caller's (unity::ShakeDraws).
@@ -136,8 +139,12 @@ public:
     // The attack trigger: the child's BoxCollider2D (enabled, offset, size) and the child
     // itself (active, local position), all of which an attack clip can animate (the
     // GolemSoldier's swing turns the box on and moves and grows it). A box that's off (or on
-    // an inactive child) has no fixture; one that changes gets a new fixture at the next fixed
-    // step (EnemyPhysics::Sync), whose contacts begin anew (a box turned on again hits again).
+    // an inactive child) has no fixture; one that changes gets a new fixture as the Animator
+    // writes it (EnemyPhysics::SyncAttackCollider), which restarts the body's rest
+    // (enemy_GolemSoldier.jsonl: a sleeping soldier wakes the frame its box comes on, and one
+    // still swinging sleeps 0.5 s after the box last changed, not after it went off). Turned on
+    // again, it enters what it touches again; remade with a new shape, it doesn't (only the
+    // first touch of a growing box reports: enemy_GolemSoldier.jsonl).
     bool hasAttackCollider = false;
     bool attackEnabled = true, attackActive = true;
     unity::Vector2 attackOffset, attackSize{1.0f, 1.0f};
@@ -320,15 +327,6 @@ public:
         // didn't move it (the transform's local position is then the world position through
         // its parents again, which can round differently from what the script set).
         bool writeBackUnmoved = true;
-        // An attack trigger rebuilt with a new shape (not turned on: that always begins anew)
-        // begins its contacts anew: Box2D's EndContact when the old fixture goes, BeginContact
-        // with the new one (OnTriggerEnter2D again). Off: what the rebuilt one was touching
-        // doesn't enter again. (What Unity does here isn't settled: the recording will say.)
-        bool reenterOnReshape = true;
-        // A new attack fixture wakes its body (else a sleeping enemy's box on a sleeping hero
-        // never begins touching him: Box2D updates no contact between two sleeping bodies).
-        // Unsettled too: Box2D's CreateFixture doesn't; Unity's collider rebuild may.
-        bool wakeOnAttackChange = true;
     };
 
     // (Two constructors, not a defaulted Options argument: GCC wants Options' member
@@ -364,13 +362,15 @@ public:
     // The body leaves (Destroy, SetActive(false)) or comes back.
     void SetBodyActive(Enemy& enemy, bool active);
 
-    // The attack trigger as the object has it now: its fixture made, remade or taken away.
+    // The attack trigger as the object has it now: its fixture made (the body's rest
+    // restarted), remade (what it touched doesn't enter again) or taken away.
     void SyncAttackCollider(Enemy& enemy);
 
     // The attack triggers that began touching in the last step, in Box2D's order (for checks).
     struct Hit {
         Enemy* enemy = nullptr;
         bool player = false;
+        bool otherTrigger = false; // what it touched is a trigger itself (a breakable's)
     };
     const std::vector<Hit>& LastHits() const { return hits_; }
 
@@ -382,8 +382,7 @@ private:
     std::vector<Enemy*> enemies_;
     const unity::Rigidbody2D* hero_ = nullptr;
     std::vector<Hit> hits_;
-    // What rebuilt attack fixtures were touching (reenterOnReshape off): no new enter with
-    // these in the step after.
+    // What remade attack fixtures were touching: no new enter with these in the next step.
     std::vector<std::pair<const b2Fixture*, const b2Fixture*>> carried_;
 };
 

@@ -7,7 +7,9 @@
 //     LockLookDirection, DoScreenShakeFromEnemyAnimation with its 15 draws, PlayHitOnGroundSound,
 //     AllowEnemyMovement, UnLockLookDirection), its AttackCollider on only in the swing's
 //     window, grown to 48 x 24 and moved by the curves, with a fixture only while it's on, and
-//     each swing hitting him anew (the box turned on again enters again);
+//     each swing hitting him once (the box turned on again enters again; remade as it grows, it
+//     doesn't), MasterAudio's draw for the sword's crash (sound_groups.json: its loops'
+//     Range(1, 6));
 //  2. with the oracle's recording (data/oracle/enemy_<prefab>.jsonl, `-oracle-enemy=<prefab>`;
 //     skipped if there's none): tests/enemy_replay.h's replay, with the attack trigger per fixed
 //     step and frame, the look lock, and the clip events and their Random draws.
@@ -15,8 +17,7 @@
 // Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier)]
 //        (ML_ENEMY_DEBUG=1: every mismatch; ML_ENEMY_CONTACTS=<frame>: the enemies' Box2D
 //        contacts after each of that frame's steps; ML_ENEMY_BOX=1: the soldier in a box's
-//        frames with its attack box on; ML_ENEMY_NO_REENTER=1, ML_ENEMY_NO_WAKE=1: the replay
-//        with EnemyPhysics::Options' reenterOnReshape, wakeOnAttackChange off)
+//        frames with its attack box on)
 
 #include "enemy_replay.h"
 
@@ -24,7 +25,7 @@ namespace {
 
 struct Data {
     std::string dir;
-    Value enemyStats, physics2d;
+    Value enemyStats, physics2d, soundGroups;
     std::unique_ptr<unity::AnimatorController> controller;
     const game::Prefab* prefab = nullptr;
     bool ok = false;
@@ -41,6 +42,8 @@ Data LoadData(const std::string& name)
     game::Constants::LoadFromText(constants);
     d.enemyStats = json::Parse(stats);
     if (!physics.empty()) d.physics2d = json::Parse(physics);
+    const std::string sounds = ReadFile(d.dir + "/sound_groups.json");
+    if (!sounds.empty()) d.soundGroups = json::Parse(sounds);
     game::PrefabLibrary::Load(json::Parse(prefabs));
     d.prefab = game::PrefabLibrary::Find(name, "enemies_golem");
     d.controller = std::make_unique<unity::AnimatorController>(unity::AnimatorController::FromJson(json::Parse(anim)));
@@ -65,10 +68,8 @@ void CheckShakeDraws()
     Check(unity::ShakeDraws(0.01f, 10, 90.0f, false, true) == 1, "DOTween.Shake: at least 2 waypoints (the first angle only, z ignored)");
 }
 
-// A GolemSoldier in an empty box with the hero standing at the origin. `reenter`: the
-// physics' reenterOnReshape (on: each fixture the growing box gets enters him again; off: once
-// per swing).
-void CheckSoldierInABox(const Data& data, bool reenter)
+// A GolemSoldier in an empty box with the hero standing at the origin.
+void CheckSoldierInABox(const Data& data)
 {
     game::PolyNav2D nav;
     nav.inflateRadius = 8.0f;
@@ -79,9 +80,7 @@ void CheckSoldierInABox(const Data& data, bool reenter)
     unity::Physics2DSettings settings;
     if (!data.physics2d.IsNull()) settings.Load(data.physics2d);
     unity::PhysicsWorld world(settings);
-    game::EnemyPhysics::Options options;
-    options.reenterOnReshape = reenter;
-    game::EnemyPhysics physics(world, options);
+    game::EnemyPhysics physics(world);
     unity::Rigidbody2DDef heroDef;
     heroDef.mass = 1.0f;
     heroDef.linearDrag = 5.0f;
@@ -95,7 +94,6 @@ void CheckSoldierInABox(const Data& data, bool reenter)
     unity::Tweens tweens;
     game::EnemyHero hero;
     int frameNow = 0;
-    const std::string mode = reenter ? " (reenter on reshape)" : " (no reenter on reshape)";
     std::vector<int> hitFrames;
     hero.dealDamage = [&](float strength, const std::string& source, game::Enemy&) {
         hitFrames.push_back(frameNow);
@@ -108,6 +106,10 @@ void CheckSoldierInABox(const Data& data, bool reenter)
     scene.tweens = &tweens;
     scene.hero = &hero;
     int sounds = 0, rumbles = 0;
+    game::MasterAudio audio;
+    const bool haveAudio = !data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - GolemDungeon", "Sounds - GeneralDungeons"});
+    if (haveAudio) scene.audio = &audio;
+    else std::printf("(no sound_groups.json (tools/extract/sound_groups.py): the sound's draw not checked)\n");
     scene.playSound = [&](game::Enemy&, const std::string& sound) { sounds += sound == "golem_dungeon_soldier_sword_crash"; };
     scene.rumble = [&](float duration, float strength, Vector2, int vibration) { rumbles += duration == 0.15f && strength == 2.0f && vibration == 50; };
     // The clip events as they come, with the Random draws each made.
@@ -122,6 +124,7 @@ void CheckSoldierInABox(const Data& data, bool reenter)
         }
         const int draws = unity::Random::DrawsBetween(eventStart, unity::Random::GetState(), 64);
         if (e.function == "DoScreenShakeFromEnemyAnimation") shakeDraws = shakeDraws && draws == 15;
+        else if (e.function == "PlayHitOnGroundSound") shakeDraws = shakeDraws && draws == (haveAudio ? 1 : 0);
         else shakeDraws = shakeDraws && draws == 0;
     };
 
@@ -172,6 +175,8 @@ void CheckSoldierInABox(const Data& data, bool reenter)
             calls.inFixedStep = false;
         }
         calls.now = time;
+        audio.now = time;
+        audio.frameCount = f;
         tweens.Update(dt);
         soldier->enemyBehaviour->Update(dt);
         calls.Update(time);
@@ -215,7 +220,8 @@ void CheckSoldierInABox(const Data& data, bool reenter)
     std::string got;
     for (size_t k = 0; k < swing.size() && k < 12; k++) got += " " + swing[k];
     Check(order, "two swings' clip events in order:" + got);
-    Check(shakeDraws, "DoScreenShakeFromEnemyAnimation draws 15 (insideUnitSphere 3, the shake 12), the other events none");
+    Check(shakeDraws, "DoScreenShakeFromEnemyAnimation draws 15 (insideUnitSphere 3, the shake 12), PlayHitOnGroundSound 1 (the "
+                      "sound's loops), the other events none");
     Check(sounds >= 2 && rumbles >= 2 && vibrations >= 2, "the sword's crash: the sound, the camera's rumble, the pad's");
     Check(fixtureOnlyWhenOn, "the attack fixture exists exactly while the box is on");
     Check(grew, "the box grows to 48 x 24 (AttackLeft's curves)");
@@ -232,11 +238,10 @@ void CheckSoldierInABox(const Data& data, bool reenter)
         hitsInSwings += hits;
     }
     Check(swingsAfter >= 2 && swingsHit == swingsAfter,
-          "every swing at him hits him" + mode + " (" + std::to_string(swingsHit) + " of " + std::to_string(swingsAfter) + ", " +
+          "every swing at him hits him (" + std::to_string(swingsHit) + " of " + std::to_string(swingsAfter) + ", " +
               std::to_string(hitFrames.size()) + " hits in all)");
-    // The box is remade as it grows: on, each new fixture enters him again; off, once a swing.
-    Check(reenter ? hitsInSwings > swingsAfter : hitsInSwings == swingsAfter,
-          "hits per swing" + mode + ": " + std::to_string(hitsInSwings) + " in " + std::to_string(swingsAfter));
+    // The box is remade as it grows: it enters him once a swing.
+    Check(hitsInSwings == swingsAfter, "one hit a swing: " + std::to_string(hitsInSwings) + " in " + std::to_string(swingsAfter));
 
     // The look is locked from 0.5 s into a swing to 1.0 s: a hero who moves then isn't followed.
     Check(lockedSeen, "LockLookDirection locks the look in a swing");
@@ -253,8 +258,7 @@ int main(int argc, char** argv)
     Data data = LoadData(name);
     if (data.ok) {
         if (name == "GolemSoldier") {
-            CheckSoldierInABox(data, true);
-            CheckSoldierInABox(data, false);
+            CheckSoldierInABox(data);
         }
     } else {
         std::printf("(no %s data in %s (ML_DATA; animators/%s.json from tools/extract/animators.py): skipping the soldier in a box)\n",
@@ -266,6 +270,7 @@ int main(int argc, char** argv)
     replay.physics2d = data.physics2d;
     replay.prefab = data.prefab;
     replay.controller = data.controller.get();
+    replay.soundGroups = data.soundGroups;
     replay.recordWith = "-oracle-enemy=" + name;
     replay.debugEnv = "ML_ENEMY_DEBUG";
     replay.contactsEnv = "ML_ENEMY_CONTACTS";

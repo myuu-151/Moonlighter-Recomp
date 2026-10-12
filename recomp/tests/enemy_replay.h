@@ -45,6 +45,7 @@
 #include "game/EnemyFactory.h"
 #include "game/EnemyStats.h"
 #include "game/GolemSoldier.h"
+#include "game/MasterAudio.h"
 #include "game/PolyNav.h"
 #include "game/Prefabs.h"
 #include "unity/Animator.h"
@@ -132,7 +133,17 @@ struct ReplayData {
     const unity::AnimatorController* controller = nullptr;
     std::string recordWith = "-oracle-slime"; // what makes the recording (for the message when there's none)
     std::string debugEnv = "ML_SLIME_DEBUG", contactsEnv = "ML_SLIME_CONTACTS";
+    // sound_groups.json (tools/extract/sound_groups.py): MasterAudio's draws (none: no draws).
+    Value soundGroups;
 };
+
+// The hero's own triggers (his ActionAreas, his weapon's "Collider"): not in the replay's
+// world, so their OnTriggerEnter2D on an enemy's attack trigger isn't compared.
+bool HerosTrigger(const std::string& name)
+{
+    const std::string area = "ActionArea";
+    return name == "Collider" || (name.size() >= area.size() && name.compare(name.size() - area.size(), area.size(), area) == 0);
+}
 
 // The attack trigger as a recording has it: [on, size x, y, offset x, y, local position x, y]
 // from `row` at `at` (a fixed step's), or {on, size, offset, pos} (a frame's end).
@@ -308,6 +319,19 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             if (v["path"].s == c.path && v.Find("body")) body = v["body"].s;
         world.AddCollider(c, body == "Kinematic" ? unity::RigidbodyType2D::Kinematic : unity::RigidbodyType2D::Static, body != "none");
     }
+    // The room's triggers without a body of their own (the breakables'), after: an enemy's attack
+    // trigger enters them too (enemy_GolemSoldier.jsonl: OnTriggerEnter2D on a BreakableTable).
+    unity::Physics2D roomTriggers;
+    for (const Value& c : colliders) {
+        const std::string body = c.Find("body") ? c["body"].s : "none";
+        if (body != "none" || !c["trigger"].b || !c["enabled"].b || c["type"].s != "BoxCollider2D") continue;
+        roomTriggers.Add(ColliderFrom(c));
+    }
+    for (const unity::Collider2D& c : roomTriggers.Colliders()) world.AddCollider(c);
+    // Their objects' names (an OnTriggerEnter2D's other).
+    std::vector<std::string> triggerNames;
+    for (const unity::Collider2D& c : roomTriggers.Colliders()) triggerNames.push_back(c.path.substr(c.path.rfind('/') + 1));
+    auto RoomTrigger = [&](const std::string& name) { return std::find(triggerNames.begin(), triggerNames.end(), name) != triggerNames.end(); };
     const Value& h = start["hero"];
     unity::Rigidbody2DDef heroDef;
     heroDef.mass = Bits(h["mass"]);
@@ -323,10 +347,6 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                                                  V2(h["colliderSize"]));
     game::EnemyPhysics::Options physicsOptions;
     physicsOptions.writeBackUnmoved = std::getenv("ML_SLIME_WRITEBACK_MOVED") == nullptr;
-    // The unsettled attack-trigger switches (game/Enemy.h's EnemyPhysics::Options), to try the
-    // other way against a recording.
-    physicsOptions.reenterOnReshape = std::getenv("ML_ENEMY_NO_REENTER") == nullptr;
-    physicsOptions.wakeOnAttackChange = std::getenv("ML_ENEMY_NO_WAKE") == nullptr;
     game::EnemyPhysics physics(world, physicsOptions);
     physics.SetHero(&heroBody);
 
@@ -347,6 +367,10 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     scene.calls = &calls;
     scene.tweens = &tweens;
     scene.hero = &hero;
+    // MasterAudio's groups of the Golem dungeon (its creators', then the general ones').
+    game::MasterAudio audio;
+    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - GolemDungeon", "Sounds - GeneralDungeons"})) scene.audio = &audio;
+    else std::printf("(no sound_groups.json: MasterAudio's draws not made)\n");
     scene.spawnEnemyDeadSprite = [&](const std::string&, Vector2 p) { portDeadSprites.emplace_back(-1, p); };
     // The Animator's clip events: the port's per enemy, in order, against the game's (the
     // methods it saw called from no script), each from the game's Random state before it
@@ -442,7 +466,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         t.Add("Rigidbody2D settings (prefab, stats)",
               Same(e.rigidbody.mass, Bits(rb["mass"])) && Same(e.rigidbody.linearDrag, Bits(rb["drag"])) &&
                   e.rigidbody.constraints == static_cast<int>(rb["constraints"].AsInt()) && e.colliderSize.x == Bits(v["box"][2]) &&
-                  e.attackSize.x == Bits(v["attackBox"][2]),
+                  // (An animated attack box is as the clip has it now: "attack trigger" rows.)
+                  (v.Find("attack") || e.attackSize.x == Bits(v["attackBox"][2])),
               "enemy " + std::to_string(s.id));
         e.rigidbody.mass = Bits(rb["mass"]);
         e.rigidbody.linearDrag = Bits(rb["drag"]);
@@ -609,6 +634,33 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                                     b->IsSensor(), ce->contact->IsTouching(), ce->other->GetPosition().x, ce->other->GetPosition().y);
                     }
                 }
+            // The attack triggers' OnTriggerEnter2D in this step (but the hero's own triggers'):
+            // which enemy, on him or on something else. Those on the room's triggers (the
+            // breakables') inform without failing: a box grazing a table's edge leaves it and
+            // enters it again in Box2D where the game reports the one enter (slime.jsonl, frame
+            // 365, three frames after the first), and the hero can break a table without the
+            // recording saying.
+            for (int pass = 0; pass < 2; pass++) {
+                const bool triggers = pass == 1;
+                std::vector<std::pair<int, bool>> mine, theirs;
+                for (const game::EnemyPhysics::Hit& hit : physics.LastHits())
+                    if (hit.otherTrigger == triggers) mine.emplace_back(idOf(*hit.enemy), hit.player);
+                for (const Value& ev : events.arr) {
+                    if (ev["k"].s != "attackHit" || ev["step"].AsInt() != static_cast<long long>(k)) continue;
+                    const std::string other = ev["other"].IsString() ? ev["other"].s : "";
+                    if (HerosTrigger(other) || RoomTrigger(other) != triggers) continue;
+                    theirs.emplace_back(static_cast<int>(ev["s"].AsInt()), ev["player"].b);
+                }
+                if (mine.empty() && theirs.empty()) continue;
+                std::sort(mine.begin(), mine.end());
+                std::sort(theirs.begin(), theirs.end());
+                std::string which = "frame " + std::to_string(fn) + " step " + std::to_string(k) + ": port";
+                for (const auto& hit : mine) which += " " + std::to_string(hit.first) + (hit.second ? "/hero" : "/other");
+                which += ", game";
+                for (const auto& hit : theirs) which += " " + std::to_string(hit.first) + (hit.second ? "/hero" : "/other");
+                if (triggers) t.Info("attack trigger: OnTriggerEnter2D on the room's triggers (breakables)", mine == theirs, which);
+                else t.Add("attack trigger: OnTriggerEnter2D (whose, on the hero or a collider)", mine == theirs, which);
+            }
             // The weapon's hits in this step, in the game's order; the enemies' own hits on him.
             std::vector<std::pair<int, float>> gameDamage;
             for (const Value& ev : events.arr) {
@@ -658,6 +710,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         // Update: DOTween, then the enemies in the game's order (each from the Random state and
         // the hero's position it had).
         calls.now = time;
+        audio.now = time;
+        audio.frameCount = f.Find("fc") ? static_cast<int>(f["fc"].AsInt()) : static_cast<int>(fn);
         // DOTween: the scaled tweens by deltaTime, the independent ones by its own unscaled clock
         // ("dotweenUdt" where the recording has it; else Time.unscaledDeltaTime, close to it).
         const Value* tweenUdt = f.Find("dotweenUdt");
@@ -733,8 +787,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             bool body = Same(e->body->position(), {Bits(rb[0]), Bits(rb[1])}) && Same(e->body->velocity(), {Bits(rb[2]), Bits(rb[3])}) &&
                         e->body->IsAwake() == v["awake"].b;
             t.Add("Rigidbody2D (position, velocity, awake)", body,
-                  at + ": port " + Str(e->body->position()) + " v " + Str(e->body->velocity()) + " game " + Str({Bits(rb[0]), Bits(rb[1])}) + " v " +
-                      Str({Bits(rb[2]), Bits(rb[3])}));
+                  at + ": port " + Str(e->body->position()) + " v " + Str(e->body->velocity()) + (e->body->IsAwake() ? " awake" : " asleep") +
+                      " game " + Str({Bits(rb[0]), Bits(rb[1])}) + " v " + Str({Bits(rb[2]), Bits(rb[3])}) + (v["awake"].b ? " awake" : " asleep"));
             std::vector<Vector2> gamePath;
             for (size_t k = 0; k + 1 < ag["path"].size(); k += 2) gamePath.push_back({Bits(ag["path"][k]), Bits(ag["path"][k + 1])});
             bool path = gamePath.size() == e->navAgent.activePath().size();
