@@ -76,6 +76,56 @@ namespace MoonlighterOracle
 
         private static Segment[] Script; // Run picks it
 
+        // `-oracle-walk=fall`: in a room with holes (entered through a door, as DungeonDoor.
+        // OnPlayerEnter does it, so the game knows the door to put him back at), from a floor
+        // tile next to a hole, walking into it: the push, the fall and the respawn.
+        private static Segment[] FallScript(Vector2 toward) => new[]
+        {
+            new Segment(20, 0f, 0f),
+            new Segment(90, toward.x, toward.y), // into the hole: 0.6 s of pushing, then the fall
+            new Segment(90, 0f, 0f),             // the fall (0.8 s) and back at the door
+            new Segment(40, -toward.x, -toward.y),
+            new Segment(20, 0f, 0f),
+        };
+
+        /// A room with holes, the door into it, and a floor tile beside a hole: where he stands
+        /// and which way the hole is. False if the floor has none.
+        private static bool FindHoleEdge(out DungeonRoom room, out DungeonDoor door, out Vector2 stand, out Vector2 toward)
+        {
+            room = null;
+            door = null;
+            stand = toward = Vector2.zero;
+            var dm = DungeonManager.Instance;
+            foreach (var r in dm.dungeonRooms)
+            {
+                if (r == null || r.obstaclesGrid == null || r.isInit) continue;
+                DungeonDoor into = null;
+                foreach (var other in dm.dungeonRooms)
+                    if (other != null && other != r)
+                        foreach (var d in other.roomDoors)
+                            if (d != null && d.destinationRoom == r && into == null) into = d;
+                if (into == null) continue;
+                int w = r.gridSlicesX, h = r.obstaclesGrid.Length / w;
+                // Prefer a hole to the side (a horizontal push), then above or below.
+                int[][] steps = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } };
+                foreach (var st in steps)
+                    for (int j = 1; j < h - 1; j++)
+                        for (int i = 1; i < w - 1; i++)
+                        {
+                            int t = i + j * w, n = (i + st[0]) + (j + st[1]) * w;
+                            if (r.obstaclesGrid[t] != 0 || r.obstaclesGrid[n] != 2) continue;
+                            room = r;
+                            door = into;
+                            // The tile's middle on the holes' grid (GenerateCollidersFromGrid: 24 per
+                            // tile from (-240, -132), no centre offset).
+                            stand = (Vector2)r.transform.position + new Vector2(24f * i - 228f, 24f * j - 120f);
+                            toward = new Vector2(st[0], st[1]);
+                            return true;
+                        }
+            }
+            return false;
+        }
+
         private static readonly Segment[] WalkScript =
         {
             new Segment(20, 0f, 0f),
@@ -220,6 +270,24 @@ namespace MoonlighterOracle
             var hero = HeroMerchant.Instance;
             var ctrl = hero.heroMerchantController;
             var tr = Traverse.Create(ctrl);
+            if (script == "fall")
+            {
+                if (!FindHoleEdge(out DungeonRoom holes, out DungeonDoor door, out Vector2 stand, out Vector2 toward))
+                {
+                    log.LogError("walk: no room with holes on this floor");
+                    yield break;
+                }
+                // DungeonDoor.OnPlayerEnter: through the door into the room.
+                ctrl.StopMovement();
+                ctrl.DisableMoveInput();
+                DungeonManager.Instance.ChangeRoomTo(holes, door);
+                ctrl.TeleportTo(door.playerEnterDestinyRoomPoint.position);
+                yield return new WaitForSecondsRealtime(2.5f);
+                ctrl.TeleportTo(stand);
+                yield return new WaitForSecondsRealtime(1f);
+                Script = FallScript(toward);
+                log.LogInfo($"walk: fall in {holes.name} from {stand} toward {toward}, back at {door.playerEnterDestinyRoomPoint.position}");
+            }
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, script == "" ? "walk.jsonl" : "walk_" + script + ".jsonl"), append: false) { AutoFlush = false };
             var setup = new Json().Obj().Prop("ev", "walkStart").Prop("session", Trace.Session).Prop("floor", Trace.Floor)
                 .Prop("collisionLayers", ctrl.collisionDetectionLayers.value)
@@ -228,6 +296,12 @@ namespace MoonlighterOracle
             V2(setup, "colliderOffset", ctrl.characterCollider.offset);
             setup.Key("moveSpeed").Bits(ctrl.currentPlayerMoveSpeed).Key("speedFactor").Bits(ctrl.speedFactor);
             setup.Prop("godModeLayers", ctrl.godModeCollisionDetectionLayers.value).Prop("script", script);
+            setup.Prop("holesMask", tr.Field("holesMask").GetValue<LayerMask>().value);
+            var cur = DungeonManager.Instance.currentDungeonRoom;
+            setup.Prop("room", cur != null ? cur.name : "");
+            V2(setup, "roomPos", cur != null ? (Vector2)cur.transform.position : Vector2.zero);
+            var lastDoor = Traverse.Create(DungeonManager.Instance).Field("lastDoorUsed").GetValue<DungeonDoor>();
+            if (lastDoor != null) V2(setup, "respawn", lastDoor.playerEnterDestinyRoomPoint.position);
             var ability = ctrl.currentEquipedAbility;
             setup.Key("cooldown").Bits(ability != null ? ability.coolDownTime : -1f);
             setup.Key("statSpeed").Bits(hero.heroMerchantStats.speed.Value);
@@ -289,6 +363,7 @@ namespace MoonlighterOracle
                 j.Key("speedFactor").Bits(ctrl.speedFactor);
                 j.Key("animSpeed").Bits(anim.speed);
                 j.Prop("intangible", tr.Field("isIntangible").GetValue<bool>());
+                j.Prop("falling", tr.Field("isFalling").GetValue<bool>());
                 var ab = ctrl.currentEquipedAbility;
                 j.Prop("abilityInUse", ab != null && ab.isInUse);
                 j.Prop("abilityAvailable", ab != null && Traverse.Create(ab).Field("abilityAvailable").GetValue<bool>());

@@ -178,6 +178,7 @@ int main(int argc, char** argv)
     Value start;
     unity::Physics2D dumped, physics;
     std::vector<Value> frames;
+    std::vector<unity::Collider2D> holes; // the room's hole colliders (their outlines, as tiles)
     for (std::string line; std::getline(in, line);) {
         if (line.empty()) continue;
         Value v = json::Parse(line);
@@ -202,6 +203,42 @@ int main(int argc, char** argv)
             c.worldMax = V2(v["max"]);
             if (c.path.rfind("HeroMerchant", 0) == 0) continue; // his own
             dumped.Add(c);
+        } else if (ev == "collider" && v["type"].s == "PolygonCollider2D" && v["tag"].s == "Hole") {
+            // A hole region's outline (local to its object, at the room's origin): back to the
+            // tiles it covers, as game/HoleColliders makes them (the outline's grid: 24 per tile
+            // from (-240, -132), pushed out 10 at the 20 x 11 grid's edges).
+            std::vector<std::vector<Vector2>> paths;
+            for (const Value& path : v["paths"].arr) {
+                paths.emplace_back();
+                for (size_t k = 0; k + 1 < path.arr.size(); k += 2) paths.back().push_back({Bits(path[k]), Bits(path[k + 1])});
+            }
+            auto inside = [&](float x, float y) { // even-odd over every path
+                bool in = false;
+                for (const auto& poly : paths)
+                    for (size_t a = 0, b = poly.size() - 1; a < poly.size(); b = a++)
+                        if ((poly[a].y > y) != (poly[b].y > y) && x < (poly[b].x - poly[a].x) * (y - poly[a].y) / (poly[b].y - poly[a].y) + poly[a].x)
+                            in = !in;
+                return in;
+            };
+            unity::Collider2D c;
+            c.path = v["path"].s;
+            c.tag = "Hole";
+            c.layer = static_cast<int>(v["layer"].AsInt());
+            c.position = V2(v["pos"]);
+            c.hasWorldBox = true;
+            c.worldMin = V2(v["min"]);
+            c.worldMax = V2(v["max"]);
+            for (int j = 0; j < 11; j++)
+                for (int i = 0; i < 20; i++) {
+                    if (!inside(24.0f * static_cast<float>(i) - 228.0f, 24.0f * static_cast<float>(j) - 120.0f)) continue;
+                    float x0 = 24.0f * static_cast<float>(i) - 240.0f, x1 = x0 + 24.0f, y0 = 24.0f * static_cast<float>(j) - 132.0f, y1 = y0 + 24.0f;
+                    if (i == 0) x0 -= 10.0f;
+                    if (i == 19) x1 += 10.0f;
+                    if (j == 0) y0 -= 10.0f;
+                    if (j == 10) y1 += 10.0f;
+                    c.parts.emplace_back(Vector2{c.position.x + x0, c.position.y + y0}, Vector2{c.position.x + x1, c.position.y + y1});
+                }
+            holes.push_back(c);
         }
     }
     if (frames.size() < 2) {
@@ -300,6 +337,7 @@ int main(int argc, char** argv)
         physics.Clear();
         for (const unity::Collider2D& c : dumped.Colliders()) physics.Add(c);
     }
+    for (const unity::Collider2D& h : holes) physics.Add(h);
 
     unity::AnimatorController controller = unity::AnimatorController::FromJson(json::Parse(ReadFile(animPath)));
     game::HeroMerchantController::Settings settings;
@@ -312,6 +350,9 @@ int main(int argc, char** argv)
     game::HeroMerchantController hero(controller, settings, physics);
     hero.currentPlayerMoveSpeed = Bits(start["moveSpeed"]);
     hero.speedFactor = Bits(start["speedFactor"]);
+    // Where a fall puts him back: the door he came in by (recordings in a room past the first).
+    hero.roomIsInit = room->name == "Init";
+    if (const Value* r = start.Find("respawn")) hero.respawn = V2(*r);
 
     // From the first frame as recorded.
     const Value& f0 = frames[0];

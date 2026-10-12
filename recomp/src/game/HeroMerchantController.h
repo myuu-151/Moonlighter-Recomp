@@ -19,7 +19,12 @@
 // his position through its centre of mass. Checked against the game frame by frame, walking
 // and rolling (player_walk_test).
 //
-// Not yet: attacks, abilities other than the roll, holes and falling, the dynamic body's
+// Holes: pushing into one for maxTimePushingHoles (or standing over one, checked every
+// checkForHolesTimerStep) plays the fall: DOTween moves him a tile on (DelayedCall 0.06, DOMove
+// 0.54), and when the art's spin ends (0.8 s) he's back at the door he came in by (respawn),
+// or where he last stood clear of holes in the floor's first room.
+//
+// Not yet: attacks, abilities other than the roll, the fall's damage, the dynamic body's
 // contacts (rocks), knockback.
 
 #include <string>
@@ -27,6 +32,7 @@
 
 #include "unity/Animator.h"
 #include "unity/Physics2D.h"
+#include "unity/Tween.h"
 #include "unity/Vector2.h"
 
 namespace game {
@@ -46,6 +52,7 @@ public:
         // Dash: RisenObstacle | LevelBoundary | PlayerSpecificShopCollider.
         int rollLayers = (1 << 8) | (1 << 11) | (1 << 17);
         float abilityCooldown = 0.0f; // the equipped ability item's cooldown
+        int holesMask = 1 << 14;      // SunkenObstacle
     };
 
     // What the pad gives this frame (InControl's actions).
@@ -77,10 +84,21 @@ public:
     bool abilityAvailable = true, abilityInUse = false;
     Direction heroDirection = Front, inputDirection = Front;
     float timePushingDoors = 0.0f, maxTimePushingDoors = 0.15f;
+    float timePushingHoles = 0.0f, maxTimePushingHoles = 0.6f;
+    float checkForHolesTimer = 0.0f, checkForHolesTimerStep = 0.2f;
+    unity::Vector2 lastHolesFreePosition;
+    // Where a fall puts him back: the room's (DungeonManager.TeleportHeroToLastDoorUsed: the
+    // door he came in by), or in the floor's first room his last spot clear of holes.
+    bool roomIsInit = false;
+    unity::Vector2 respawn;
+    unity::Tweens tweens; // DOTween's, for him
     const unity::Collider2D* doorEntered = nullptr; // this frame's
     unity::Animator animator;
 
     void SetDirection(Direction direction);
+    void TeleportTo(unity::Vector2 to);
+    bool CheckForHoles();
+    void PlayFallAnimation();
     bool IsPlayingRollAnimation() const { return IsTag("Ability"); }
 
 private:

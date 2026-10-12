@@ -1,5 +1,6 @@
 #include "game/HeroMerchantController.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "game/Constants.h"
@@ -143,6 +144,11 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
         Vector2 move = ClampMagnitude(Vector2{velX, velY}, 0.75f) * currentPlayerMoveSpeed * speedFactor * deltaTime;
         position = position + move;
     }
+    checkForHolesTimer += deltaTime;
+    if (checkForHolesTimer > checkForHolesTimerStep) {
+        CheckForHoles();
+        checkForHolesTimer = 0.0f;
+    }
 
     if ((IsTag("IdleShop") || IsTag("WalkShop") || IsTag("Idle") || IsTag("Walk") || IsTag("SwordAndShieldSecondaryAttack") ||
          IsTag("GlovesSecondaryAttack") || IsTag("SpearSecondaryAttack") || IsTag("BowSecondaryAttack") || IsTag("Ability") ||
@@ -157,6 +163,7 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
     // destroy wait for the end of the frame (after LateUpdate).
     for (float m : restoreAtFrameEnd_) speedFactor *= 1.0f / m;
     restoreAtFrameEnd_.clear();
+    tweens.Update(deltaTime); // DOTween's own Update
     animator.Update(deltaTime);
 }
 
@@ -165,6 +172,7 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
     doorEntered = nullptr;
     if (canMove) {
         const Collider2D* door = nullptr;
+        bool hole = false;
         if (isMoveInputEnabled) {
             if (isHorizontalMoveInputEnabled) velX = stick.x;
             if (isVerticalMoveInputEnabled) velY = stick.y;
@@ -194,6 +202,7 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
                     if (!c2 && (!c3 || !c4)) velY += 0.5f;
                 }
                 velX = 0.0f;
+                if (hit.collider->tag == "Hole" || hit.collider->tag == "NextLevelPortal") hole = true;
                 if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
             }
             hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{0.0f, velY}, 4.0f, s_.collisionLayers);
@@ -209,6 +218,7 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
                     if (!c5 && (!c7 || !c8)) velX += -0.5f;
                 }
                 velY = 0.0f;
+                if (hit.collider->tag == "Hole" || hit.collider->tag == "NextLevelPortal") hole = true;
                 if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
             }
         } else {
@@ -217,15 +227,19 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
             if (hit && Sign((hit.point - position).x) == Sign(velX)) {
                 ResetSpeedFactor();
                 velX = 0.0f;
+                if (hit.collider->tag == "Hole" || hit.collider->tag == "NextLevelPortal") hole = true;
                 if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
             }
             hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{0.0f, velY}, 4.0f, s_.godModeLayers);
             if (hit && Sign((hit.point - position).y) == Sign(velY)) {
                 ResetSpeedFactor();
                 velY = 0.0f;
+                if (hit.collider->tag == "Hole" || hit.collider->tag == "NextLevelPortal") hole = true;
                 if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
             }
         }
+        timePushingHoles = canMove && hole ? timePushingHoles + deltaTime : 0.0f;
+        if (timePushingHoles > maxTimePushingHoles || (isHolesIntangible && hole)) PlayFallAnimation();
         timePushingDoors = door ? timePushingDoors + deltaTime : 0.0f;
         if (timePushingDoors > maxTimePushingDoors && door) {
             doorEntered = door;
@@ -339,6 +353,72 @@ void HeroMerchantController::DashAbilityUseStart()
     SetIntangibleMode();
 }
 
+void HeroMerchantController::TeleportTo(Vector2 to)
+{
+    velX = velY = 0.0f;
+    position = to;
+}
+
+bool HeroMerchantController::CheckForHoles()
+{
+    const Vector2 v{position.x, position.y + s_.merchantColliderYOffset};
+    const Vector2 one{1.0f, 1.0f};
+    const float n = 2.5f;
+    const Collider2D* a = physics_.OverlapBox(v + Vector2{n, n}, one, 0.0f, s_.holesMask);
+    const Collider2D* b = physics_.OverlapBox(v - Vector2{n, n}, one, 0.0f, s_.holesMask);
+    const Collider2D* c = physics_.OverlapBox(v + Vector2{-1.0f, 1.0f} * n, one, 0.0f, s_.holesMask);
+    const Collider2D* d = physics_.OverlapBox(v + Vector2{1.0f, -1.0f} * n, one, 0.0f, s_.holesMask);
+    if (a && b && c && d) {
+        if (!isFalling && (!isIntangible || isHolesIntangible)) {
+            PlayFallAnimation();
+            return true;
+        }
+    } else {
+        lastHolesFreePosition = position;
+    }
+    return false;
+}
+
+void HeroMerchantController::PlayFallAnimation()
+{
+    if (!canMove) return;
+    canMove = false; // ForbidMovement
+    velX = velY = 0.0f;
+    isMoveInputEnabled = false;
+    ResetSpeedFactor();
+    animator.SetTrigger("BeginFall");
+    isFalling = true;
+    timePushingHoles = 0.0f;
+    SetIntangibleMode();
+    const float time = 0.6f;
+    // A tile on the way he faces (the next one if he's less than half into it), as he goes.
+    tweens.DelayedCall(time * 0.1f, [this, time] {
+        Vector2 v = position;
+        const float num = s_.tileSize;
+        Vector2 zero;
+        if (heroDirection == Left) zero.x = std::fmod(0.0f - v.x, num);
+        if (heroDirection == Front) zero.y = std::fmod(0.0f - v.y, num);
+        if (heroDirection == Back) zero.y = std::fmod(v.y, num);
+        if (heroDirection == Right) zero.x = std::fmod(v.x, num);
+        if (std::max(std::fabs(zero.x), std::fabs(zero.y)) < num * 0.5f) {
+            // NormalizeOneDimensional
+            Vector2 unit = std::max(std::fabs(zero.x), std::fabs(zero.y)) != std::fabs(zero.x) ? Vector2{0.0f, Sign(zero.y)} : Vector2{Sign(zero.x), 0.0f};
+            zero = zero + Vector2{num * unit.x, num * unit.y};
+        }
+        v = v + zero;
+        tweens.Move([this] { return position; }, [this](Vector2 p) { position = p; }, v, time * 0.9f);
+    });
+    // The art's spin (0.2 s on, 0.6 s): its end is the fall's.
+    tweens.Timer(time, 0.2f, [this] {
+        animator.SetTrigger("EndFall");
+        isFalling = false;
+        EnableMoveInput();
+        canMove = true; // AllowMovement
+        TeleportTo(roomIsInit ? lastHolesFreePosition : respawn);
+        SetDefaultMode();
+    });
+}
+
 void HeroMerchantController::SetIntangibleMode(int isHolesEnabled)
 {
     isHolesIntangible = isHolesEnabled > 0;
@@ -349,6 +429,7 @@ void HeroMerchantController::SetDefaultMode()
 {
     isIntangible = false;
     isHolesIntangible = false;
+    CheckForHoles(); // over a hole still: he falls again
 }
 
 void HeroMerchantController::EnableMoveInput()

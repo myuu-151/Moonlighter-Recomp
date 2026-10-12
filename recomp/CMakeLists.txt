@@ -41,6 +41,7 @@ add_library(mlcore STATIC
     src/game/DungeonFloor.cpp
     src/unity/Animator.cpp
     src/unity/Physics2D.cpp
+    src/unity/Tween.cpp
     src/game/HeroMerchantController.cpp
     src/game/SceneTransform.cpp
     src/game/RoomPhysics.cpp
