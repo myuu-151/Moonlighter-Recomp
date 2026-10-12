@@ -66,6 +66,8 @@ add_library(mlcore STATIC
     src/game/EnemyStats.cpp
     src/game/Enemy.cpp
     src/game/BabySlime.cpp
+    src/game/GolemSoldier.cpp
+    src/game/EnemyFactory.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -146,6 +148,15 @@ add_executable(slime_test tests/slime_test.cpp)
 target_link_libraries(slime_test PRIVATE mlcore)
 add_test(NAME slime
          COMMAND slime_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The Golem enemies past the BabySlime against the game (data/oracle/enemy_<prefab>.jsonl,
+# `-oracle-enemy=<prefab>`; skipped if there's none), and their self-checks (the screen shake's
+# draws, a GolemSoldier in a box: its chase, its swing's events and AttackCollider).
+add_executable(enemy_test tests/enemy_test.cpp)
+target_link_libraries(enemy_test PRIVATE mlcore)
+add_test(NAME enemy_golem_soldier
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.

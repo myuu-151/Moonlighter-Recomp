@@ -8,6 +8,9 @@ the port uses (TARGETS):
   enemies_golem / BabySlime (controller)                       -> animators/BabySlime.json,
       sprites/enemies/BabySlime/ (what the clips show, plus its prefab's renderers' sprites
       and its Enemy's dead sprite)
+  enemies_golem / GolemSoldier (controller), exact             -> animators/GolemSoldier.json,
+      sprites/enemies/GolemSoldier/ (as BabySlime's; its clips drive the AttackCollider's
+      BoxCollider2D enabled flag and size and its Transform's local position)
   items / BroomSpear (override of EmptyTrainingSpear), exact   -> animators/broom_spear.json,
       sprites/weapons/broom_spear/ (what the clips show: the Broom Spear prefab's renderers
       have no sprite of their own)
@@ -81,6 +84,7 @@ from sprites import texels
 TARGETS = (
     ('hero_merchant', 'HeroMerchant', 'override', 'hero_merchant', 'hero', 'bundle', False),
     ('enemies_golem', 'BabySlime', 'controller', 'BabySlime', 'enemies/BabySlime', 'prefab', False),
+    ('enemies_golem', 'GolemSoldier', 'controller', 'GolemSoldier', 'enemies/GolemSoldier', 'prefab', True),
     ('items', 'BroomSpear', 'override', 'broom_spear', 'weapons/broom_spear', 'prefab', True),
     ('items', 'NewGlovesForestGloves', 'override', 'forest_gloves', 'weapons/forest_gloves', 'prefab', True),
 )

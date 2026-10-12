@@ -1,6 +1,7 @@
 #pragma once
 // Enemy.cs, EnemyBehaviour.cs and EnemyAttackCollisionDetection.cs: what every common enemy
-// is and does (BabySlimeBehaviour, game/BabySlime.h, is the first one ported on top).
+// is and does (BabySlimeBehaviour, game/BabySlime.h, and GolemSoldierBehaviour,
+// game/GolemSoldier.h, are ported on top; game/EnemyFactory.h builds one from its prefab).
 //
 // Enemy is the object: the Enemy component's fields, its stats (game/EnemyStats.h), its
 // transform (kept by its PolyNavAgent: the local position under its parents, the spawn point
@@ -18,7 +19,9 @@
 //   - DOTween's update (scene.tweens), then each behaviour's Update();
 //   - the delayed calls (scene.calls: Invoke, WaitForSeconds, Destroy(obj, t)) and the PolyNav
 //     coroutines (PolyNav2D::ResumeCoroutines: paths arrive);
-//   - each Animator's Update (Enemy::UpdateAnimator);
+//   - each Animator's Update (Enemy::UpdateAnimator): its clip events go to the behaviour
+//     (EnemyBehaviour::OnAnimationEvent, by the event's function name, as Unity's SendMessage),
+//     and the curves it drives onto the object (the "AttackCollider" child's box and transform);
 //   - PolyNav2D::LateUpdate and each agent's LateUpdate (the move).
 // The clocks: scene.calls (the frame's Time.time, the fixed step's, and which one an Invoke made
 // now counts from: unity/DelayedCalls.h); the driver also runs its pass after each fixed step.
@@ -59,6 +62,8 @@ struct EnemyHero {
     bool isDead = false;      // heroMerchantStats.isDead
     // HeroMerchantController.CheckIfPlayerIsShieldProtected(enemy's object); none: false.
     std::function<bool(const Enemy&)> isShieldProtected;
+    // HeroMerchantController.VibrateForTime(intensity, duration) (the pad's rumble).
+    std::function<void(float intensity, float duration)> vibrate;
     // HeroMerchant.DealDamageToPlayer(attackStrength, damageSource (Enemy.name), DamageType.Normal, enemy).
     std::function<void(float attackStrength, const std::string& damageSource, Enemy& enemy)> dealDamage;
     // HeroMerchantController.AddForce(force) (an Impulse on his body: EnemyBehaviour.PushPlayerBackwards).
@@ -82,6 +87,14 @@ struct EnemyScene {
     std::function<void(Enemy&)> spawnDeathParticles;
     // Enemy.OnEnemyRecivesDamage(enemy, totalDamage, type).
     std::function<void(Enemy&, float, EnemyDamageReceivedType)> onEnemyReceivesDamage;
+    // MasterAudio.PlaySound(name) (its Random draws, if the group has any, aren't made here).
+    std::function<void(Enemy&, const std::string& sound)> playSound;
+    // CameraManager.Rumble(duration, strength, direction, vibration): the camera's shake. The
+    // Random draws its DOShakePosition makes are the caller's (unity::ShakeDraws).
+    std::function<void(float duration, float strength, unity::Vector2 direction, int vibration)> rumble;
+    // Each clip event the Animator fires, before (after = false) and after the behaviour's
+    // method has run (for checks; the behaviour gets it either way).
+    std::function<void(Enemy&, const unity::AnimationEvent&, bool after)> onAnimationEvent;
 };
 
 class Enemy {
@@ -120,8 +133,15 @@ public:
     // The colliders: the root's BoxCollider2D, and the "AttackCollider" child's trigger
     // (EnemyAttackCollisionDetection; layer EnemyAttack). Local to the root.
     unity::Vector2 colliderOffset, colliderSize{1.0f, 1.0f};
+    // The attack trigger: the child's BoxCollider2D (enabled, offset, size) and the child
+    // itself (active, local position), all of which an attack clip can animate (the
+    // GolemSoldier's swing turns the box on and moves and grows it). A box that's off (or on
+    // an inactive child) has no fixture; one that changes gets a new fixture at the next fixed
+    // step (EnemyPhysics::Sync), whose contacts begin anew (a box turned on again hits again).
     bool hasAttackCollider = false;
+    bool attackEnabled = true, attackActive = true;
     unity::Vector2 attackOffset, attackSize{1.0f, 1.0f};
+    unity::Vector2 attackPosition; // the child's local position
     int attackLayer = kLayerEnemyAttack;
     bool hasRigidbody = true;
     unity::Rigidbody2DDef rigidbody;
@@ -155,8 +175,13 @@ public:
     // Rigidbody2D.velocity.
     unity::Vector2 velocity() const;
 
-    // The Animator's pass for the frame (if it's on), then the sprite it shows.
+    // The Animator's pass for the frame (if it's on): its events to the behaviour, then what
+    // it drove onto the object (the attack trigger) and the sprite it shows.
     void UpdateAnimator(float deltaTime);
+    // A new Animator in its default state (gameObject.SetActive(true) rebinds it): the
+    // animated properties' defaults are the object's values now (call it once the prefab's are
+    // in: MakeEnemy does), its events go to the behaviour.
+    void ResetAnimator();
 
     // Object.Destroy (now): OnDestroy (the dead sprite and the drops if it died), the
     // behaviour's OnEnemyDestroyed; the body and agent leave; its calls are dropped.
@@ -169,7 +194,14 @@ public:
 
 private:
     friend class EnemyPhysics;
+    void ApplyAnimatedProperties();
     const unity::AnimatorController* controller_ = nullptr;
+    // The controller's properties for the attack trigger (-1: no clip animates it): m_IsActive,
+    // m_Enabled, m_Offset.x/y, m_Size.x/y, m_LocalPosition.x/y.
+    int attackProps_[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
+    // The attack fixture as EnemyPhysics last built it (none: built = false).
+    bool attackBuilt_ = false;
+    unity::Vector2 attackBuiltCenter_, attackBuiltSize_;
     unity::Vector2 synced_; // the transform as the body last had it (what the physics wrote or took)
     // The transform was set by something that dirties it for the physics even where its world
     // position reads the same (SetParent, localPosition): synced to the body at the next step.
@@ -253,12 +285,23 @@ public:
     virtual void OnEnemyDestroyed();
     virtual void OnPlayerLeaveRoom();
     virtual bool IsBoss() const { return false; }
+    // CameraManager.Rumble with the enemy attacks' shake (a random direction: Random.insideUnitSphere,
+    // then DOShakePosition's draws).
+    void DoScreenShakeFromEnemyAnimation();
+
+    // An Animator clip event: the method its function names, as SendMessage finds it on the
+    // object (the behaviour's own first, then EnemyBehaviour's). False: no such method here
+    // (Unity logs "has no receiver").
+    virtual bool OnAnimationEvent(const unity::AnimationEvent& e);
 
     // EnemyStats.OnDeath's handler: off the room's OnRoomEnter, then OnDeath.
     void EnemyStats_OnDeath();
 
 protected:
     virtual void OnDeath();
+    unity::Vector2 HeroPosition() const;
+    void SetAnimatorFloat(const char* name, float value);
+    void SetAnimatorTrigger(const char* name, bool set);
 
 private:
     void SetEnemyShaderColorToRed();
@@ -266,9 +309,6 @@ private:
     void SetEnemyShaderToDefault();
     void SetPlayingDamagedEffectToFalse(EnemyDamageReceivedType type); // the coroutine past its wait
     unity::DelayedCalls& Calls() const { return *enemy.scene.calls; }
-    unity::Vector2 HeroPosition() const;
-    void SetAnimatorFloat(const char* name, float value);
-    void SetAnimatorTrigger(const char* name, bool set);
 };
 
 // The enemies' bodies in a unity::PhysicsWorld, and their attack triggers. The world's
@@ -280,6 +320,15 @@ public:
         // didn't move it (the transform's local position is then the world position through
         // its parents again, which can round differently from what the script set).
         bool writeBackUnmoved = true;
+        // An attack trigger rebuilt with a new shape (not turned on: that always begins anew)
+        // begins its contacts anew: Box2D's EndContact when the old fixture goes, BeginContact
+        // with the new one (OnTriggerEnter2D again). Off: what the rebuilt one was touching
+        // doesn't enter again. (What Unity does here isn't settled: the recording will say.)
+        bool reenterOnReshape = true;
+        // A new attack fixture wakes its body (else a sleeping enemy's box on a sleeping hero
+        // never begins touching him: Box2D updates no contact between two sleeping bodies).
+        // Unsettled too: Box2D's CreateFixture doesn't; Unity's collider rebuild may.
+        bool wakeOnAttackChange = true;
     };
 
     // (Two constructors, not a defaulted Options argument: GCC wants Options' member
@@ -315,6 +364,9 @@ public:
     // The body leaves (Destroy, SetActive(false)) or comes back.
     void SetBodyActive(Enemy& enemy, bool active);
 
+    // The attack trigger as the object has it now: its fixture made, remade or taken away.
+    void SyncAttackCollider(Enemy& enemy);
+
     // The attack triggers that began touching in the last step, in Box2D's order (for checks).
     struct Hit {
         Enemy* enemy = nullptr;
@@ -330,6 +382,9 @@ private:
     std::vector<Enemy*> enemies_;
     const unity::Rigidbody2D* hero_ = nullptr;
     std::vector<Hit> hits_;
+    // What rebuilt attack fixtures were touching (reenterOnReshape off): no new enter with
+    // these in the step after.
+    std::vector<std::pair<const b2Fixture*, const b2Fixture*>> carried_;
 };
 
 } // namespace game

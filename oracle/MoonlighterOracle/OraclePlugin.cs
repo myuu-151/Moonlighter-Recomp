@@ -58,7 +58,22 @@ namespace MoonlighterOracle
             if (slimeArg != null)
             {
                 Harvest.InstallSafety(harmony);
-                StartCoroutine(SlimeOracle.Run(this, quit, slimeArg.Contains("=") ? slimeArg.Substring(slimeArg.IndexOf('=') + 1) : ""));
+                StartCoroutine(EnemyOracle.Run(this, quit, slimeArg.Contains("=") ? slimeArg.Substring(slimeArg.IndexOf('=') + 1) : "", "BabySlime", true));
+            }
+            // -oracle-enemy=<prefab>[:<room name>] (e.g. -oracle-enemy=GolemSoldier): enemy_<prefab>.jsonl.
+            string enemyArg = Array.Find(args, a => a.StartsWith("-oracle-enemy="));
+            if (enemyArg != null)
+            {
+                string spec = enemyArg.Substring(enemyArg.IndexOf('=') + 1);
+                int colon = spec.IndexOf(':');
+                string enemy = colon >= 0 ? spec.Substring(0, colon) : spec;
+                string room = colon >= 0 ? spec.Substring(colon + 1) : "";
+                if (enemy == "") Log.LogError("-oracle-enemy needs a prefab name (-oracle-enemy=GolemSoldier)");
+                else
+                {
+                    Harvest.InstallSafety(harmony);
+                    StartCoroutine(EnemyOracle.Run(this, quit, room, enemy, false));
+                }
             }
         }
 

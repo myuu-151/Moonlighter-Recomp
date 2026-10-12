@@ -3,57 +3,70 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using InControl;
 using UnityEngine;
 
 namespace MoonlighterOracle
 {
-    /// `-oracle-slime[=<room name>]`: the BabySlimes against the hero, frame by frame, into
-    /// slime.jsonl. Loads the first save slot like the harvest (saving and stats blocked), takes
-    /// the Golem gate on a fixed seed (7919, as the walks; generation isn't fully seeded, so the
-    /// floor can differ between sessions), and goes through a door (DungeonManager.ChangeRoomTo, as
-    /// the PolyNav oracle) into the room with the most BabySlimes (ties: the fewest other enemies;
-    /// or the room named). Its other enemies leave roomEnemies and are switched off before
-    /// EnableEnemies (half a second later) can wake them, and the hero's familiars are switched
-    /// off (their agents and attacks would join in), so the room holds the slimes and him.
+    /// `-oracle-enemy=<prefab>[:<room name>]`: the room's enemies of one prefab (Enemy.name, e.g.
+    /// GolemSoldier) against the hero, frame by frame, into enemy_<prefab>.jsonl;
+    /// `-oracle-slime[=<room name>]` is this for BabySlime, into slime.jsonl (its lines named as
+    /// they always were: "slimeStart", "slime", a frame's "slimes"; the generic mode's are
+    /// "enemyStart", "enemy", "enemies"). Loads the first save slot like the harvest (saving and
+    /// stats blocked), takes the Golem gate on a fixed seed (7919, as the walks; generation isn't
+    /// fully seeded, so the floor can differ between sessions), and goes through a door
+    /// (DungeonManager.ChangeRoomTo, as the PolyNav oracle) into the room with the most of the
+    /// enemy (ties: the fewest other enemies; or the room named). Its other enemies leave
+    /// roomEnemies and are switched off before EnableEnemies (half a second later) can wake them,
+    /// and the hero's familiars are switched off (their agents and attacks would join in), so the
+    /// room holds the enemies and him.
     ///
-    /// Once the slimes are up (EnableEnemies ran, the room left behind was disabled and the map
+    /// Once the enemies are up (EnableEnemies ran, the room left behind was disabled and the map
     /// regenerated) and before they start targeting him (a second after EnableEnemies), the
     /// recording starts at a frame's end:
-    ///   - "slimeStart": the room, the stats' context (level, night, difficulty, NG+, the
-    ///     autoscale row), the hero's body and collider, PolyNavAgent.allAgents (slime ids), when
-    ///     EnableEnemies ran and the targeting delay, Time.fixedDeltaTime;
+    ///   - the start: the room, the enemy's name, the stats' context (level, night, difficulty,
+    ///     NG+, the autoscale row), the hero's body and collider, PolyNavAgent.allAgents (enemy
+    ///     ids), when EnableEnemies ran and the targeting delay, Time.fixedDeltaTime;
     ///   - "collider": every Collider2D in the scene (as the walk records them);
     ///   - "navMap": the PolyNav2D map (master and obstacle polygons, inflateRadius); again with
     ///     the frame if it's regenerated while recording;
     ///   - "rngProbe": Random.insideUnitCircle from the state then (put back after);
-    ///   - "slime": each slime as it is (the start of the replay).
+    ///   - each enemy as it is (the start of the replay), its "attack" trigger included.
     /// Then each frame ("frame", at its end, after rendering): the clocks (deltaTime, Time.time,
     /// timeScale), the Random state at its start (the last frame's end), the input given, the
     /// hero (position, layer, body); each fixed step's start (Time.fixedTime, the hero's
-    /// transform, body position and velocity, layer, awake; each slime's transform and body);
-    /// what happened in order ("events": the attack trigger's AttackHit, DealDamageToPlayer,
-    /// DealDamageToEnemy and Weapon.PushEnemyBackwards with the step they landed in (-1: not in
-    /// physics), StartTargetingPlayer, OnDeath, OnDestroy, the dead sprite); the slimes' Updates
-    /// in the order the game ran them with the Random state before and after each and where each
-    /// saw the hero; the agents' LateUpdate order; and each slime at the end.
+    /// transform, body position and velocity, layer, awake; each enemy's transform and body,
+    /// and its AttackCollider: the box's enabled flag, size and offset, the object's local
+    /// position); what happened in order ("events": the attack trigger's AttackHit,
+    /// DealDamageToPlayer, DealDamageToEnemy and Weapon.PushEnemyBackwards with the step they
+    /// landed in (-1: not in physics), StartTargetingPlayer, OnDeath, OnDestroy, the dead sprite,
+    /// and "anim": each call of a method an enemy's clip events name, with the Random state
+    /// before and after it and its caller in Assembly-CSharp (none: the Animator's SendMessage,
+    /// an animation event; else a script's call, e.g. ForbidEnemyMovement from a hit)); the
+    /// enemies' Updates in the order the game ran them with the Random state before and after
+    /// each and where each saw the hero; the agents' LateUpdate order; and each enemy at the end
+    /// (its attack trigger and, for a GolemSoldier, its look lock too).
     ///
-    /// The hero's script: 150 frames standing (the slimes come at him), 90 walking at the
-    /// nearest slime, then 8 times: 15 frames toward the nearest slime, an attack (Action1) with
-    /// the stick on it, 30 frames standing; 120 frames standing. He doesn't die: his health is
-    /// refilled after every hit (RecoverAllHealth, after DealDamageToPlayer has run).
+    /// The hero's script: 150 frames standing (the enemies come at him), 90 walking at the
+    /// nearest one, then 8 times: 15 frames toward the nearest, an attack (Action1) with the
+    /// stick on it, 30 frames standing; 120 frames standing (360 in the generic mode: more of
+    /// the enemies' own attacks). He doesn't die: his health is refilled after every hit
+    /// (RecoverAllHealth, after DealDamageToPlayer has run).
     ///
     /// Not deterministic: the frame times (60 fps asked, real time measured: deltaTime is
     /// recorded), and so how many fixed steps each frame has (recorded too); the hit-stop
     /// GameManager.SetGameSpeedForTime puts on weapon hits (timeScale, recorded through dt).
-    internal static class SlimeOracle
+    internal static class EnemyOracle
     {
         public static bool Active;     // the hero's script is driving the input
         private static bool recording; // between the setup line and the last frame
         private static int startFrame = -1;
         private static StreamWriter writer;
-        private static readonly List<BabySlimeBehaviour> slimes = new List<BabySlimeBehaviour>();
+        private static string prefab = "BabySlime"; // Enemy.name of the enemies recorded
+        private static bool legacy = true;          // -oracle-slime: slime.jsonl's names
+        private static readonly List<EnemyBehaviour> slimes = new List<EnemyBehaviour>();
         private static DungeonRoom targetRoom;
         private static float enableTime = -1f;
         private static int enableFrame = -1;
@@ -65,8 +78,9 @@ namespace MoonlighterOracle
             public int s = -1, step = -1, type;
             public float a, hp0, hp1;
             public bool player;
-            public string other;
+            public string other, caller;
             public Vector2 hero, pos;
+            public uint[] rng0, rng1;
         }
 
         private class Upd
@@ -105,14 +119,14 @@ namespace MoonlighterOracle
                 dotweenUdtField = type != null ? AccessTools.Field(type, "_unscaledDeltaTime") : null;
                 if (update == null || dotweenUdtField == null)
                 {
-                    OraclePlugin.Log.LogWarning("slime: no DOTweenComponent.Update / _unscaledDeltaTime: DOTween's clock not recorded");
+                    OraclePlugin.Log.LogWarning(Tag + ": no DOTweenComponent.Update / _unscaledDeltaTime: DOTween's clock not recorded");
                     return;
                 }
-                new Harmony("moonlighter.oracle.slime").Patch(update, postfix: new HarmonyMethod(typeof(SlimeOracle), nameof(DOTweenUpdatePostfix)));
+                new Harmony("moonlighter.oracle.enemy").Patch(update, postfix: new HarmonyMethod(typeof(EnemyOracle), nameof(DOTweenUpdatePostfix)));
             }
             catch (Exception e)
             {
-                OraclePlugin.Log.LogWarning("slime: DOTween hook failed: " + e.Message);
+                OraclePlugin.Log.LogWarning(Tag + ": DOTween hook failed: " + e.Message);
             }
         }
         private static Vector2 lastStick;
@@ -128,9 +142,9 @@ namespace MoonlighterOracle
             public Segment(int f, Kind k) { frames = f; kind = k; }
         }
 
-        private static readonly Segment[] Script = BuildScript();
+        private static Segment[] Script = BuildScript(120);
 
-        private static Segment[] BuildScript()
+        private static Segment[] BuildScript(int lastStand)
         {
             var s = new List<Segment> { new Segment(150, Kind.Stand), new Segment(90, Kind.Toward) };
             for (int i = 0; i < 8; i++)
@@ -139,9 +153,14 @@ namespace MoonlighterOracle
                 s.Add(new Segment(1, Kind.Attack));
                 s.Add(new Segment(30, Kind.Stand));
             }
-            s.Add(new Segment(120, Kind.Stand));
+            s.Add(new Segment(lastStand, Kind.Stand));
             return s.ToArray();
         }
+
+        private static string Tag => legacy ? "slime" : "enemy " + prefab;
+
+        /// One of the enemies recorded: Enemy.name is its prefab's (DungeonRoom's Init(enemy.name)).
+        private static bool Matches(Enemy e) => e != null && e.enemyBehaviour != null && (e.name == prefab || e.name == prefab + "(Clone)");
 
         private static int ScriptFrames => Script.Aggregate(0, (n, s) => n + s.frames);
 
@@ -221,9 +240,9 @@ namespace MoonlighterOracle
 
         private static int Id(object o)
         {
-            if (o is BabySlimeBehaviour b) return slimes.IndexOf(b);
-            if (o is Enemy e) return e.enemyBehaviour is BabySlimeBehaviour eb ? slimes.IndexOf(eb) : -1;
-            if (o is Component c) return c.GetComponent<BabySlimeBehaviour>() is BabySlimeBehaviour cb ? slimes.IndexOf(cb) : -1;
+            if (o is EnemyBehaviour b) return slimes.IndexOf(b);
+            if (o is Enemy e) return e.enemyBehaviour != null ? slimes.IndexOf(e.enemyBehaviour) : -1;
+            if (o is Component c) return c.GetComponent<EnemyBehaviour>() is EnemyBehaviour cb ? slimes.IndexOf(cb) : -1;
             return -1;
         }
 
@@ -380,6 +399,73 @@ namespace MoonlighterOracle
             }
         }
 
+        // ---- The enemies' clip events ------------------------------------------------------
+
+        private static readonly HashSet<MethodBase> animPatched = new HashSet<MethodBase>();
+
+        /// Each method the enemies' clips' events name, on their behaviour's class or its bases
+        /// (every overload: SendMessage picks by name), with AnimPrefix / AnimPostfix.
+        private static void HookAnimationEvents()
+        {
+            var names = new HashSet<string>();
+            var types = new HashSet<Type>();
+            foreach (var b in slimes)
+            {
+                if (b == null) continue;
+                types.Add(b.GetType());
+                var anim = b.GetComponent<Animator>();
+                var ctrl = anim != null ? anim.runtimeAnimatorController : null;
+                if (ctrl == null) continue;
+                foreach (var clip in ctrl.animationClips)
+                    foreach (var ev in clip.events)
+                        names.Add(ev.functionName);
+            }
+            var harmony = new Harmony("moonlighter.oracle.enemy.anim");
+            var prefix = new HarmonyMethod(typeof(EnemyOracle), nameof(AnimPrefix));
+            var postfix = new HarmonyMethod(typeof(EnemyOracle), nameof(AnimPostfix));
+            foreach (var type in types)
+                for (var t = type; t != null && t != typeof(MonoBehaviour); t = t.BaseType)
+                    foreach (var m in t.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                    {
+                        if (!names.Contains(m.Name) || m.IsAbstract || m.ContainsGenericParameters || !animPatched.Add(m)) continue;
+                        try { harmony.Patch(m, prefix: prefix, postfix: postfix); }
+                        catch (Exception e) { OraclePlugin.Log.LogWarning(Tag + ": can't hook " + t.Name + "." + m.Name + ": " + e.Message); }
+                    }
+            OraclePlugin.Log.LogInfo(Tag + ": clip events hooked: " + string.Join(", ", names.ToArray()));
+        }
+
+        /// Who called: the first frame below the hooked method (the prefix's caller and any frame
+        /// named after the hooked method: Harmony's replacement and trampolines) that's in
+        /// Assembly-CSharp (a script); none when the Animator's SendMessage did (native code,
+        /// Mono's wrappers).
+        private static string ScriptCaller(string hooked)
+        {
+            var st = new System.Diagnostics.StackTrace(1, false);
+            var game = typeof(EnemyBehaviour).Assembly;
+            for (int i = 0; i < st.FrameCount; i++)
+            {
+                var m = st.GetFrame(i).GetMethod();
+                if (m == null || m.DeclaringType == null || m.Name.Contains(hooked)) continue;
+                if (m.DeclaringType.Assembly == game) return m.DeclaringType.Name + "." + m.Name;
+            }
+            return null;
+        }
+
+        private static void AnimPrefix(object __instance, MethodBase __originalMethod, out Ev __state)
+        {
+            __state = null;
+            if (!recording) return;
+            int id = Id(__instance);
+            if (id < 0) return;
+            __state = new Ev { k = "anim", s = id, step = Step, other = __originalMethod.Name, caller = ScriptCaller(__originalMethod.Name), rng0 = Rng.Get() };
+            Add(__state);
+        }
+
+        private static void AnimPostfix(Ev __state)
+        {
+            if (__state != null) __state.rng1 = Rng.Get();
+        }
+
         // ---- Recording ----------------------------------------------------------------------
 
         private static Json V2(Json j, Vector2 v) => j.Arr().Bits(v.x).Bits(v.y).EndArr();
@@ -436,7 +522,7 @@ namespace MoonlighterOracle
             }
         }
 
-        private static void WriteSlime(Json j, int id, BabySlimeBehaviour b, bool setup)
+        private static void WriteSlime(Json j, int id, EnemyBehaviour b, bool setup)
         {
             j.Prop("s", id);
             bool gone = b == null;
@@ -465,6 +551,7 @@ namespace MoonlighterOracle
                 if (abox != null) j.Bits(abox.offset.x).Bits(abox.offset.y).Bits(abox.size.x).Bits(abox.size.y);
                 j.EndArr().Prop("attackLayer", ac != null ? ac.gameObject.layer : -1);
             }
+            WriteAttack(j, t);
             j.Key("hp").Bits(e.enemyStats.CurrentHealth).Prop("alive", e.enemyStats.isAlive).Prop("inv", e.enemyStats.Invencible)
                 .Prop("layer", b.gameObject.layer);
             var rb = b.GetComponent<Rigidbody2D>();
@@ -507,6 +594,7 @@ namespace MoonlighterOracle
                 .Prop("canMove", b.canMove).Key("lapse").Bits(tr.Field("_lapse").GetValue<float>())
                 .Prop("dmgFx", b.IsEnemyPlayingDamagedEffect()).Prop("fallInHoles", b.fallInHoles)
                 .Prop("deadForce", tr.Field("deadForce").GetValue<int>()).Prop("enabled", b.enabled);
+            if (b is GolemSoldierBehaviour soldier) j.Prop("locked", soldier.iDirectionLocked);
             j.Key("playerOffset"); V2(j, tr.Field("playerOffset").GetValue<Vector3>());
             j.EndObj();
             var mat = sr != null ? sr.material : null;
@@ -515,14 +603,38 @@ namespace MoonlighterOracle
             j.Key("color").Arr().Bits(col.r).Bits(col.g).Bits(col.b).Bits(col.a).EndArr();
         }
 
+        /// The AttackCollider child as it is now: the box's enabled flag, size and offset, the
+        /// object's active flag, local position and layer (none: no "attack").
+        private static void WriteAttack(Json j, Transform t)
+        {
+            var ac = t.Find("AttackCollider");
+            var box = ac != null ? ac.GetComponent<BoxCollider2D>() : null;
+            if (box == null) return;
+            j.Key("attack").Obj().Prop("on", box.enabled).Prop("active", ac.gameObject.activeSelf).Prop("layer", ac.gameObject.layer);
+            j.Key("size"); V2(j, box.size);
+            j.Key("offset"); V2(j, box.offset);
+            j.Key("pos"); V2(j, ac.localPosition);
+            j.EndObj();
+        }
+
+        /// The AttackCollider at a fixed step's start: [enabled, size x, y, offset x, y, local x, y].
+        private static float[] AttackRow(Transform t)
+        {
+            var ac = t.Find("AttackCollider");
+            var box = ac != null ? ac.GetComponent<BoxCollider2D>() : null;
+            if (box == null) return null;
+            Vector2 lp = ac.localPosition;
+            return new[] { box.enabled ? 1f : 0f, box.size.x, box.size.y, box.offset.x, box.offset.y, lp.x, lp.y };
+        }
+
         private static void WriteStart(DungeonRoom room)
         {
             var dm = DungeonManager.Instance;
             var hero = HeroMerchant.Instance;
             var ctrl = hero.heroMerchantController;
             var rb = hero.GetComponent<Rigidbody2D>();
-            var j = new Json().Obj().Prop("ev", "slimeStart").Prop("session", Trace.Session).Prop("floor", Trace.Floor)
-                .Prop("room", room.name).Prop("roomInfo", room.roomInfo != null ? room.roomInfo.name : "").Prop("enemy", "BabySlime");
+            var j = new Json().Obj().Prop("ev", legacy ? "slimeStart" : "enemyStart").Prop("session", Trace.Session).Prop("floor", Trace.Floor)
+                .Prop("room", room.name).Prop("roomInfo", room.roomInfo != null ? room.roomInfo.name : "").Prop("enemy", prefab);
             j.Key("roomPos"); V2(j, room.transform.position);
             // EnemyStats.Init's inputs.
             var info = dm.intermediateInfo;
@@ -614,7 +726,13 @@ namespace MoonlighterOracle
                 {
                     j.Arr().Val((int)s[0]);
                     for (int i = 1; i < 7; i++) j.Bits(s[i]);
-                    j.Val(s[7] != 0f).EndArr();
+                    j.Val(s[7] != 0f);
+                    if (s.Length >= 15)
+                    {
+                        j.Val(s[8] != 0f);
+                        for (int i = 9; i < 15; i++) j.Bits(s[i]);
+                    }
+                    j.EndArr();
                 }
                 j.EndArr().EndObj();
             }
@@ -638,6 +756,11 @@ namespace MoonlighterOracle
                         break;
                     case "death": j.Key("hero"); V2(j, e.hero); break;
                     case "deadSprite": j.Prop("sprite", e.other).Key("pos"); V2(j, e.pos); break;
+                    case "anim":
+                        j.Prop("fn", e.other).Prop("caller", e.caller);
+                        Rng.WriteState(j.Key("rng0"), e.rng0);
+                        Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
+                        break;
                 }
                 j.EndObj();
             }
@@ -655,7 +778,7 @@ namespace MoonlighterOracle
             j.Key("late").Arr();
             foreach (int id in late) j.Val(id);
             j.EndArr();
-            j.Key("slimes").Arr();
+            j.Key(legacy ? "slimes" : "enemies").Arr();
             for (int i = 0; i < slimes.Count; i++)
             {
                 j.Obj();
@@ -684,13 +807,16 @@ namespace MoonlighterOracle
                     if (b == null) continue;
                     var srb = b.GetComponent<Rigidbody2D>();
                     Vector2 st = b.transform.position;
-                    list.Add(new[] { i, st.x, st.y, srb.position.x, srb.position.y, srb.velocity.x, srb.velocity.y, srb.IsAwake() ? 1f : 0f });
+                    var row = new List<float> { i, st.x, st.y, srb.position.x, srb.position.y, srb.velocity.x, srb.velocity.y, srb.IsAwake() ? 1f : 0f };
+                    var attack = AttackRow(b.transform);
+                    if (attack != null) row.AddRange(attack);
+                    list.Add(row.ToArray());
                 }
                 stepSlimes.Add(list);
             }
         }
 
-        /// The room with the most BabySlimes (ties: fewest other enemies), not the current one,
+        /// The room with the most of the enemy (ties: fewest other enemies), not the current one,
         /// with a door into it; or the one named.
         private static bool PickRoom(string name, out DungeonRoom room, out DungeonDoor door)
         {
@@ -702,7 +828,7 @@ namespace MoonlighterOracle
             {
                 if (r == null || r == dm.currentDungeonRoom || r.roomEnemies == null) continue;
                 if (name != "" && r.name != name && (r.roomInfo == null || r.roomInfo.name != name)) continue;
-                int n = r.roomEnemies.Count(e => e != null && e.enemyBehaviour is BabySlimeBehaviour);
+                int n = r.roomEnemies.Count(Matches);
                 int others = r.roomEnemies.Count(e => e != null) - n;
                 if (n == 0) continue;
                 DungeonDoor into = null;
@@ -722,8 +848,15 @@ namespace MoonlighterOracle
             return room != null;
         }
 
-        public static IEnumerator Run(MonoBehaviour host, bool quit, string roomArg)
+        /// `enemy`: Enemy.name of the enemies to record; `legacyNames`: slime.jsonl's file and
+        /// line names (-oracle-slime).
+        public static IEnumerator Run(MonoBehaviour host, bool quit, string roomArg, string enemy, bool legacyNames)
         {
+            prefab = enemy;
+            legacy = legacyNames;
+            Script = BuildScript(legacy ? 120 : 360);
+            string fileName = legacy ? "slime.jsonl" : "enemy_" + prefab + ".jsonl";
+            string doneName = legacy ? "SLIME_DONE" : "ENEMY_" + prefab + "_DONE";
             var log = OraclePlugin.Log;
             yield return Harvest.LoadSlot();
             bool generated = false;
@@ -734,7 +867,7 @@ namespace MoonlighterOracle
             float start = Time.realtimeSinceStartup;
             while (!generated && Time.realtimeSinceStartup - start < 120f) yield return null;
             DungeonGenerator.OnGeneratedDungeon -= done;
-            if (!generated) { log.LogError("slime: floor timed out"); yield break; }
+            if (!generated) { log.LogError(Tag + ": floor timed out"); yield break; }
             yield return new WaitForSecondsRealtime(3f);
             for (int tries = 0; tries < 5 && GUIManager.Instance.currentInventory != null; tries++)
             {
@@ -750,7 +883,7 @@ namespace MoonlighterOracle
             var ctrl = HeroMerchant.Instance.heroMerchantController;
             if (!PickRoom(roomArg, out DungeonRoom room, out DungeonDoor door))
             {
-                log.LogError("slime: no room with BabySlimes and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""));
+                log.LogError(Tag + ": no room with a " + prefab + " and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""));
                 yield break;
             }
             // The familiars off (their agents would join allAgents; they attack enemies).
@@ -769,24 +902,25 @@ namespace MoonlighterOracle
             ctrl.TeleportTo(door.playerEnterDestinyRoomPoint.position);
             // The others out before EnableEnemies (an Invoke half a second away) wakes them.
             foreach (var e in room.roomEnemies.ToList())
-                if (e != null && !(e.enemyBehaviour is BabySlimeBehaviour))
+                if (e != null && !Matches(e))
                 {
                     room.roomEnemies.Remove(e);
                     e.gameObject.SetActive(false);
                 }
             slimes.Clear();
             foreach (var e in room.roomEnemies)
-                if (e != null && e.enemyBehaviour is BabySlimeBehaviour b) slimes.Add(b);
-            log.LogInfo($"slime: {room.name} ({(room.roomInfo != null ? room.roomInfo.name : "")}), {slimes.Count} BabySlimes");
+                if (Matches(e)) slimes.Add(e.enemyBehaviour);
+            log.LogInfo($"{Tag}: {room.name} ({(room.roomInfo != null ? room.roomInfo.name : "")}), {slimes.Count} of {prefab}");
             float wait = Time.realtimeSinceStartup;
             while ((enableTime < 0f || !mapRegenerated) && Time.realtimeSinceStartup - wait < 10f) yield return null;
-            if (enableTime < 0f) { log.LogError("slime: EnableEnemies never came"); yield break; }
+            if (enableTime < 0f) { log.LogError(Tag + ": EnableEnemies never came"); yield break; }
             yield return null;
             yield return null;
 
             HookDOTween();
-            var rec = new GameObject("OracleSlimeRecorder").AddComponent<Recorder>();
-            writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, "slime.jsonl"), append: false) { AutoFlush = false };
+            HookAnimationEvents();
+            var rec = new GameObject("OracleEnemyRecorder").AddComponent<Recorder>();
+            writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
             // The start, at a frame's end.
             yield return new WaitForEndOfFrame();
             WriteStart(room);
@@ -795,7 +929,7 @@ namespace MoonlighterOracle
             WriteProbes();
             for (int i = 0; i < slimes.Count; i++)
             {
-                var j = new Json().Obj().Prop("ev", "slime");
+                var j = new Json().Obj().Prop("ev", legacy ? "slime" : "enemy");
                 WriteSlime(j, i, slimes[i], true);
                 Emit(j);
             }
@@ -810,7 +944,7 @@ namespace MoonlighterOracle
             {
                 yield return new WaitForEndOfFrame();
                 try { WriteFrame(f); }
-                catch (Exception e) { log.LogError("slime: frame " + f + ": " + e); }
+                catch (Exception e) { log.LogError(Tag + ": frame " + f + ": " + e); }
                 ClearFrame();
                 frameStartRng = Rng.Get();
                 if (f % 60 == 0) writer.Flush();
@@ -820,8 +954,8 @@ namespace MoonlighterOracle
             UnityEngine.Object.Destroy(rec.gameObject);
             writer.Flush();
             writer.Close();
-            File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "SLIME_DONE"), DateTime.Now.ToString("o") + " " + room.name + " " + frames + " frames");
-            log.LogInfo($"slime: {frames} frames recorded in {room.name}");
+            File.WriteAllText(Path.Combine(OraclePlugin.OutDir, doneName), DateTime.Now.ToString("o") + " " + room.name + " " + frames + " frames");
+            log.LogInfo($"{Tag}: {frames} frames recorded in {room.name} ({fileName})");
             if (quit) Application.Quit();
         }
     }
