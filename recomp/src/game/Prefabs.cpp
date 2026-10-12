@@ -57,8 +57,16 @@ void PrefabLibrary::Load(const json::Value& extracted)
                     for (const json::Value& b : r[14].arr) {
                         Behaviour beh;
                         if (b[0].IsString()) beh.cls = b[0].s;
-                        for (const auto& [field, v] : b[1].obj)
-                            beh.fields[field] = v.kind == json::Value::Kind::Bool ? (v.b ? 1.0 : 0.0) : static_cast<double>(F(v));
+                        for (const auto& [field, v] : b[1].obj) {
+                            if (v.IsArray()) {
+                                beh.fields[field] = static_cast<double>(v.size());
+                                beh.raw[field] = v;
+                            } else if (v.kind == json::Value::Kind::Object) {
+                                beh.raw[field] = v;
+                            } else {
+                                beh.fields[field] = v.kind == json::Value::Kind::Bool ? (v.b ? 1.0 : 0.0) : static_cast<double>(F(v));
+                            }
+                        }
                         n.behaviours.push_back(beh);
                     }
                 if (r.size() > 15) {

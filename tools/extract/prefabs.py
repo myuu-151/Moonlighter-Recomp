@@ -69,19 +69,27 @@ FIELDS = {
 }
 
 
-def item_drops(value, go_path):
+def item_drops(value, go_path, sprite):
     return [{'item': d['item'], 'dropProbability': d['dropProbability'], 'min': d['minDropRate'], 'max': d['maxDropRate']}
             for d in value]
 
 
-def object_path(value, go_path):
+def object_path(value, go_path, sprite):
     """A GameObject reference as its path below the prefab's root ('' the root), null if
     unset or outside the prefab."""
     return go_path.get(value['m_PathID']) if value['m_FileID'] == 0 else None
 
 
-# Fields kept whole rather than as field() has them: (class, field) -> f(value, {game object: path}).
+def breakable_skins(value, go_path, sprite):
+    """BreakableObjectBehaviour.skins: each skin's whole and broken sprites."""
+    return [{'full': sprite(k['fullHealthSprite']), 'broken': sprite(k['breakSprite'])} for k in value]
+
+
+# Fields kept whole rather than as field() has them: (class, field) -> f(value, {game object: path},
+# sprite name of a reference).
 STRUCTURED = {
+    ('BreakableObjectBehaviour', 'skins'): breakable_skins,
+    ('BreakableBoxBehaviour', 'skins'): breakable_skins,
     ('Enemy', 'itemDrops'): item_drops,
     ('EnemyAttackCollisionDetection', 'gameObjectToAdvise'): object_path,
 }
@@ -263,7 +271,7 @@ def main():
                     if mb is None:
                         continue
                     cls = class_name(mb['m_Script'])
-                    behaviours.append([cls, {f: STRUCTURED[cls, f](mb[f], go_path) if (cls, f) in STRUCTURED and f in mb
+                    behaviours.append([cls, {f: STRUCTURED[cls, f](mb[f], go_path, sprite_name) if (cls, f) in STRUCTURED and f in mb
                                              else field(mb.get(f)) for f in FIELDS.get(cls, ())}])
                 row.append(behaviours)
                 colliders = [collider_row(comp.type.name, tree(comp.path_id)) for comp in components(go)

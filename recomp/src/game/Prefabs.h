@@ -13,10 +13,12 @@
 namespace game {
 
 // A MonoBehaviour on a prefab object: its class, and the fields extracted for it (numbers;
-// a bool or an object reference as 0/1, a list as its length).
+// a bool or an object reference as 0/1, a list as its length); a list's or an object's whole
+// value too (`raw`: the extractor's STRUCTURED fields, e.g. a breakable's skins).
 struct Behaviour {
     std::string cls;
     std::map<std::string, double> fields;
+    std::map<std::string, json::Value> raw;
     double Field(const std::string& name, double fallback = 0.0) const
     {
         auto it = fields.find(name);
