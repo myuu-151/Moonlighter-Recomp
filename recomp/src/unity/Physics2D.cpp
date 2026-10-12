@@ -46,11 +46,12 @@ float Gap(Vector2 amin, Vector2 amax, Vector2 bmin, Vector2 bmax)
 namespace {
 
 // A box (angle 0) of half size `half` swept from `origin` along unit `d` up to `distance`
-// against the box [mn, mx], both with their skins: the distance to first contact, and the
-// axis that stopped it (0 x, 1 y, -1: overlapping at the start). False if it doesn't hit.
+// against the box [mn, mx], stopping kCastReach short of its core: the distance to first
+// contact, and the axis that stopped it (0 x, 1 y, -1: overlapping at the start). False if it
+// doesn't hit.
 bool Sweep(Vector2 origin, Vector2 half, Vector2 d, float distance, Vector2 mn, Vector2 mx, float& t, int& axis)
 {
-    const float reach = 2.0f * Physics2D::kSkin; // both shapes' skins
+    const float reach = Physics2D::kCastReach;
     Vector2 emn{mn.x - half.x - reach, mn.y - half.y - reach}, emx{mx.x + half.x + reach, mx.y + half.y + reach};
     float t0 = 0.0f, t1 = distance;
     axis = -1;

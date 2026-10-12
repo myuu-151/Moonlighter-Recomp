@@ -8,6 +8,7 @@
 #include "game/Constants.h"
 #include "game/Prefabs.h"
 #include "game/Weapon.h"
+#include "unity/Mathf.h"
 
 namespace game {
 
@@ -18,21 +19,18 @@ namespace {
 
 float Sign(float f) { return f >= 0.0f ? 1.0f : -1.0f; } // Mathf.Sign
 
-float Distance(Vector2 a, Vector2 b)
-{
-    float dx = a.x - b.x, dy = a.y - b.y;
-    return std::sqrt(dx * dx + dy * dy);
-}
-
-// Vector3.ClampMagnitude.
+// Vector3.ClampMagnitude as this Unity has it: `float sqrmag = vector.sqrMagnitude;` (the
+// squares' sum in double, rounded once: unity/Mathf.h), and over maxLength^2 `float mag =
+// (float)Math.Sqrt(sqrmag)`, each component `float n = x / mag` times maxLength. Not
+// vector.normalized (Magnitude's sum unrounded): walk_rocks' steered sticks, neither unit nor
+// diagonal, tell them apart (843 of its moves against 797; 839 for an all-float sum).
 Vector2 ClampMagnitude(Vector2 v, float max)
 {
-    float sq = v.x * v.x + v.y * v.y;
-    if (sq > max * max) {
-        float m = std::sqrt(sq);
-        if (m > 1e-05f) v = Vector2{v.x / m, v.y / m};
-        else v = Vector2{};
-        return v * max;
+    const float sqrmag = unity::SqrMagnitude(v);
+    if (sqrmag > max * max) {
+        const float mag = static_cast<float>(std::sqrt(static_cast<double>(sqrmag)));
+        const float nx = v.x / mag, ny = v.y / mag;
+        return Vector2{nx * max, ny * max};
     }
     return v;
 }
@@ -200,8 +198,13 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
     // and writes back the centre minus it, which rounds where the sum changes exponent; in a
     // physics world, its contacts move the centre too.
     fixedTime_ += deltaTime;
+    int steps = 0;
     while (fixedTime_ >= kFixedStep) {
         fixedTime_ -= kFixedStep;
+        steps++;
+    }
+    if (input.fixedSteps >= 0) steps = input.fixedSteps;
+    for (int k = 0; k < steps; k++) {
         if (physicsWorld) {
             if (!body_) body_ = &physicsWorld->AddBody(s_.body, position, layer, s_.colliderOffset, s_.colliderSize);
             physicsWorld->SetLayer(*body_, layer);
@@ -300,8 +303,9 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
         auto overlap = [&](Vector2 at, Vector2 box) { return physics_.OverlapBox(position + at, box, 0.0f, s_.slideLayers); };
         // Of two separate colliders far apart, keep the nearer.
         auto nearer = [&](const Collider2D*& a, const Collider2D*& b, bool touchCheck) {
-            if (a && b && a != b && (!touchCheck || !unity::Physics2D::IsTouching(*b, *a)) && Distance(a->position, b->position) >= tile * 2.5f) {
-                if (Distance(position, a->position) < Distance(position, b->position)) b = nullptr;
+            if (a && b && a != b && (!touchCheck || !unity::Physics2D::IsTouching(*b, *a)) && unity::Distance(a->position, b->position) >= tile * 2.5f) {
+                // (Vector3.Distance: the squares' sum in double, unity/Mathf.h)
+                if (unity::Distance(position, a->position) < unity::Distance(position, b->position)) b = nullptr;
                 else a = nullptr;
             }
         };

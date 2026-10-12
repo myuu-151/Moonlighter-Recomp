@@ -133,6 +133,12 @@ add_test(NAME player_attack
          COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_attack.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set_tests_properties(player_attack PROPERTIES ENVIRONMENT "ML_WALK_WEAPON=Forest Spirit Gloves")
+# Walking and rolling into a rock (the oracle's -oracle-walk=rocks): his Rigidbody2D in Box2D,
+# pushed out of its corners, and his body after each frame's physics steps.
+add_test(NAME player_rocks
+         COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_rocks.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+set_tests_properties(player_rocks PROPERTIES ENVIRONMENT "ML_WALK_BOX2D=1")
 
 add_executable(polynav_test tests/polynav_test.cpp)
 target_link_libraries(polynav_test PRIVATE mlcore)
