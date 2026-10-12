@@ -1,0 +1,11 @@
+# Game files and anything derived from them stay local (copyrighted)
+/Moonlighter/
+/decomp/
+/data/
+# Build output
+bin/
+obj/
+build/
+*.user
+.vs/
+__pycache__/

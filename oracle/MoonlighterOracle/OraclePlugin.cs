@@ -1,0 +1,80 @@
+using System;
+using System.Collections;
+using System.Diagnostics;
+using System.IO;
+using BepInEx;
+using BepInEx.Logging;
+using HarmonyLib;
+using UnityEngine;
+
+namespace MoonlighterOracle
+{
+    /// Reference-data recorder for the Moonlighter port.
+    ///
+    /// Always on: hooks that log real in-game dungeon generations to data/oracle/cave_game.jsonl.
+    /// With `-oracle-run` on the command line: once the game has booted, records RNG and
+    /// dungeon-layout reference data, then quits if `-oracle-quit` is also given.
+    [BepInPlugin("moonlighter.oracle", "Moonlighter Oracle", "0.1.0")]
+    public class OraclePlugin : BaseUnityPlugin
+    {
+        public static string OutDir;
+        public static ManualLogSource Log;
+
+        private void Awake()
+        {
+            Log = Logger;
+            OutDir = Path.GetFullPath(Path.Combine(Paths.GameRootPath, "..", "data", "oracle"));
+            Directory.CreateDirectory(OutDir);
+            var harmony = new Harmony("moonlighter.oracle");
+            harmony.PatchAll(typeof(OraclePlugin).Assembly);
+            FrameProbe.Install(harmony);
+            DungeonGenerator.OnGeneratedDungeon += RoomOracle.OnFloorGenerated;
+            Log.LogInfo("Oracle output: " + OutDir);
+
+            string[] args = Environment.GetCommandLineArgs();
+            bool quit = Array.IndexOf(args, "-oracle-quit") >= 0;
+            if (Array.IndexOf(args, "-oracle-run") >= 0)
+                StartCoroutine(RunAll(quit));
+            string harvestArg = Array.Find(args, a => a.StartsWith("-oracle-harvest"));
+            if (harvestArg != null)
+            {
+                int runs = harvestArg.Contains("=") && int.TryParse(harvestArg.Substring(harvestArg.IndexOf('=') + 1), out int r) ? r : 3;
+                Harvest.InstallSafety(harmony);
+                StartCoroutine(Harvest.Run(this, runs, quit));
+            }
+        }
+
+        private IEnumerator RunAll(bool quit)
+        {
+            // Wait for GameManager to load the constants table.
+            while (GameManager.Instance == null || Constants.GetInt("roomsInFloor1") == 0)
+                yield return null;
+            yield return new WaitForSeconds(1f);
+
+            uint[] saved = Rng.Get();
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                File.WriteAllText(Path.Combine(OutDir, "constants.json"), Resources.Load<TextAsset>("constants").text);
+
+                Rng.Probe(Path.Combine(OutDir, "rng.jsonl"), 64);
+                Log.LogInfo($"rng probe done ({sw.ElapsedMilliseconds} ms)");
+
+                CaveOracle.Run(Path.Combine(OutDir, "cave_mirror.jsonl"), new[] { 0, 1, 2 }, 1000, ItemMaster.Culture.Forest);
+                Log.LogInfo($"cave mirror done ({sw.ElapsedMilliseconds} ms)");
+
+                File.WriteAllText(Path.Combine(OutDir, "DONE"), DateTime.Now.ToString("o"));
+            }
+            catch (Exception e)
+            {
+                Log.LogError("oracle run failed: " + e);
+                File.WriteAllText(Path.Combine(OutDir, "FAILED"), e.ToString());
+            }
+            finally
+            {
+                Rng.Set(saved);
+            }
+            if (quit) Application.Quit();
+        }
+    }
+}

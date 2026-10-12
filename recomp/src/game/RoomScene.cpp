@@ -1,0 +1,111 @@
+#include "game/RoomScene.h"
+
+#include "game/Constants.h"
+
+namespace game {
+
+const unity::Vector2 kDoorBoundaries[4] = {{0.0f, 159.0f}, {0.0f, -159.0f}, {-262.0f, 0.0f}, {262.0f, 0.0f}};
+const unity::Vector2 kDetailSpawners[kDetailSpawnerCount] = {
+    {170.0f, 157.0f},  {100.0f, 157.0f},  {-100.0f, 157.0f},  {-170.0f, 157.0f}, {-265.0f, 75.0f}, {-265.0f, -75.0f},
+    {-170.0f, -157.0f}, {-100.0f, -157.0f}, {100.0f, -157.0f}, {170.0f, -157.0f}, {265.0f, 75.0f},  {265.0f, -75.0f},
+};
+
+namespace {
+
+// Instantiate(prefab, local + room position) then `transform.parent = room`: the local
+// position Unity keeps is the world position less the room's, both rounded to float.
+unity::Vector2 Reparented(unity::Vector2 local, unity::Vector2 room)
+{
+    float wx = local.x + room.x, wy = local.y + room.y;
+    return {wx - room.x, wy - room.y};
+}
+
+const std::string& NameAt(const std::vector<std::string>& names, int index)
+{
+    static const std::string none;
+    return index >= 0 && index < static_cast<int>(names.size()) ? names[static_cast<size_t>(index)] : none;
+}
+
+} // namespace
+
+unity::Vector2 TranslateTileToPosition(int tile, int gridSlicesX)
+{
+    float num = Constants::GetFloat("tileSize");
+    unity::Vector2 v;
+    v.x = (static_cast<float>(tile % gridSlicesX) + 0.5f) * num - static_cast<float>(kRoomFloorWidth) * 0.5f + 2.0f;
+    v.y = (static_cast<float>(tile / gridSlicesX) + 0.5f) * num - static_cast<float>(kRoomFloorHeight) * 0.5f + static_cast<float>(kRoomCenterYOffset) + 2.0f;
+    return v;
+}
+
+std::vector<SceneObject> RoomSceneObjects(const RoomFill& room, unity::Vector2 roomPosition)
+{
+    std::vector<SceneObject> out;
+    DungeonRoomInfo* info = room.roomInfo;
+
+    // SpawnEnemies -> CreateEnemyPrefab: an "EnemySpawn" at the tile, the enemy inside it.
+    for (const auto& [tile, prefab] : room.enemies) {
+        unity::Vector2 p = TranslateTileToPosition(tile, room.gridSlicesX);
+        out.push_back({"DungeonLevelEnemies/EnemySpawn", p.x, p.y});
+        out.push_back({"DungeonLevelEnemies/EnemySpawn/" + prefab + "(Clone)", p.x, p.y});
+    }
+
+    // SpawnChests: chests at their tile; mimics move into a new "EnemySpawn" there.
+    for (const auto& [tile, name] : room.chests) {
+        unity::Vector2 p = TranslateTileToPosition(tile, room.gridSlicesX);
+        if (name.find("Mimic") != std::string::npos) {
+            out.push_back({"DungeonLevelEnemies/EnemySpawn", p.x, p.y});
+            out.push_back({"DungeonLevelEnemies/EnemySpawn/" + name + "(Clone)", p.x, p.y});
+        } else {
+            out.push_back({name + "(Clone)", p.x, p.y});
+        }
+    }
+
+    // GenerateRockObjects: "<culture>Rock" on every rock tile (4), column by column.
+    if (!room.obstaclesGrid.empty()) {
+        int num = Constants::GetInt("tileSize");
+        int num2 = -((kRoomFloorWidth - kRoomFloorWidth % num - num) / 2);
+        int num3 = -((kRoomFloorHeight - kRoomFloorHeight % num - num) / 2);
+        std::string rock = std::string("DungeonLevelRoomRocks/") + RoomFill::CultureName(info->culture) + "Rock(Clone)";
+        for (int i = 0; i < room.gridSlicesX; i++)
+            for (int j = 0; j < room.gridSlicesY; j++)
+                if (room.obstaclesGrid[static_cast<size_t>(i + j * room.gridSlicesX)] == 4)
+                    out.push_back({rock, static_cast<float>(num2 + i * num), static_cast<float>(num3 + j * num)});
+    }
+
+    // The room's art: AddLightShadow's light and shadow, SetBackgroundImages' floor and walls.
+    if (room.art.set) {
+        out.push_back({"DungeonLevelArt/room", 0.0f, 0.0f, room.art.background});
+        out.push_back({"DungeonLevelArt/walls", 0.0f, 0.0f, room.art.walls});
+        out.push_back({"DungeonLevelArt/Lights", 0.0f, 0.0f, room.art.light});
+        out.push_back({"DungeonLevelArt/Shadows", 0.0f, 0.0f, room.art.shadow});
+    }
+
+    // SpawnDetails (needs the register's prefab names).
+    if (const DetailsData* d = room.detailsData) {
+        const DetailsResult& r = room.details;
+        // Wall details: into spawner i, local position reset to zero.
+        if (room.detailSpawners == kDetailSpawnerCount)
+            for (const auto& [spawner, pick] : r.wallPicks) {
+                const std::string& name = NameAt(d->wallNames, pick);
+                if (name.empty() || spawner >= kDetailSpawnerCount) continue;
+                unity::Vector2 p = kDetailSpawners[spawner];
+                out.push_back({"Details/WallDetails/DetailSpawn/" + name + "(Clone)", p.x, p.y});
+            }
+        // Particles: at the room's origin.
+        if (r.particlePick >= 0 && !NameAt(d->particleNames, r.particlePick).empty())
+            out.push_back({NameAt(d->particleNames, r.particlePick) + "(Clone)", 0.0f, 0.0f});
+        for (const auto& b : r.breakablePicks) {
+            if (NameAt(d->breakableNames, b.index).empty()) continue;
+            unity::Vector2 p = Reparented({b.x, b.y}, roomPosition);
+            out.push_back({NameAt(d->breakableNames, b.index) + "(Clone)", p.x, p.y});
+        }
+        for (const auto& c : r.creaturePicks) {
+            if (NameAt(d->creatureNames, c.index).empty()) continue;
+            unity::Vector2 p = Reparented({c.x, c.y}, roomPosition);
+            out.push_back({NameAt(d->creatureNames, c.index) + "(Clone)", p.x, p.y});
+        }
+    }
+    return out;
+}
+
+} // namespace game

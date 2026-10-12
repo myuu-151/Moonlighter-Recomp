@@ -1,0 +1,433 @@
+<title>Moonlighter Dungeon Oracle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --ground: #eef0f2;
+  --surface: #ffffff;
+  --sunk: #e3e7eb;
+  --ink: #1d2329;
+  --muted: #5b6672;
+  --line: #cfd5dc;
+  --accent: #b87d0e;
+  --accent-soft: #f4e6c8;
+  --ok: #2f8f5b;
+  --ok-soft: #dcefe3;
+  --bad: #c2413a;
+  --bad-soft: #f6dcda;
+  /* tiles */
+  --t-floor: #dfe3e7;
+  --t-hole: #2a2f36;
+  --t-rock: #8d8a83;
+  --t-fall: #6b5f88;
+  --t-slime: #6bb36b;
+  --t-chest: #d9a531;
+  --t-acid: #a7c63a;
+  --t-lava: #d7642b;
+  --t-elec: #4aa3d8;
+  /* rooms */
+  --r-normal: #c9d1d9;
+  --r-init: #6e9fd0;
+  --r-boss: #c2413a;
+  --r-heal: #5fb39a;
+  --r-chest: #d9a531;
+  --r-secret: #9b7fc7;
+  --r-camp: #b48a5a;
+  --r-corrupt: #7c4b8a;
+  --display: "Pixelify Sans", "Courier New", monospace;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #14171b; --surface: #1c2026; --sunk: #242a31; --ink: #e6e9ed; --muted: #97a2ae; --line: #313840;
+    --accent: #e2a93b; --accent-soft: #3a2f18; --ok: #5cc28a; --ok-soft: #173326; --bad: #ec6d64; --bad-soft: #3b1d1b;
+    --t-floor: #2b3139; --t-hole: #07090b; --t-rock: #77736c; --r-normal: #3a434d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #14171b; --surface: #1c2026; --sunk: #242a31; --ink: #e6e9ed; --muted: #97a2ae; --line: #313840;
+  --accent: #e2a93b; --accent-soft: #3a2f18; --ok: #5cc28a; --ok-soft: #173326; --bad: #ec6d64; --bad-soft: #3b1d1b;
+  --t-floor: #2b3139; --t-hole: #07090b; --t-rock: #77736c; --r-normal: #3a434d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font: 15px/1.55 var(--body); padding-inline: 20px; padding-block: 28px 64px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; letter-spacing: .01em; }
+h1 { font-size: clamp(28px, 4.4vw, 44px); line-height: 1.05; }
+h2 { font-size: 22px; }
+h3 { font-size: 17px; }
+p { margin: 0; max-width: 68ch; }
+.mono { font-family: var(--mono); font-size: 13px; }
+.muted { color: var(--muted); }
+.eyebrow { font: 600 12px/1 var(--body); text-transform: uppercase; letter-spacing: .09em; color: var(--accent); }
+header { display: grid; gap: 12px; }
+header .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 13px; }
+section { display: grid; gap: 16px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font: 600 12px/1.6 var(--body); white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.neutral { background: var(--sunk); color: var(--muted); }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px/1.3 var(--body); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); background: var(--sunk); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+td.group { font-weight: 600; background: color-mix(in srgb, var(--sunk) 55%, transparent); }
+.browser { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .browser { grid-template-columns: 1fr; } }
+.floorlist { display: grid; gap: 14px; max-height: 760px; overflow: auto; padding-right: 4px; }
+@media (max-width: 820px) { .floorlist { max-height: 260px; } }
+.floorlist .culture { display: grid; gap: 4px; }
+.floorlist .culture > span { font: 600 12px/1 var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 4px 2px; }
+.floorbtn { all: unset; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; font-size: 14px; }
+.floorbtn:hover { background: var(--sunk); }
+.floorbtn[aria-current="true"] { background: var(--accent-soft); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
+.floorbtn:focus-visible, .roomcell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.floorbtn small { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.stage { display: grid; gap: 18px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.panel .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }
+.mapwrap { overflow-x: auto; }
+.mapwrap svg { display: block; max-width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.roomgrid { display: grid; gap: 2px; width: 100%; max-width: 640px; }
+.roomgrid div { aspect-ratio: 1; border-radius: 2px; position: relative; display: grid; place-items: center; font: 600 10px/1 var(--mono); color: #fff; }
+.roomgrid .enemy { width: 72%; height: 72%; border-radius: 50%; background: var(--bad); display: grid; place-items: center; }
+.roomgrid .enemy.champ { box-shadow: 0 0 0 2px var(--accent); }
+.roomgrid .chest { width: 70%; height: 60%; border-radius: 2px; background: var(--t-chest); border: 2px solid #7a5a12; }
+.roomgrid .chest.mimic { background: var(--r-corrupt); }
+.roomcols { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 18px; align-items: start; }
+@media (max-width: 960px) { .roomcols { grid-template-columns: 1fr; } }
+ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+ul.plain li { display: flex; justify-content: space-between; gap: 10px; }
+ul.plain li.chest { display: grid; gap: 4px; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
+ul.plain li.chest:last-child { border-bottom: 0; }
+ul.plain li.chest .row { display: flex; justify-content: space-between; gap: 10px; }
+ul.drops { list-style: none; margin: 0; padding: 0 0 0 10px; display: grid; gap: 1px; font-size: 13px; }
+ul.drops li { display: flex; justify-content: space-between; gap: 10px; }
+ul.drops li.miss { color: var(--muted); }
+ul.drops li.miss span:first-child { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); }
+.bugs { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.bug { border-top: 2px solid var(--accent); padding-top: 10px; display: grid; gap: 6px; }
+.bug code, p code, td code { font-family: var(--mono); font-size: .9em; background: var(--sunk); padding: 0 4px; border-radius: 3px; }
+@media (prefers-reduced-motion: no-preference) { .floorbtn, .roomcell rect { transition: background .12s, opacity .12s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Moonlighter → GameCube port · verification</span>
+    <h1>Dungeon oracle report</h1>
+    <p>Every dungeon floor below was generated by the real game and recorded by the oracle plugin. The C++ port replays each recorded step from the game's own random state and must land on exactly the same result. This page shows what was checked and what those floors look like, so you can look over a few by eye.</p>
+    <p class="muted">Project status and measurements: <a href="https://claude.ai/artifact/76MCSvHxGGd6LAFXjHFyvV" style="color:var(--accent)">Moonlighter GameCube port</a></p>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <section>
+    <h2>Checks</h2>
+    <div class="tablewrap"><table id="checks"><thead><tr><th>Check</th><th style="text-align:right">Match</th><th style="text-align:right">Differ</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+    <p class="muted" id="checknotes"></p>
+  </section>
+
+  <section>
+    <div class="head" style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2>Floors</h2>
+      <span class="muted" style="font-size:13px">Pick a floor, then a room on its map.</span>
+    </div>
+    <div class="browser">
+      <nav class="floorlist" id="floorlist" aria-label="Recorded floors"></nav>
+      <div class="stage">
+        <div class="panel">
+          <div class="head"><h3 id="floortitle"></h3><span class="mono muted" id="floormeta"></span></div>
+          <div class="mapwrap" id="map"></div>
+          <div class="legend">
+            <span><i style="background:var(--r-init)"></i>Start</span>
+            <span><i style="background:var(--r-boss)"></i>Boss / next floor</span>
+            <span><i style="background:var(--r-heal)"></i>Healing pool</span>
+            <span><i style="background:var(--r-camp)"></i>Camp</span>
+            <span><i style="background:var(--r-chest)"></i>Chest room</span>
+            <span><i style="background:var(--r-secret)"></i>Has secret room</span>
+            <span><i style="background:var(--r-corrupt)"></i>Corrupted</span>
+            <span><i style="background:var(--r-normal)"></i>Normal</span>
+          </div>
+        </div>
+        <div class="panel" id="roompanel">
+          <div class="head"><h3 id="roomtitle">Room</h3><span class="mono muted" id="roommeta"></span></div>
+          <div class="roomcols">
+            <div id="roomgrid" class="roomgrid" role="img" aria-label="Room tile grid"></div>
+            <div style="display:grid;gap:14px">
+              <div><div class="eyebrow" style="margin-bottom:6px">Enemies</div><ul class="plain" id="enemies"></ul></div>
+              <div><div class="eyebrow" style="margin-bottom:6px">Chests</div><ul class="plain" id="chests"></ul></div>
+              <div class="legend">
+                <span><i style="background:var(--t-floor)"></i>Floor</span><span><i style="background:var(--t-hole)"></i>Hole</span>
+                <span><i style="background:var(--t-rock)"></i>Rock</span><span><i style="background:var(--t-fall)"></i>Falling floor</span>
+                <span><i style="background:var(--t-slime)"></i>Slime</span><span><i style="background:var(--t-acid)"></i>Acid</span>
+                <span><i style="background:var(--t-lava)"></i>Lava</span><span><i style="background:var(--t-elec)"></i>Electric</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Chests and drops</h2>
+    <p class="muted">Chest tier and mimic picks are checked against the game on every floor. Fixed drops come from each chest's own drop table, rolled from the random state the game had when the chest spawned (the same calculation the port verifies), so these are the items those chests really held. Chests whose contents are generated randomly on spawn aren't listed item by item yet.</p>
+    <div class="tablewrap"><table id="tiers"><thead></thead><tbody></tbody></table></div>
+    <div class="tablewrap"><table id="drops"><thead><tr><th>Fixed drop</th><th>From</th><th style="text-align:right">Rolls</th><th style="text-align:right">Dropped</th><th style="text-align:right">Items</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Random draws the port doesn't model yet</h2>
+    <p class="muted">Measured by stepping Unity's generator from each step's start state to its end state. These are prefab scripts (enemy <code>Init</code>, chest contents, decorations) that the next stages of the port have to reproduce.</p>
+    <div class="tablewrap"><table id="draws"><thead><tr><th>Step [object]</th><th style="text-align:right">Draws</th><th style="text-align:right">Samples</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Game bugs the port keeps on purpose</h2>
+    <div class="bugs">
+      <div class="bug"><h3>Timed chests never spawn</h3><p>Their count is <code>Random.Range(0, 1)</code>; the maximum is exclusive, so it is always 0. The draw still happens.</p></div>
+      <div class="bug"><h3>The room asset is stale</h3><p>The serialized <code>DungeonRoomDatabase</code> has weights already penalised and older zones. Each floor, <code>LoadFromJSON</code> overwrites it from the <code>rooms</code> text: through a boxed copy, but the room objects are shared. That is also what resets the ×0.001 weights.</p></div>
+      <div class="bug"><h3>Lights only on a floor's first room</h3><p><code>AddLightShadow</code> aliases the dungeon's sprite list and the next room's <code>SetLights</code> clears it, so only the start room gets a random light and shadow.</p></div>
+      <div class="bug"><h3><code>UnloadBundlesExcept</code> is inverted</h3><p>It unloads only the culture it should keep. Other dungeons' sprite lists stay emptied all session, so corrupted rooms never get lights.</p></div>
+      <div class="bug"><h3>Room names aren't unique</h3><p>The database holds two different <code>Golem_Enemies_13</code> designs; <code>GetRoomByName</code> always returns the first. The port tracks rooms by database index instead.</p></div>
+      <div class="bug"><h3>Boss miner eats the miner list</h3><p><code>BossRoomMiner.Init</code> removes from the generator's live miner list while searching for a spot. Copying the list changes every floor 3.</p></div>
+      <div class="bug"><h3>Corrupted room lists shifted</h3><p>Forest's corrupted rooms are filed under Golem, Desert's under Forest, Tesla's under Desert; Tesla gets a mix.</p></div>
+      <div class="bug"><h3>Grid one row too big</h3><p><code>LoadGridFromInfo</code> allocates 20 + 20×11 tiles; rooms that skip it keep the prefab's 20×11.</p></div>
+      <div class="bug"><h3>Unstable sort matters</h3><p>Chest rooms are sorted with Mono's introsort; a stable sort changes 6 of 3,000 layouts.</p></div>
+      <div class="bug"><h3>Wasted pick before the miniboss</h3><p>On floors 1–2 the next-floor room first draws a normal room (penalising its weight) and then is replaced by the miniboss room.</p></div>
+      <div class="bug"><h3>Boss chests fill twice</h3><p>Post-boss chests roll random contents in <code>Awake</code>; <code>PostBossSpawnEnemyController</code> then empties them and rolls again with the boss drop bonus (keeping any amulet). Both rolls draw.</p></div>
+      <div class="bug"><h3>Item list sort isn't a sort</h3><p>Chest item weights are sorted with <code>(int)(y.weight - x.weight)</code>, which truncates small differences to 0 and is non-transitive. The order is dumped from the game, not rebuilt.</p></div>
+      <div class="bug"><h3>Wanderer shuffle by broken comparer</h3><p>The DLC picks the intermediate room's host by sorting with <code>Random.Range(0, 1000)</code> as the comparison. The draw count depends on Mono's introsort, so the port runs the same introsort.</p></div>
+      <div class="bug"><h3>Shrine log crash</h3><p>If no Desert room qualifies for the hard-enemies shrine, the log line reads the null room's name and the coroutine dies there.</p></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const $ = (s) => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v; else if (k === "text") e.textContent = v; else e.setAttribute(k, v);
+  }
+  for (const c of kids) e.append(c);
+  return e;
+};
+const SVGNS = "http://www.w3.org/2000/svg";
+const svg = (tag, attrs = {}) => { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+
+function renderMeta() {
+  const floors = DATA.floors;
+  const harvested = floors.filter((f) => f.source === "harvest").length;
+  const rooms = floors.reduce((n, f) => n + f.rooms.reduce((m, r) => m + r.placed.length, 0), 0);
+  $("#meta").append(
+    el("span", { text: `Generated ${DATA.generated}` }),
+    el("span", { text: `${floors.length} floors recorded (${harvested} harvested, ${floors.length - harvested} from play)` }),
+    el("span", { text: `${rooms} rooms` }),
+  );
+}
+
+function renderChecks() {
+  const body = $("#checks tbody");
+  const labels = { "cave_oracle_test.exe": "Layout and RNG", "room_oracle_test.exe": "Room selection", "fill_oracle_test.exe": "Room filling, stage by stage", "room_sync_test.exe": "Whole rooms, first draw to last (no resyncs)", "floor_sync_test.exe": "Whole floors, layout to final state (resyncs only where old traces lack inputs)" };
+  const notes = [];
+  for (const t of DATA.tests) {
+    body.append(el("tr", {}, el("td", { class: "group", colspan: "4", text: labels[t.exe] || t.exe })));
+    if (t.error) { body.append(el("tr", {}, el("td", { colspan: "4", text: `Could not run: ${t.error}` }))); continue; }
+    for (const r of t.rows) {
+      const state = r.fail ? el("span", { class: "pill bad", text: "differs" }) : r.pass ? el("span", { class: "pill ok", text: "matches" }) : el("span", { class: "pill neutral", text: "no data" });
+      body.append(el("tr", {}, el("td", { text: r.name }), el("td", { class: "num", text: r.pass.toLocaleString() }), el("td", { class: "num", text: r.fail.toLocaleString() }), el("td", {}, state)));
+    }
+    notes.push(...t.notes);
+  }
+  $("#checknotes").textContent = notes.length ? `First reported differences: ${notes.slice(0, 6).join(" · ")}` : "No differences reported.";
+}
+
+function renderDraws() {
+  const fill = DATA.tests.find((t) => t.exe === "fill_oracle_test.exe");
+  const body = $("#draws tbody");
+  const rows = (fill && fill.draws || []).filter((d) => d.max > 0).sort((a, b) => b.max - a.max);
+  if (!rows.length) { body.append(el("tr", {}, el("td", { colspan: "3", class: "muted", text: "No measurements yet." }))); return; }
+  for (const d of rows.slice(0, 40)) {
+    body.append(el("tr", {}, el("td", { class: "mono", text: d.what }), el("td", { class: "num", text: d.min === d.max ? `${d.min}` : `${d.min}–${d.max}` }), el("td", { class: "num", text: d.n })));
+  }
+}
+
+const roleColor = (r) => {
+  if (!r.placed.length && r.type === "B") return "var(--r-boss)";
+  const role = r.role;
+  if (role === "init") return "var(--r-init)";
+  if (role === "boss") return "var(--r-boss)";
+  if (role === "onsen") return "var(--r-heal)";
+  if (role === "crazyPete") return "var(--r-camp)";
+  if (role === "corrupted") return "var(--r-corrupt)";
+  if (role === "chest") return "var(--r-chest)";
+  if (["homeChest", "waves", "wandererNest", "abandonedItems"].includes(role)) return "var(--r-secret)";
+  return "var(--r-normal)";
+};
+
+let current = { floor: null, room: null };
+
+function renderFloorList() {
+  const nav = $("#floorlist");
+  const groups = new Map();
+  DATA.floors.forEach((f, i) => { const k = f.culture; if (!groups.has(k)) groups.set(k, []); groups.get(k).push([f, i]); });
+  for (const [culture, items] of groups) {
+    const g = el("div", { class: "culture" }, el("span", { text: culture }));
+    for (const [f, i] of items) {
+      const label = `Floor ${f.level + 1}` + (f.run != null ? ` · run ${f.run + 1}` : " · your play");
+      const b = el("button", { class: "floorbtn", "data-i": i, "aria-current": "false" }, el("span", { text: label }), el("small", { text: `${f.rooms.reduce((n, r) => n + r.placed.length, 0)} rooms` }));
+      b.addEventListener("click", () => selectFloor(i));
+      g.append(b);
+    }
+    nav.append(g);
+  }
+}
+
+function selectFloor(i) {
+  current.floor = i;
+  document.querySelectorAll(".floorbtn").forEach((b) => b.setAttribute("aria-current", String(+b.dataset.i === i)));
+  const f = DATA.floors[i];
+  $("#floortitle").textContent = `${f.culture} · floor ${f.level + 1}`;
+  $("#floormeta").textContent = `${f.source === "harvest" ? `harvest run ${f.run + 1}, seed ${f.seed}` : "recorded from your play"} · ${f.picks} room picks`;
+  drawMap(f);
+  const first = f.rooms.find((r) => r.role === "init" && r.placed.length) || f.rooms.find((r) => r.placed.length);
+  if (first) selectRoom(first.i);
+}
+
+function drawMap(f) {
+  const C = 64, G = 14, pad = 12;
+  const cells = [];
+  for (const r of f.rooms) for (const u of r.units) cells.push({ r, x: r.x + u.dx, y: r.y + u.dy, u });
+  const xs = cells.map((c) => c.x), ys = cells.map((c) => c.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = (maxX - minX + 1) * (C + G) - G + pad * 2, H = (maxY - minY + 1) * (C + G) - G + pad * 2;
+  const px = (x) => pad + (x - minX) * (C + G), py = (y) => pad + (maxY - y) * (C + G); // y up, like the game
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", "aria-label": "Floor map" });
+  // connections
+  for (const c of cells) {
+    const cx = px(c.x) + C / 2, cy = py(c.y) + C / 2;
+    if (c.u.e >= 0) s.append(svg("line", { x1: cx + C / 2, y1: cy, x2: cx + C / 2 + G, y2: cy, stroke: "var(--muted)", "stroke-width": 6, "stroke-linecap": "round" }));
+    if (c.u.n >= 0) s.append(svg("line", { x1: cx, y1: cy - C / 2, x2: cx, y2: cy - C / 2 - G, stroke: "var(--muted)", "stroke-width": 6, "stroke-linecap": "round" }));
+  }
+  for (const c of cells) {
+    const g = svg("g", { class: "roomcell", tabindex: "0", role: "button", "aria-label": c.r.placed.map((p) => p.name).join(", ") || "Boss room" });
+    const rect = svg("rect", { x: px(c.x), y: py(c.y), width: C, height: C, rx: 6, fill: roleColor(c.r), stroke: current.room === c.r.i ? "var(--accent)" : "none", "stroke-width": 3 });
+    rect.dataset.room = c.r.i;
+    g.append(rect);
+    const name = (c.r.placed[0] && c.r.placed[0].name) || (c.r.type === "B" ? "Boss" : "");
+    const short = name.replace(/^(Golem|Forest|Desert|Tesla|Tech)_/, "").slice(0, 11);
+    if (c.u.dx === 0 && c.u.dy === 0) {
+      const t = svg("text", { x: px(c.x) + C / 2, y: py(c.y) + C / 2 + 4, "text-anchor": "middle", "font-family": "IBM Plex Mono, monospace", "font-size": 9.5, fill: "var(--ink)" });
+      t.textContent = short;
+      g.append(t);
+    }
+    const pick = () => selectRoom(c.r.i);
+    g.addEventListener("click", pick);
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+    g.style.cursor = "pointer";
+    s.append(g);
+  }
+  $("#map").replaceChildren(s);
+}
+
+const TILE = { 0: "var(--t-floor)", 1: "var(--t-floor)", 2: "var(--t-hole)", 4: "var(--t-rock)", 8: "var(--t-fall)", 16: "var(--t-slime)", 32: "var(--t-floor)", 64: "var(--t-acid)", 128: "var(--t-lava)", 256: "var(--t-elec)" };
+
+function selectRoom(idx) {
+  current.room = idx;
+  const f = DATA.floors[current.floor];
+  const r = f.rooms.find((x) => x.i === idx);
+  document.querySelectorAll("#map rect").forEach((rc) => rc.setAttribute("stroke", +rc.dataset.room === idx ? "var(--accent)" : "none"));
+  const placed = r.placed[0];
+  const secret = r.placed[1];
+  $("#roomtitle").textContent = placed ? placed.name : (r.type === "B" ? "Boss room (prefab)" : "Room");
+  $("#roommeta").textContent = `cell ${r.x},${r.y}${r.role ? " · " + r.role : ""}${secret ? " · secret: " + secret.name : ""}`;
+  const gridEl = $("#roomgrid");
+  gridEl.replaceChildren();
+  const X = 20, Y = 11;
+  gridEl.style.gridTemplateColumns = `repeat(${X}, minmax(0, 1fr))`;
+  const grid = placed && placed.grid;
+  const enemies = new Map(), chests = new Map();
+  if (placed) {
+    placed.enemies.forEach((e) => enemies.set(e.tile, e));
+    placed.chests.forEach((c) => c.tile != null && chests.set(c.tile, c));
+  }
+  for (let y = Y - 1; y >= 0; y--) {
+    for (let x = 0; x < X; x++) {
+      const t = x + y * X;
+      const v = grid ? grid[t] || 0 : 0;
+      const cell = el("div");
+      cell.style.background = TILE[v] || "var(--t-floor)";
+      if (enemies.has(t)) {
+        const e = enemies.get(t);
+        cell.append(el("span", { class: "enemy" + (e.champion ? " champ" : ""), title: e.name + (e.champion ? " (champion)" : ""), text: e.name[0] }));
+      } else if (chests.has(t)) {
+        const c = chests.get(t);
+        cell.append(el("span", { class: "chest" + (/Mimic/.test(c.name) ? " mimic" : ""), title: c.name }));
+      }
+      gridEl.append(cell);
+    }
+  }
+  const counts = new Map();
+  (placed ? placed.enemies : []).forEach((e) => { const k = e.name + (e.champion ? " ★" : ""); counts.set(k, (counts.get(k) || 0) + 1); });
+  $("#enemies").replaceChildren(...(counts.size ? [...counts].map(([k, n]) => el("li", {}, el("span", { text: k }), el("span", { class: "mono muted", text: `×${n}` }))) : [el("li", { class: "muted", text: "None" })]));
+  $("#chests").replaceChildren(...(placed && placed.chests.length ? placed.chests.map(chestItem) : [el("li", { class: "muted", text: "None" })]));
+}
+
+function chestItem(c) {
+  const li = el("li", { class: "chest" }, el("div", { class: "row" }, el("span", { text: c.name + (c.mimic ? " (mimic)" : "") }), el("span", { class: "mono muted", text: c.tile != null ? `tile ${c.tile}` : "" })));
+  if (c.rolls) {
+    if (c.rolls.length) {
+      li.append(el("ul", { class: "drops" }, ...c.rolls.map((r) => el("li", { class: r.qty ? "" : "miss" },
+        el("span", { text: r.item + (r.ownedAmulet ? " (owned)" : "") }),
+        el("span", { class: "mono", text: r.qty ? `×${r.qty}` : `${Math.round(r.prob * 100)}%` })))));
+    } else {
+      li.append(el("span", { class: "muted", style: "font-size:13px", text: c.randomContents ? "Random contents (not listed yet)" : "No fixed drops" }));
+    }
+  } else if (!c.mimic) {
+    li.append(el("span", { class: "muted", style: "font-size:13px", text: "Drops not recorded on this floor (older harvest)" }));
+  }
+  return li;
+}
+
+function renderChests() {
+  const s = DATA.chests;
+  if (!s) return;
+  const tiers = [...new Set(s.byFloor.map((r) => r[1]))].sort((a, b) => (/Mimic/.test(a) - /Mimic/.test(b)) || a.localeCompare(b));
+  const head = $("#tiers thead");
+  head.append(el("tr", {}, el("th", { text: "Floor" }), ...tiers.map((t) => el("th", { style: "text-align:right", text: t.replace(/Chest$/, "").replace(/([a-z])([A-Z])/g, "$1 $2") }))));
+  const body = $("#tiers tbody");
+  for (const lv of [1, 2, 3]) {
+    const row = el("tr", {}, el("td", { text: `Floor ${lv}` }));
+    for (const t of tiers) {
+      const hit = s.byFloor.find((r) => r[0] === lv && r[1] === t);
+      row.append(el("td", { class: "num", text: hit ? hit[2] : "·" }));
+    }
+    body.append(row);
+  }
+  const drops = $("#drops tbody");
+  if (!s.items.length) {
+    drops.append(el("tr", {}, el("td", { colspan: "5", class: "muted", text: "No chest drop tables recorded yet." })));
+    return;
+  }
+  for (const it of s.items) {
+    drops.append(el("tr", {}, el("td", { text: it.item }), el("td", { class: "muted", text: it.chests }), el("td", { class: "num", text: it.rolls }), el("td", { class: "num", text: it.hits }), el("td", { class: "num", text: it.qty })));
+  }
+}
+
+renderMeta();
+renderChecks();
+renderChests();
+renderDraws();
+renderFloorList();
+if (DATA.floors.length) selectFloor(0);
+</script>
