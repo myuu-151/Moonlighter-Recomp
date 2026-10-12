@@ -141,6 +141,10 @@ public:
     void SyncColliders();
     // Physics2D.SyncTransforms for a body whose transform is at `position`.
     void SyncTransform(Rigidbody2D& body, Vector2 position);
+    // The body awake with its time at rest (towards sleeping) back to zero, even if it was
+    // awake already (what Unity does when it syncs a moved transform, or remakes a collider of
+    // the body's: enemy_GolemSoldier.jsonl), its velocities kept.
+    void RestartRest(Rigidbody2D& body);
     // b2World::Step at the project's iterations (after SyncColliders).
     void Step(float dt);
     // One fixed step of Unity's for `body` whose transform is at `position`: sync it, step,

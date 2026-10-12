@@ -271,20 +271,24 @@ void PhysicsWorld::SyncTransform(Rigidbody2D& body, Vector2 position)
     const b2Vec2 at = b->GetPosition();
     if (at.x == position.x && at.y == position.y) return; // not moved since the write-back
     b->SetTransform(B2(position), b->GetAngle());
-    if (options_.wakeOnSync) {
-        // Unity's sync starts the body's rest over: awake, and its time at rest (towards
-        // sleeping) back to zero even if it was already awake (slime.jsonl: an enemy its
-        // PolyNavAgent moves by transform never falls asleep). Box2D's SetAwake(true) only resets
-        // a sleeping body's, so: asleep, then awake, keeping the velocities.
-        const b2Vec2 v = b->GetLinearVelocity();
-        const float32 w = b->GetAngularVelocity();
-        b->SetAwake(false);
-        b->SetAwake(true);
-        b->SetLinearVelocity(v);
-        b->SetAngularVelocity(w);
-    }
+    // Unity's sync starts the body's rest over (slime.jsonl: an enemy its PolyNavAgent moves by
+    // transform never falls asleep).
+    if (options_.wakeOnSync) RestartRest(body);
     // (b2ContactManager::FindNewContacts is public; the world only hands it out const.)
     if (options_.contactsOnSync) const_cast<b2ContactManager&>(world_->GetContactManager()).FindNewContacts();
+}
+
+void PhysicsWorld::RestartRest(Rigidbody2D& body)
+{
+    // Box2D's SetAwake(true) only resets a sleeping body's time at rest, so: asleep, then awake,
+    // keeping the velocities.
+    b2Body* b = body.body_;
+    const b2Vec2 v = b->GetLinearVelocity();
+    const float32 w = b->GetAngularVelocity();
+    b->SetAwake(false);
+    b->SetAwake(true);
+    b->SetLinearVelocity(v);
+    b->SetAngularVelocity(w);
 }
 
 void PhysicsWorld::Step(float dt)

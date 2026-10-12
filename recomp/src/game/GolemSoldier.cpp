@@ -1,6 +1,7 @@
 #include "game/GolemSoldier.h"
 
 #include "game/Constants.h"
+#include "game/MasterAudio.h"
 #include "unity/Mathf.h"
 
 namespace game {
@@ -28,7 +29,9 @@ void GolemSoldierBehaviour::ChooseAndApplyAction(float deltaTime)
 
 void GolemSoldierBehaviour::PlayHitOnGroundSound()
 {
-    if (enemy.scene.playSound) enemy.scene.playSound(enemy, "golem_dungeon_soldier_sword_crash");
+    static const char* const kSound = "golem_dungeon_soldier_sword_crash";
+    if (enemy.scene.audio) enemy.scene.audio->PlaySound(kSound);
+    if (enemy.scene.playSound) enemy.scene.playSound(enemy, kSound);
     EnemyHero* hero = enemy.scene.hero;
     if (hero && hero->vibrate)
         hero->vibrate(Constants::GetFloat("defaultEnemyVibrationIntensity"), Constants::GetFloat("defaultEnemyVibrationDuration"));

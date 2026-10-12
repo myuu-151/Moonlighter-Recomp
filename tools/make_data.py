@@ -30,6 +30,7 @@ git ignores), for the port and its tests.
      (with its curves exact: the attack colliders' sizes, offsets and activity), and
      animators/forest_gloves.json, sprites/weapons/forest_gloves/ the same for the Forest Gloves
      (what the oracle's save slot equips: the main attack is checked with them).
+   - sound_groups.json: MasterAudio's sound groups (what decides PlaySound's Random draws).
 
 Nothing from the game is stored in this repository. Needs Python 3 with UnityPy
 (py -m pip install UnityPy).
@@ -152,6 +153,7 @@ def main():
     step("the painted textures' tiles", [EXTRACT / 'tiles.py', '--game', game, '--out', OUT])
     step('the sprites', [EXTRACT / 'sprites.py', '--game', game, '--out', OUT])
     step("the hero's, enemies' and weapons' animators and sprites", [EXTRACT / 'animators.py', '--game', game, '--out', OUT])
+    step("MasterAudio's sound groups", [EXTRACT / 'sound_groups.py', '--game', game, '--out', OUT])
     print(f'-- done: {OUT}', flush=True)
 
 

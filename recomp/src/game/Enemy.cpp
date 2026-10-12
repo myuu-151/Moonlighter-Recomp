@@ -187,7 +187,11 @@ void Enemy::UpdateAnimator(float deltaTime)
 {
     if (!enemyAnimator || !animatorEnabled || !active || destroyed) return;
     enemyAnimator->Update(deltaTime);
-    if (hasAttackCollider) ApplyAnimatedProperties();
+    if (hasAttackCollider) {
+        ApplyAnimatedProperties();
+        // Unity remakes the box's shapes as the Animator writes it.
+        if (physics) physics->SyncAttackCollider(*this);
+    }
     if (const std::string* s = enemyAnimator->Sprite()) sprite = *s;
 }
 
@@ -643,6 +647,7 @@ public:
             Hit hit;
             hit.enemy = e;
             hit.player = owner_.hero_ && other->GetBody() == owner_.hero_->Body() && !other->IsSensor();
+            hit.otherTrigger = other->IsSensor();
             owner_.hits_.push_back(hit);
         }
     }
@@ -687,8 +692,14 @@ void EnemyPhysics::SyncAttackCollider(Enemy& e)
         return;
     b2Body* b = e.body->Body();
     if (e.attackFixture) {
-        // Remade while on: what it touched, if that isn't to enter again.
-        if (on && !options_.reenterOnReshape)
+        // Remade while on: what it touched doesn't enter again (nor what an earlier remake
+        // since the last step carried).
+        for (size_t k = carried_.size(); k-- > 0;)
+            if (carried_[k].first == e.attackFixture) {
+                if (on) carried_[k].first = nullptr;
+                else carried_.erase(carried_.begin() + static_cast<std::ptrdiff_t>(k));
+            }
+        if (on)
             for (const b2ContactEdge* ce = b->GetContactList(); ce; ce = ce->next) {
                 const b2Contact* c = ce->contact;
                 if (!c->IsTouching()) continue;
@@ -714,7 +725,7 @@ void EnemyPhysics::SyncAttackCollider(Enemy& e)
     fd.isSensor = true;
     fd.userData = &e.attackLayer;
     e.attackFixture = b->CreateFixture(&fd);
-    if (options_.wakeOnAttackChange) b->SetAwake(true);
+    world_.RestartRest(*e.body);
     for (auto& c : carried_)
         if (!c.first) c.first = e.attackFixture;
 }
