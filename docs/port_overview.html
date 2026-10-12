@@ -99,7 +99,9 @@ ul.list { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 75c
       <div class="milestone"><span class="pill done">Done</span><div><strong>Boss rooms' <code>Start()</code>.</strong> The boss rooms' scripts are ported and run in prefab order, replacing the measured draw counts (Golem 132, Forest 72). 36 of 36 recorded floors stay in sync from layout to last room, boss rooms included.</div></div>
       <div class="milestone"><span class="pill done">Done</span><div><strong>Whole rooms and their textures.</strong> Each room is built from its prefab, doors and special doors included. 95.2% of objects with a sprite match the game's snapshot on path, active flag, position and sprite; the rest are changed at runtime by code that isn't ported yet. The textures the game paints at runtime (holes, three floor-detail layers, slime, acid, lava, electric) are bit-exact by CRC, which took Unity's own DXT decode.</div></div>
       <div class="milestone"><span class="pill done">Done</span><div><strong>Rooms on the GameCube.</strong> <a href="https://github.com/myuu-151/Moonlighter-GC">Moonlighter GC</a> generates floors with the port and draws them room by room with GX: CI8 and RGB5A3 sprites, the painted textures, full 16:9 widescreen or a 4:3 letterbox. A test build walks all 148 rooms of the four dungeons in Dolphin with no errors and steady memory.</div></div>
-      <div class="milestone"><span class="pill doing">Next</span><div><strong>The player.</strong> Will's movement, rolling and collision against the room's obstacles, with the input and animation layer the rest of the game will reuse.</div></div>
+      <div class="milestone"><span class="pill done">Done</span><div><strong>The player.</strong> Will walks, rolls, falls into holes and attacks, and is replayed against the game frame by frame with positions, Animator states, sprites and hitboxes matching bit for bit. The recordings are walking (674 frames), rolling (964), diagonals (319), falling with its damage (259) and a three-hit combo (529). Along the way the port gained Unity's Animator with exact curves, a DOTween subset, Box2D 2.3.1 for his Rigidbody2D, and his health, shields, absorption, invincibility and blink.</div></div>
+      <div class="milestone"><span class="pill done">Done</span><div><strong>Will on the GameCube.</strong> The GameCube pad drives him through the rooms: walking, rolling and attacking with the starting Broom Spear, which is drawn over him. Falls put him back at the door he came in by, and the hit blink and red flash are drawn with a second TEV stage.</div></div>
+      <div class="milestone"><span class="pill doing">Now</span><div><strong>Enemies.</strong> PolyNav pathfinding is ported (10,917 of 11,032 checks match the game's maps so far), and the BabySlime's behaviour, stats and timers are ported and waiting on their first recording. Next come combat in both directions and enemies on the GameCube.</div></div>
       <div class="milestone"><span class="pill next">Later</span><div><strong>The rest of the game.</strong> C# → C++ translation at scale, a thin Unity layer on Octave (sprites, 2D collision, animation state machines, UI), asset converters, then GameCube memory work.</div></div>
     </div>
   </section>
@@ -168,15 +170,18 @@ ul.list { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 75c
       <li><strong>Mono's sort, exactly.</strong> Introsort is unstable, and its depth limit comes from the list's <em>capacity</em>, so <code>List&lt;T&gt;</code> tracks .NET's growth rule.</li>
       <li><strong>Reference semantics.</strong> The game mutates shared objects (miner lists, room weights, sprite lists); the port keeps C# reference behaviour instead of copying.</li>
       <li><strong>Hidden draws in prefab scripts.</strong> Chests shuffle 27 times on spawn, Tangles draw twice, decorations up to ~580 times per room; the oracle measures each.</li>
+      <li><strong>The Animator keeps normalized time.</strong> Each frame adds <code>(dt × speed) / length</code> in floats, and clips are sampled at <code>normalized × length</code>. Accumulating seconds instead drifts by a few ulps and moves hitbox sizes.</li>
+      <li><strong>The weapon's Animator runs before the hero's.</strong> Triggers his state callbacks set on it take effect the next frame. An exit's leftover time carries into the next state at <em>that</em> state's speed, and a state without a clip writes nothing the frame it's entered.</li>
+      <li><strong>DOTween clocks.</strong> <code>DOVirtual.DelayedCall</code> ignores the time scale unless asked not to, so the damaged effect runs on unscaled time while the blink and invincibility run on scaled time.</li>
     </ul>
   </section>
 
   <section>
     <h2>What's next</h2>
     <ul class="list">
-      <li>Port the boss rooms' <code>Start()</code> scripts, which still use measured draw counts.</li>
-      <li>Render a generated floor from extracted room art, then diff it against the oracle's object snapshot (positions, sprites, sorting) instead of eyeballing it.</li>
-      <li>Start the Unity layer on Octave: sprites and sorting, 2D collision, animation state machines.</li>
+      <li>Record the BabySlime and get it bit-exact: chasing through PolyNav, contact damage, taking hits.</li>
+      <li>Combat both ways: weapon hits with the 0.05 s hit-stop, enemy invincibility, knockback, and Will taking enemy damage.</li>
+      <li>Enemies and a health bar on the GameCube.</li>
     </ul>
   </section>
 </div>
