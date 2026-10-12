@@ -72,3 +72,6 @@ WeaponEquipmentMaster.cs	1	n	game/Weapon
 HPPotionI.cs	0.8	n	game/HeroMerchantController	the heal (not NG+ factors, amulets)
 Consumable.cs	0.5	n	game/HeroMerchantController	SendConsumeEvent, the stack
 ConsumableItemMaster.cs	1	n	MLGC MoonGame	the potion data
+HermitSlimeBehaviourNEW.cs	1	n	game/HermitSlime	waits on its recording
+EnemyDamageReceiver.cs	1	n	game/EnemyColliders
+HermitSlimeAttackState.cs	1	n	game/HermitSlime	no-ops (parameters that do not exist)
