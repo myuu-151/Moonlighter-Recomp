@@ -1,3 +1,5 @@
+![Moonlighter](docs/banner.png)
+
 # Moonlighter recomp
 
 Native C++ reimplementation of Moonlighter (Steam, v1.15.8, Unity 2019.2.7f2 / Mono),
