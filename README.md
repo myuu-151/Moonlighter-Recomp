@@ -15,24 +15,24 @@ It also builds for the GameCube:
 ![ported](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge.json)
 ![verified](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge_verified.json)
 
-**6.9%** of the game's own code is ported (11,009 of 160,682 lines of C#, 37 of 1,173 classes whole); **6.5%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
+**7.1%** of the game's own code is ported (11,418 of 160,682 lines of C#, 39 of 1,173 classes whole); **6.5%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
 
 ```
-total                    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░   6.9%
+total                    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░   7.1%
 ```
 
 | Area | Lines | Ported | Verified | |
 |---|---:|---:|---:|---|
 | Dungeon generation | 10,310 | 50.2% | 50.2% | `██████████░░░░░░░░░░` |
 | Player | 9,277 | 22.0% | 20.9% | `████░░░░░░░░░░░░░░░░` |
-| Enemies | 27,342 | 9.9% | 9.2% | `██░░░░░░░░░░░░░░░░░░` |
+| Enemies | 27,342 | 11.0% | 9.2% | `██░░░░░░░░░░░░░░░░░░` |
 | Dungeon runtime | 5,487 | 5.7% | 3.4% | `█░░░░░░░░░░░░░░░░░░░` |
 | Bosses | 8,285 | 2.3% | 2.3% | `░░░░░░░░░░░░░░░░░░░░` |
 | Items & effects | 13,388 | 0.6% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
 | Town, shop & villagers | 12,097 | 0.0% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
 | UI | 20,716 | 0.0% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
 | Wanderer DLC | 9,474 | 0.9% | 0.9% | `░░░░░░░░░░░░░░░░░░░░` |
-| Core & other | 44,306 | 1.0% | 0.8% | `░░░░░░░░░░░░░░░░░░░░` |
+| Core & other | 44,306 | 1.2% | 0.8% | `░░░░░░░░░░░░░░░░░░░░` |
 
 _Updated by `tools/progress.py` on every commit._ On Windows, `py tools/tray_progress_startup.py` puts the same numbers next to the taskbar clock (`tools/tray_progress.ps1`), starting with Windows.
 <!-- progress:end -->

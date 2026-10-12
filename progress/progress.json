@@ -1,11 +1,11 @@
 {
  "lines": 160682,
- "ported": 11009,
+ "ported": 11418,
  "verified": 10466,
- "percent": 6.85,
+ "percent": 7.11,
  "verifiedPercent": 6.51,
  "classes": 1173,
- "classesDone": 37,
+ "classesDone": 39,
  "categories": {
   "Items & effects": {
    "lines": 13388,
@@ -23,7 +23,7 @@
   },
   "Core & other": {
    "lines": 44306,
-   "ported": 427.4,
+   "ported": 531.2,
    "verified": 354.9,
    "classes": 487,
    "done": 5
@@ -37,10 +37,10 @@
   },
   "Enemies": {
    "lines": 27342,
-   "ported": 2697.9,
+   "ported": 3002.9,
    "verified": 2527.9,
    "classes": 178,
-   "done": 11
+   "done": 13
   },
   "Town, shop & villagers": {
    "lines": 12097,

@@ -75,3 +75,6 @@ ConsumableItemMaster.cs	1	n	MLGC MoonGame	the potion data
 HermitSlimeBehaviourNEW.cs	1	n	game/HermitSlime	waits on its recording
 EnemyDamageReceiver.cs	1	n	game/EnemyColliders
 HermitSlimeAttackState.cs	1	n	game/HermitSlime	no-ops (parameters that do not exist)
+BrokenGolemTurretBehaviour.cs	1	n	game/BrokenGolemTurret	waits on its recording
+BrokenGolemTurretProjectile.cs	1	n	game/EnemyProjectile
+PoolManager.cs	0.6	n	game/PoolManager	the enemies' projectile pools
