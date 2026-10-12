@@ -13,7 +13,14 @@ else()
     add_compile_options(-Wall -Wextra -ffp-contract=off)
 endif()
 
+# Box2D 2.3.1 (third_party/box2d/README.md): Unity's 2D physics, for the bodies' contacts.
+file(GLOB_RECURSE BOX2D_SOURCES CONFIGURE_DEPENDS third_party/box2d/Box2D/*.cpp)
+if(MSVC)
+    set_source_files_properties(${BOX2D_SOURCES} PROPERTIES COMPILE_OPTIONS /wd4456) # its shadowed locals
+endif()
+
 add_library(mlcore STATIC
+    ${BOX2D_SOURCES}
     src/cs/Object.cpp
     src/unity/Random.cpp
     src/util/Json.cpp
@@ -47,8 +54,9 @@ add_library(mlcore STATIC
     src/game/HoleColliders.cpp
     src/game/Items.cpp
     src/game/RoomDoors.cpp
+    src/unity/PhysicsWorld.cpp
 )
-target_include_directories(mlcore PUBLIC src)
+target_include_directories(mlcore PUBLIC src third_party/box2d)
 
 add_executable(cave_oracle_test tests/cave_oracle_test.cpp)
 target_link_libraries(cave_oracle_test PRIVATE mlcore)
@@ -80,6 +88,10 @@ add_test(NAME floor_sync
 add_executable(room_doors_test tests/room_doors_test.cpp)
 target_link_libraries(room_doors_test PRIVATE mlcore)
 add_test(NAME room_doors COMMAND room_doors_test)
+
+add_executable(physics_test tests/physics_test.cpp)
+target_link_libraries(physics_test PRIVATE mlcore)
+add_test(NAME physics COMMAND physics_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 add_executable(player_walk_test tests/player_walk_test.cpp)
 target_link_libraries(player_walk_test PRIVATE mlcore)

@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "unity/PhysicsWorld.h"
 #include "util/Json.h"
 
 namespace game {
@@ -49,6 +50,8 @@ struct PrefabNode {
     int objectLayer = 0; // the GameObject's (physics) layer
     std::string tag;
     std::vector<ColliderDef> colliders;
+    bool hasRigidbody = false;
+    unity::Rigidbody2DDef rigidbody;
     bool HasRenderer() const { return !layer.empty(); }
 };
 

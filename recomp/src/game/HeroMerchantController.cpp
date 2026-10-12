@@ -64,6 +64,11 @@ HeroMerchantController::Settings HeroMerchantController::SettingsFrom(const Pref
             s.slideLayers = static_cast<int>(b.Field("slideCollisionDetectionLayers"));
             s.godModeLayers = static_cast<int>(b.Field("godModeCollisionDetectionLayers"));
         }
+    if (root.hasRigidbody) {
+        s.body = root.rigidbody;
+        s.body.hasCenterOfMass = true; // the collider's centre (useAutoMass off keeps it)
+        s.body.centerOfMass = s.colliderOffset;
+    }
     return s;
 }
 
@@ -120,12 +125,19 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
 
     // The physics steps before this frame's scripts (every 0.01 s of game time): his Dynamic
     // Rigidbody2D takes the transform as its centre of mass (position + the collider's centre)
-    // and writes back the centre minus it, which rounds where the sum changes exponent.
+    // and writes back the centre minus it, which rounds where the sum changes exponent; in a
+    // physics world, its contacts move the centre too.
     fixedTime_ += deltaTime;
     while (fixedTime_ >= kFixedStep) {
         fixedTime_ -= kFixedStep;
-        const Vector2 c = s_.colliderOffset;
-        position = Vector2{(position.x + c.x) - c.x, (position.y + c.y) - c.y};
+        if (physicsWorld) {
+            if (!body_) body_ = &physicsWorld->AddBody(s_.body, position, layer, s_.colliderOffset, s_.colliderSize);
+            physicsWorld->SetLayer(*body_, layer);
+            position = physicsWorld->Simulate(*body_, position, static_cast<float>(kFixedStep));
+        } else {
+            const Vector2 c = s_.colliderOffset;
+            position = Vector2{(position.x + c.x) - c.x, (position.y + c.y) - c.y};
+        }
     }
 
     stick_ = input.stick;
@@ -342,6 +354,8 @@ void HeroMerchantController::DashAbilityUseStart()
 void HeroMerchantController::SetIntangibleMode(int isHolesEnabled)
 {
     isHolesIntangible = isHolesEnabled > 0;
+    if (physicsWorld) physicsWorld->IgnoreLayerCollision(unity::kLayerIntangibleHero, unity::kLayerSunkenObstacle, !isHolesIntangible);
+    layer = unity::kLayerIntangibleHero;
     isIntangible = true;
 }
 
@@ -349,6 +363,7 @@ void HeroMerchantController::SetDefaultMode()
 {
     isIntangible = false;
     isHolesIntangible = false;
+    layer = unity::kLayerDefault; // (if !CheckForHoles(): not yet)
 }
 
 void HeroMerchantController::EnableMoveInput()

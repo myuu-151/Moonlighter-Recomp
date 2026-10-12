@@ -17,16 +17,18 @@
 //
 // Each frame starts with the physics steps (every 0.01 s): his Dynamic Rigidbody2D round-trips
 // his position through its centre of mass. Checked against the game frame by frame, walking
-// and rolling (player_walk_test).
+// and rolling (player_walk_test). With a physicsWorld (opt-in) the steps are Box2D's, his
+// body's contacts pushing him out of what his casts let him into (rocks' corners); his layer
+// follows SetIntangibleMode / SetDefaultMode.
 //
-// Not yet: attacks, abilities other than the roll, holes and falling, the dynamic body's
-// contacts (rocks), knockback.
+// Not yet: attacks, abilities other than the roll, holes and falling, knockback.
 
 #include <string>
 #include <vector>
 
 #include "unity/Animator.h"
 #include "unity/Physics2D.h"
+#include "unity/PhysicsWorld.h"
 #include "unity/Vector2.h"
 
 namespace game {
@@ -46,6 +48,18 @@ public:
         // Dash: RisenObstacle | LevelBoundary | PlayerSpecificShopCollider.
         int rollLayers = (1 << 8) | (1 << 11) | (1 << 17);
         float abilityCooldown = 0.0f; // the equipped ability item's cooldown
+        // His Rigidbody2D (hero_merchant's): Dynamic, mass 1 by hand, drag 5, no gravity,
+        // rotation frozen, continuous; the centre of mass is his BoxCollider2D's centre.
+        unity::Rigidbody2DDef body = HeroBody();
+        static unity::Rigidbody2DDef HeroBody()
+        {
+            unity::Rigidbody2DDef b;
+            b.linearDrag = 5.0f;
+            b.gravityScale = 0.0f;
+            b.constraints = unity::Rigidbody2DDef::FreezeRotation;
+            b.collisionDetection = unity::Rigidbody2DDef::Continuous;
+            return b;
+        }
     };
 
     // What the pad gives this frame (InControl's actions).
@@ -79,6 +93,13 @@ public:
     float timePushingDoors = 0.0f, maxTimePushingDoors = 0.15f;
     const unity::Collider2D* doorEntered = nullptr; // this frame's
     unity::Animator animator;
+    int layer = unity::kLayerDefault; // gameObject.layer
+
+    // Opt-in: the world his Rigidbody2D steps in (the room's colliders added to it), whose
+    // contacts push him; his body is made there at the first step. nullptr: the steps only
+    // round-trip his position through the centre of mass, as Box2D does without contacts.
+    unity::PhysicsWorld* physicsWorld = nullptr;
+    unity::Rigidbody2D* Body() const { return body_; }
 
     void SetDirection(Direction direction);
     bool IsPlayingRollAnimation() const { return IsTag("Ability"); }
@@ -108,6 +129,7 @@ private:
     float now_ = 0.0f, abilityReadyAt_ = 0.0f; // Time.time; Invoke("MakeAbilityAvailable")
     static constexpr double kFixedStep = 0.01; // Time.fixedDeltaTime
     double fixedTime_ = 0.0;                   // game time not yet stepped by physics
+    unity::Rigidbody2D* body_ = nullptr;       // in physicsWorld
     struct SpeedEffect {
         int id;
         float multiplier;

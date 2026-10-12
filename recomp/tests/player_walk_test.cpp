@@ -11,6 +11,11 @@
 // doors), each checked against the game's own (the recording's first lines), both ways.
 // ML_WALK_DUMPED=1 uses the game's instead.
 //
+// ML_WALK_BOX2D=1 steps his Rigidbody2D in a unity::PhysicsWorld (Box2D) with the room's
+// colliders, instead of the contact-free round trip; the oracle's rock (-oracle-walk=rocks,
+// ".../OracleRock" in the recording) is added to the room, and where the recording has his
+// body's position and velocity ("rb") they're compared too.
+//
 // Usage: player_walk_test [walk.jsonl] [hero_merchant.json] [trace.jsonl]
 //        (ML_WALK_DEBUG=1: every frame; the trace defaults to the one next to walk.jsonl)
 
@@ -32,6 +37,7 @@
 #include "game/Session.h"
 #include "unity/Animator.h"
 #include "unity/Physics2D.h"
+#include "unity/PhysicsWorld.h"
 #include "util/Json.h"
 
 using json::Value;
@@ -177,6 +183,7 @@ int main(int argc, char** argv)
     }
     Value start;
     unity::Physics2D dumped, physics;
+    std::vector<std::pair<std::string, std::string>> bodies; // path -> its Rigidbody2D's type, where recorded
     std::vector<Value> frames;
     for (std::string line; std::getline(in, line);) {
         if (line.empty()) continue;
@@ -201,6 +208,7 @@ int main(int argc, char** argv)
             c.worldMin = V2(v["min"]);
             c.worldMax = V2(v["max"]);
             if (c.path.rfind("HeroMerchant", 0) == 0) continue; // his own
+            if (const Value* b = v.Find("body")) bodies.emplace_back(c.path, b->s);
             dumped.Add(c);
         }
     }
@@ -299,7 +307,30 @@ int main(int argc, char** argv)
     if (std::getenv("ML_WALK_DUMPED")) {
         physics.Clear();
         for (const unity::Collider2D& c : dumped.Colliders()) physics.Add(c);
+    } else {
+        // The oracle's rock (not the room's).
+        for (const unity::Collider2D& c : dumped.Colliders())
+            if (c.path.find("OracleRock") != std::string::npos) physics.Add(c);
     }
+
+    // His body in Box2D, with the room's colliders: the recorded Rigidbody2D types, else the
+    // rocks' and walls' layers on Kinematic bodies, the rest without.
+    const bool box2d = std::getenv("ML_WALK_BOX2D") != nullptr;
+    unity::Physics2DSettings physicsSettings;
+    {
+        std::string text = ReadFile(data + "/physics2d.json");
+        if (!text.empty() && !physicsSettings.Load(json::Parse(text))) std::printf("%s/physics2d.json: no layer matrix\n", data.c_str());
+    }
+    unity::PhysicsWorld world(physicsSettings);
+    if (box2d)
+        for (const unity::Collider2D& c : physics.Colliders()) {
+            std::string type;
+            for (const auto& [path, t] : bodies)
+                if (path == c.path) type = t;
+            if (type.empty())
+                type = c.layer == unity::kLayerRisenObstacle || c.layer == unity::kLayerLevelBoundary ? "Kinematic" : "none";
+            world.AddCollider(c, type == "Kinematic" ? unity::RigidbodyType2D::Kinematic : unity::RigidbodyType2D::Static, type != "none");
+        }
 
     unity::AnimatorController controller = unity::AnimatorController::FromJson(json::Parse(ReadFile(animPath)));
     game::HeroMerchantController::Settings settings;
@@ -310,6 +341,7 @@ int main(int argc, char** argv)
     if (const Value* g = start.Find("godModeLayers")) settings.godModeLayers = static_cast<int>(g->AsInt());
     if (const Value* c = start.Find("cooldown")) settings.abilityCooldown = Bits(*c);
     game::HeroMerchantController hero(controller, settings, physics);
+    if (box2d) hero.physicsWorld = &world;
     hero.currentPlayerMoveSpeed = Bits(start["moveSpeed"]);
     hero.speedFactor = Bits(start["speedFactor"]);
 
@@ -327,6 +359,7 @@ int main(int argc, char** argv)
     hero.animator.Play(controller.states[static_cast<size_t>(s0)].name, Bits(f0["t"]));
     hero.animator.SetBool("Walk", controller.states[static_cast<size_t>(s0)].tag == "Walk");
 
+    int bodyChecked = 0, bodyBad = 0, touching = 0;
     int checked = 0, posBad = 0, velBad = 0, stateBad = 0, timeBad = 0, dirBad = 0, spriteBad = 0, rollBad = 0, rollFrames = 0, shown = 0;
     double worstTime = 0.0;
     for (size_t i = 1; i < frames.size(); i++) {
@@ -359,6 +392,17 @@ int main(int argc, char** argv)
                  Bits(f["speedFactor"]) != hero.speedFactor;
         }
         rollBad += rb;
+        touching += box2d && hero.Body() && hero.Body()->TouchingCount() > 0;
+        // His body after the frame's last step (recordings with "rb": position, velocity).
+        if (const Value* body = f.Find("rb"); body && box2d && hero.Body()) {
+            bodyChecked++;
+            const Vector2 bp = hero.Body()->position(), bv = hero.Body()->velocity();
+            const bool bb = Bits((*body)[0]) != bp.x || Bits((*body)[1]) != bp.y || Bits((*body)[2]) != bv.x || Bits((*body)[3]) != bv.y;
+            bodyBad += bb;
+            if (bb && shown < 12)
+                std::printf("  body game: (%.4f, %.4f) v (%.4f, %.4f) | port: (%.4f, %.4f) v (%.4f, %.4f)\n", Bits((*body)[0]), Bits((*body)[1]),
+                            Bits((*body)[2]), Bits((*body)[3]), bp.x, bp.y, bv.x, bv.y);
+        }
         spb = spb || rb;
         if (!sb) worstTime = std::max(worstTime, dt);
         posBad += pb;
@@ -396,8 +440,11 @@ int main(int argc, char** argv)
     std::printf("sprite (and roll state)        %5d match %5d differ\n", checked - spriteBad, spriteBad);
     if (rollFrames)
         std::printf("roll state (intangible, Animator speed, in use, speed factor) %d match %d differ\n", rollFrames - rollBad, rollBad);
+    if (box2d) std::printf("his Rigidbody2D in Box2D: touching a collider in %d frames\n", touching);
+    if (bodyChecked)
+        std::printf("his Rigidbody2D (Box2D)        %5d match %5d differ\n", bodyChecked - bodyBad, bodyBad);
     (void)built;
-    bool ok = !differ && !posBad && !velBad && !dirBad && !stateBad && !timeBad && !spriteBad;
+    bool ok = !differ && !bodyBad && !posBad && !velBad && !dirBad && !stateBad && !timeBad && !spriteBad;
     std::printf("\n%s\n", ok ? "ALL MATCH" : "MISMATCHES");
     return ok ? 0 : 1;
 }

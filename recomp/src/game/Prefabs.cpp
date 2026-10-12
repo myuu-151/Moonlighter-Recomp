@@ -81,6 +81,18 @@ void PrefabLibrary::Load(const json::Value& extracted)
                         n.colliders.push_back(std::move(d));
                     }
                 }
+                if (r.size() > 16 && r[16].IsObject()) {
+                    const json::Value& rb = r[16];
+                    n.hasRigidbody = true;
+                    n.rigidbody.bodyType = static_cast<unity::RigidbodyType2D>(rb["bodyType"].AsInt());
+                    n.rigidbody.mass = F(rb["mass"]);
+                    n.rigidbody.linearDrag = F(rb["linearDrag"]);
+                    n.rigidbody.angularDrag = F(rb["angularDrag"]);
+                    n.rigidbody.gravityScale = F(rb["gravityScale"]);
+                    n.rigidbody.constraints = static_cast<int>(rb["constraints"].AsInt());
+                    n.rigidbody.collisionDetection = static_cast<int>(rb["collisionDetection"].AsInt());
+                    n.rigidbody.sleepingMode = static_cast<int>(rb["sleepingMode"].AsInt());
+                }
                 p.nodes.push_back(n);
             }
         }

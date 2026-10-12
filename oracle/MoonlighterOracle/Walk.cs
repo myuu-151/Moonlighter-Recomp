@@ -12,21 +12,25 @@ namespace MoonlighterOracle
     /// take the Golem gate on a fixed seed, then drive the hero with a fixed input script and
     /// record him every frame into walk.jsonl: the frame's deltaTime, the input, his position,
     /// the Animator's state and the controller's movement fields. The first lines hold the
-    /// room's colliders and the controller's settings, for the port's Physics2D queries.
-    internal static class Walk
+    /// room's colliders and the controller's settings, for the port's Physics2D queries; every
+    /// frame also has his Rigidbody2D (position and velocity after the frame's physics steps,
+    /// and as each step started).
+    internal static partial class Walk
     {
         public static bool Active;
         private static int startFrame = -1;
         private static StreamWriter writer;
 
         /// One segment: frames to hold, stick x and y, buttons pressed on its first frame
-        /// (1 Action1, 2 Action2, 4 Action3, 8 Action4, 16 LeftTrigger: the roll).
+        /// (1 Action1, 2 Action2, 4 Action3, 8 Action4, 16 LeftTrigger: the roll). `toward`
+        /// (the rocks script's "go"): x and y are a point to steer the stick to (StickFor).
         private struct Segment
         {
             public int frames;
             public float x, y;
             public int buttons;
-            public Segment(int f, float x, float y, int b = 0) { frames = f; this.x = x; this.y = y; buttons = b; }
+            public bool toward;
+            public Segment(int f, float x, float y, int b = 0) { frames = f; this.x = x; this.y = y; buttons = b; toward = false; }
         }
 
         // Inside the floor's first room (Will starts in its middle; the doors are in the middle
@@ -109,7 +113,12 @@ namespace MoonlighterOracle
                 if (!Active || startFrame < 0) return;
                 var actions = InputActionsManager.Instance != null ? InputActionsManager.Instance.actions : null;
                 if (actions == null || __instance != actions.LeftStick) return;
-                if (Current(out Segment s, out _)) { x = s.x; y = s.y; }
+                if (Current(out Segment s, out _))
+                {
+                    lastStick = StickFor(s);
+                    x = lastStick.x;
+                    y = lastStick.y;
+                }
                 else { x = 0f; y = 0f; }
             }
         }
@@ -150,7 +159,8 @@ namespace MoonlighterOracle
             foreach (var c in UnityEngine.Object.FindObjectsOfType<Collider2D>())
             {
                 var j = new Json().Obj().Prop("ev", "collider").Prop("type", c.GetType().Name).Prop("path", PathOf(c.transform))
-                    .Prop("layer", c.gameObject.layer).Prop("tag", c.tag).Prop("enabled", c.enabled).Prop("trigger", c.isTrigger);
+                    .Prop("layer", c.gameObject.layer).Prop("tag", c.tag).Prop("enabled", c.enabled).Prop("trigger", c.isTrigger)
+                    .Prop("body", c.attachedRigidbody != null ? c.attachedRigidbody.bodyType.ToString() : "none");
                 V2(j, "pos", c.transform.position);
                 V2(j, "scale", c.transform.lossyScale);
                 V2(j, "offset", c.offset);
@@ -175,7 +185,7 @@ namespace MoonlighterOracle
 
         public static IEnumerator Run(MonoBehaviour host, bool quit, string script = "")
         {
-            Script = script == "roll" ? RollScript : WalkScript;
+            Script = script == "roll" ? RollScript : script == "rocks" ? RocksScript : WalkScript;
             var log = OraclePlugin.Log;
             // The harvest's first steps: the slot, the town, the Golem gate on a fixed seed.
             yield return Harvest.LoadSlot();
@@ -204,6 +214,11 @@ namespace MoonlighterOracle
             var hero = HeroMerchant.Instance;
             var ctrl = hero.heroMerchantController;
             var tr = Traverse.Create(ctrl);
+            if (script == "rocks")
+            {
+                if (!PlaceRock(log)) yield break;
+                yield return new WaitForSecondsRealtime(1f);
+            }
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, script == "" ? "walk.jsonl" : "walk_" + script + ".jsonl"), append: false) { AutoFlush = false };
             var setup = new Json().Obj().Prop("ev", "walkStart").Prop("session", Trace.Session).Prop("floor", Trace.Floor)
                 .Prop("collisionLayers", ctrl.collisionDetectionLayers.value)
@@ -217,6 +232,23 @@ namespace MoonlighterOracle
             setup.Key("statSpeed").Bits(hero.heroMerchantStats.speed.Value);
             var rb = hero.GetComponent<Rigidbody2D>();
             setup.Prop("body", rb != null ? rb.bodyType.ToString() : "none");
+            if (rb != null)
+            {
+                // His Rigidbody2D's settings, as the physics world has them.
+                setup.Key("rbMass").Bits(rb.mass).Prop("rbAutoMass", rb.useAutoMass);
+                V2(setup, "rbCenterOfMass", rb.centerOfMass);
+                setup.Key("rbDrag").Bits(rb.drag).Key("rbAngularDrag").Bits(rb.angularDrag).Key("rbGravityScale").Bits(rb.gravityScale);
+                setup.Key("rbInertia").Bits(rb.inertia);
+                setup.Prop("rbConstraints", (int)rb.constraints).Prop("rbDetection", rb.collisionDetectionMode.ToString())
+                    .Prop("rbSleep", rb.sleepMode.ToString()).Prop("rbInterpolation", rb.interpolation.ToString())
+                    .Prop("rbFullKinematicContacts", rb.useFullKinematicContacts).Prop("rbSimulated", rb.simulated);
+                setup.Key("fixedDeltaTime").Bits(Time.fixedDeltaTime);
+            }
+            if (script == "rocks")
+            {
+                V2(setup, "rock", rockAt);
+                setup.Prop("rockFrom", rockFrom);
+            }
             Emit(setup);
             WriteColliders();
             writer.Flush();
@@ -227,6 +259,7 @@ namespace MoonlighterOracle
             var rec = new GameObject("OracleWalkRecorder").AddComponent<Recorder>();
             rec.ctrl = ctrl;
             rec.tr = tr;
+            rec.rb = rb;
             startFrame = Time.frameCount + 1;
             Active = true;
             while (Time.frameCount - startFrame < ScriptFrames + 2) yield return null;
@@ -244,6 +277,18 @@ namespace MoonlighterOracle
         {
             public HeroMerchantController ctrl;
             public Traverse tr;
+            public Rigidbody2D rb;
+            // This frame's physics steps, as each started: his transform (before the sync) and
+            // his body (the last step's result) with its velocity.
+            private readonly System.Collections.Generic.List<float[]> steps = new System.Collections.Generic.List<float[]>();
+
+            private void FixedUpdate()
+            {
+                int f = Time.frameCount - startFrame;
+                if (f < 0 || f >= ScriptFrames || rb == null) return;
+                Vector2 t = ctrl.transform.position, p = rb.position, v = rb.velocity;
+                steps.Add(new[] { t.x, t.y, p.x, p.y, v.x, v.y });
+            }
 
             private void LateUpdate()
             {
@@ -255,7 +300,8 @@ namespace MoonlighterOracle
                 var info = anim.GetCurrentAnimatorStateInfo(0);
                 var j = new Json().Obj().Prop("ev", "walk").Prop("f", f);
                 j.Key("dt").Bits(Time.deltaTime);
-                j.Key("in").Arr().Bits(s.x).Bits(s.y).Val(first ? s.buttons : 0).EndArr();
+                Vector2 given = s.toward ? lastStick : new Vector2(s.x, s.y);
+                j.Key("in").Arr().Bits(given.x).Bits(given.y).Val(first ? s.buttons : 0).EndArr();
                 j.Key("stick").Arr().Bits(a.LeftStick.X).Bits(a.LeftStick.Y).EndArr();
                 V2(j, "pos", ctrl.transform.position);
                 j.Key("state").Val(info.shortNameHash).Key("t").Bits(info.normalizedTime);
@@ -283,6 +329,21 @@ namespace MoonlighterOracle
                 var art = ctrl.transform.Find("HeroMerchantArt/Will");
                 var sr = art != null ? art.GetComponent<SpriteRenderer>() : null;
                 j.Prop("sprite", sr != null && sr.sprite != null ? sr.sprite.name : null);
+                // His Rigidbody2D after the frame's physics steps: position, velocity; awake; layer.
+                if (rb != null)
+                {
+                    j.Key("rb").Arr().Bits(rb.position.x).Bits(rb.position.y).Bits(rb.velocity.x).Bits(rb.velocity.y).EndArr();
+                    j.Prop("awake", rb.IsAwake()).Prop("layer", ctrl.gameObject.layer).Prop("touching", rb.IsTouchingLayers());
+                    j.Key("fixed").Arr();
+                    foreach (var st in steps)
+                    {
+                        j.Arr();
+                        foreach (float x in st) j.Bits(x);
+                        j.EndArr();
+                    }
+                    j.EndArr();
+                }
+                steps.Clear();
                 Emit(j);
             }
         }
