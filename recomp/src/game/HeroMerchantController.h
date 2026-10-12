@@ -44,7 +44,12 @@
 //
 // Not yet: secondary attacks, the bow's arrows, trick weapons, abilities other than the roll,
 // knockback, amulets, the camera's shake (it draws Random.insideUnitSphere per
-// hit: the RNG's sync with enemies will need it), death past isDead.
+// hit: the RNG's sync with enemies will need it).
+//
+// Death (health at its minimum: HeroMerchantStats.Die): he stops, his weapon resets, the
+// Animator plays Death and the game pauses; only his Animator runs on (its clip's last event,
+// OnWillDeathAnimationEnded, ends it: deathAnimationEnded). Not yet: dropping the bag's items,
+// the return to town.
 
 #include <string>
 #include <vector>
@@ -140,6 +145,7 @@ public:
     bool artVisible = true;    // heroMerchantArt.activeSelf (the invincibility blink)
     float flashAmount = 0.0f;  // the art's _FlashAmount (the damaged effect)
     bool flashTinted = false;  // its _Color: the health bar's colour (true) or white
+    bool deathAnimationEnded = false; // OnWillDeathAnimationEnded
     unity::Animator animator;
     int layer = unity::kLayerDefault; // gameObject.layer
 
@@ -178,6 +184,7 @@ private:
     bool CanRollFromAttack() const;
     void DashAbilityUseStart();
     void OnHealthChanged(float newHealth);
+    void Die();
     void PlayDamagedEffect();
     void SetPlayingDamagedEffectToFalse();
     void StartPlayingInvencibilityEffect(float time, float delay);

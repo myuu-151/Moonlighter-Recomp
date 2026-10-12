@@ -135,7 +135,7 @@ HeroMerchantController::HeroMerchantController(const unity::AnimatorController& 
     stats.Init();
     previousHealth_ = stats.currentHealth.value;
     stats.currentHealth.onStateUpdated = [this](float v) {
-        if (!stats.isDead && v <= stats.currentHealth.minValue) stats.isDead = true; // Die (the rest isn't ported)
+        if (!stats.isDead && v <= stats.currentHealth.minValue) Die(); // HealthValueChanged
         OnHealthChanged(v);
         if (v - stats.currentHealth.value < 0.0f) PlayDamagedEffect(); // WillHealthBar.PlayAnimation
     };
@@ -174,6 +174,8 @@ HeroMerchantController::HeroMerchantController(const unity::AnimatorController& 
             // Ability.SendAbilityUseStart: in use, and every component's AbilityUseStart.
             abilityInUse = true;
             DashAbilityUseStart();
+        } else if (e.function == "OnWillDeathAnimationEnded") {
+            deathAnimationEnded = true;
         } else if (e.function == "AbilityUseEnd") {
             abilityInUse = false;
             DestroySpeedEffect(dashEffect_); // Dash.AbilityUseEnd
@@ -208,6 +210,12 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
             const Vector2 c = s_.colliderOffset;
             position = Vector2{(position.x + c.x) - c.x, (position.y + c.y) - c.y};
         }
+    }
+
+    // Dead, the game is paused: only his Animator runs (the death's clip).
+    if (stats.isDead) {
+        animator.Update(input.unscaledDeltaTime < 0.0f ? deltaTime : input.unscaledDeltaTime);
+        return;
     }
 
     // DOTween's update runs before his (a tween he starts this frame first moves the next).
@@ -699,6 +707,20 @@ void HeroMerchantController::DealDamageToPlayer(float attackStrength, const char
         stats.currentHealth.Set(stats.currentHealth.value - num3);
         hit();
     }
+}
+
+// HeroMerchantStats.Die and PlayDeathAnimation: stopped, the weapon reset, Death, invincible.
+void HeroMerchantController::Die()
+{
+    stats.isDead = true;
+    velX = velY = 0.0f; // StopMovement
+    canMove = false;
+    isMoveInputEnabled = false;
+    ResetCurrentWeaponAnimator();
+    EnableHeroMerchantArt();
+    animator.SetTrigger("Death");
+    stats.SetInvencible(tweens);
+    ResetSpeedFactor();
 }
 
 // Stat's subscriber: a drop sets the Animator's Damaged trigger (no transition reads it).
