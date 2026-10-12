@@ -449,7 +449,8 @@ struct Tally {
         if (!ok) {
             t.second++;
             failures++;
-            if (t.second <= 5) std::printf("FAIL [%s] %s\n", kind.c_str(), what.c_str());
+            static const bool all = std::getenv("ML_POLYNAV_ALL") != nullptr;
+            if (t.second <= 5 || all) std::printf("FAIL [%s] %s\n", kind.c_str(), what.c_str());
         }
     }
 };
@@ -511,6 +512,9 @@ game::SceneRow RecordedRow(const Value& r)
     row.sx = Bits(r[4]);
     row.sy = Bits(r[5]);
     row.rotation = Bits(r[6]);
+    row.hasQuaternion = true;
+    row.qz = Bits(r[7]);
+    row.qw = Bits(r[8]);
     if (r[9].IsArray()) {
         game::Behaviour b;
         b.cls = "PolyNavObstacle";
@@ -554,7 +558,9 @@ void OracleRoom(Tally& t, const Value& rec, float tileSize)
     const Vector2 center = V2(navRec["pos"]);
     const std::vector<Poly> master = Flats(rec["master"]), polys = Flats(rec["polys"]);
     const Value& obstacles = rec["obstacles"];
-    if (navRec["pending"].b || navRec["regen"].b) std::printf("note: %s was recorded with a request pending or a map flagged\n", room.c_str());
+    // (regenerateFlag is set in every recorded room and that's expected: the Dungeon scene's
+    // PolyNav2D never regenerates in LateUpdate, DisableRoom's GenerateMap(true) made the map.)
+    if (navRec["pending"].b) std::printf("note: %s was recorded with a request pending\n", room.c_str());
 
     // Inflate and transform each recorded obstacle.
     for (size_t k = 0; k < obstacles.size(); k++) {
@@ -622,7 +628,8 @@ void OracleRoom(Tally& t, const Value& rec, float tileSize)
         const bool gameGot = p["path"].IsArray();
         Poly gamePath = gameGot ? Flat(p["path"]) : Poly{};
         t.Add("paths", called == p["got"].b && got == gameGot && SamePoly(path, gamePath),
-              room + ": FindPath " + Str(s) + " -> " + Str(e) + ": " + Str(path) + " vs " + Str(gamePath));
+              room + ": FindPath " + Str(s) + " -> " + Str(e) + ": " + (called ? "" : "(no answer) ") + (nav.Stuck() ? "(stuck) " : "") +
+                  Str(path) + " vs " + Str(gamePath));
         t.Add("path frames", (frames == 0) == (gameFrames == 0),
               room + ": FindPath " + Str(s) + " answered after " + std::to_string(frames) + " frames, the game " + std::to_string(gameFrames));
     }
@@ -630,12 +637,24 @@ void OracleRoom(Tally& t, const Value& rec, float tileSize)
     // The holes from the grid.
     std::vector<int> grid;
     for (const Value& v : rec["grid"].arr) grid.push_back(static_cast<int>(v.AsInt()));
+    // (obstaclesGrid holds 20 + 20 x 11 entries after LoadGridFromInfo: gridSlicesY is the
+    // room's 11, not the grid's length over 20.)
     const int gx = static_cast<int>(rec["gridX"].AsInt());
-    const int gy = gx > 0 ? static_cast<int>(grid.size()) / gx : 0;
+    const int gy = rec.Find("gridY") ? static_cast<int>(rec["gridY"].AsInt()) : 11;
     std::vector<game::SceneRow> rowsNoHoles;
     std::vector<std::pair<std::string, std::vector<Poly>>> gameHoles;
     for (const Value& r : rec["rows"].arr) {
         game::SceneRow row = RecordedRow(r);
+        // The quaternion back from the degrees (what rows from prefabs.json without the raw
+        // quaternion use), on the obstacles and the objects above them.
+        bool aboveAnObstacle = false;
+        for (const Value& o : obstacles.arr)
+            if (!o.IsNull() && o["inRoom"].b && (o["path"].s == row.path || o["path"].s.rfind(row.path + "/", 0) == 0)) aboveAnObstacle = true;
+        game::NavTransformLevel fromDegrees = game::NavTransformLevel::From(0, 0, 1, 1, row.rotation);
+        if (aboveAnObstacle)
+            t.Add("quaternion", fromDegrees.qz == row.qz && fromDegrees.qw == row.qw,
+              room + ": " + row.path + " rotation " + std::to_string(row.rotation) + ": (" + std::to_string(fromDegrees.qz) + ", " +
+                  std::to_string(fromDegrees.qw) + ") vs (" + std::to_string(row.qz) + ", " + std::to_string(row.qw) + ")");
         if (row.path.rfind("DungeonLevelRoomHoles/", 0) == 0) {
             std::vector<Poly> paths;
             if (!row.colliders.empty())

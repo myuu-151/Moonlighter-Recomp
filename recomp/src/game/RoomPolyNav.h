@@ -5,7 +5,10 @@
 // PreparePolyNavForRoom) sized roomFloorWidth x roomFloorHeight (484 x 268); EnterRoom
 // activates the room, so every enabled PolyNavObstacle on an active object of it joins
 // navObstacles, in hierarchy order; half a second later the room left behind is disabled
-// (its obstacles leave) and DisableRoom regenerates the map with the master.
+// (its obstacles leave) and DisableRoom regenerates the map with the master. That's the only
+// regeneration: the scene's PolyNav2D doesn't regenerate in LateUpdate (regenerateFlag stays
+// set; generateOnUpdate off here), so until the room left behind is disabled the enemies' map
+// is still that room's.
 //
 // An obstacle's shape is its object's first Collider2D (PolyNavObstacle.points): a box, or a
 // polygon's first path reversed with invertPolygon. The holes' obstacles are

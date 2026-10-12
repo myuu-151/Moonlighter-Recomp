@@ -41,6 +41,9 @@ struct PrefabNode {
     float x = 0.0f, y = 0.0f;   // local position
     float sx = 1.0f, sy = 1.0f; // local scale
     float rotation = 0.0f;      // about z, degrees
+    // The local rotation's quaternion (z, w) as stored, when the data has it.
+    bool hasQuaternion = false;
+    float qz = 0.0f, qw = 1.0f;
     // SpriteRenderer (sprite empty: none, or no renderer when `layer` is empty too).
     std::string sprite, layer;
     int order = 0;

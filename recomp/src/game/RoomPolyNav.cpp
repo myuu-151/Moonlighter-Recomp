@@ -22,7 +22,8 @@ NavTransform Chain(const std::vector<SceneRow>& rows, const SceneWorld& scene, i
     NavTransform t;
     for (int k = i; k >= 0; k = scene.parent[static_cast<size_t>(k)]) {
         const SceneRow& r = rows[static_cast<size_t>(k)];
-        t.levels.push_back(NavTransformLevel::From(r.x, r.y, r.sx, r.sy, r.rotation));
+        t.levels.push_back(r.hasQuaternion ? NavTransformLevel::FromQuaternion(r.x, r.y, r.sx, r.sy, r.qz, r.qw)
+                                           : NavTransformLevel::From(r.x, r.y, r.sx, r.sy, r.rotation));
     }
     NavTransformLevel room;
     room.position = roomPosition;
@@ -107,9 +108,11 @@ std::unique_ptr<RoomPolyNav> BuildRoomPolyNav(const std::vector<SceneRow>& rows,
     nav.position = center;
     nav.boxSize = {static_cast<float>(kRoomFloorWidth), static_cast<float>(kRoomFloorHeight)};
     nav.boxOffset = {0.0f, static_cast<float>(kRoomCenterYOffset)};
+    // The Dungeon scene's PolyNav2D never regenerates in LateUpdate (the recording: regenerateFlag
+    // stays set in every room); its map is remade by DisableRoom's GenerateMap(true) only.
+    nav.generateOnUpdate = false;
     for (const PolyNavObstacle& o : out->obstacles) nav.AddObstacle(&o);
     nav.GenerateMap(true);
-    nav.regenerateFlag = false;
     return out;
 }
 

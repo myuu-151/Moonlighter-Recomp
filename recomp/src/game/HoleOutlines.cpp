@@ -8,6 +8,8 @@
 namespace game {
 
 using unity::Vector2;
+using unity::mono::D; // (Mono's float arithmetic: unity/Mathf.h)
+using unity::mono::F;
 
 namespace {
 
@@ -110,7 +112,8 @@ bool IsPointInPolygon(Vector2 p, const std::vector<Vector2>& polygon)
     size_t num6 = polygon.size() - 1;
     while (num5 < polygon.size()) {
         if ((polygon[num5].y > p.y) != (polygon[num6].y > p.y) &&
-            p.x < (polygon[num6].x - polygon[num5].x) * (p.y - polygon[num5].y) / (polygon[num6].y - polygon[num5].y) + polygon[num5].x)
+            D(p.x) < (D(polygon[num6].x) - D(polygon[num5].x)) * (D(p.y) - D(polygon[num5].y)) / (D(polygon[num6].y) - D(polygon[num5].y)) +
+                         D(polygon[num5].x))
             flag = !flag;
         num6 = num5++;
     }
@@ -234,12 +237,13 @@ std::vector<GridCollider> GenerateCollidersFromGrid(const std::vector<int>& cell
         for (size_t l = 0; l < item.size(); l++) {
             Vector2 vector5 = item[l];
             float num9 = tileSize;
-            vector5 = {vector5.x * num9 + num9 / 2.0f - static_cast<float>(gridX) / 2.0f, vector5.y * num9 + num9 / 2.0f - static_cast<float>(gridY) / 2.0f};
+            vector5 = {F(D(vector5.x) * D(num9) + D(num9) / 2.0 - D(static_cast<float>(gridX)) / 2.0),
+                       F(D(vector5.y) * D(num9) + D(num9) / 2.0 - D(static_cast<float>(gridY)) / 2.0)};
             int num10 = 10;
-            if (vector5.x == static_cast<float>(gridSlicesX) * num9 * 0.5f) vector5.x += static_cast<float>(num10);
-            if (vector5.x == static_cast<float>(-gridSlicesX) * num9 * 0.5f) vector5.x -= static_cast<float>(num10);
-            if (vector5.y == static_cast<float>(gridSlicesY) * num9 * 0.5f) vector5.y += static_cast<float>(num10);
-            if (vector5.y == static_cast<float>(-gridSlicesY) * num9 * 0.5f) vector5.y -= static_cast<float>(num10);
+            if (D(vector5.x) == D(static_cast<float>(gridSlicesX)) * D(num9) * 0.5) vector5.x += static_cast<float>(num10);
+            if (D(vector5.x) == D(static_cast<float>(-gridSlicesX)) * D(num9) * 0.5) vector5.x -= static_cast<float>(num10);
+            if (D(vector5.y) == D(static_cast<float>(gridSlicesY)) * D(num9) * 0.5) vector5.y += static_cast<float>(num10);
+            if (D(vector5.y) == D(static_cast<float>(-gridSlicesY)) * D(num9) * 0.5) vector5.y -= static_cast<float>(num10);
             list5.push_back(vector5);
         }
         if (list5.empty() || num8 >= static_cast<int>(item.size()) / 2) continue;

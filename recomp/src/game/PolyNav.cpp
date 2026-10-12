@@ -10,6 +10,8 @@
 namespace game {
 
 using unity::Vector2;
+using unity::mono::D; // (Mono's float arithmetic: unity/Mathf.h)
+using unity::mono::F;
 namespace Mathf = unity::Mathf;
 
 PolyNav2D* PolyNav2D::current = nullptr;
@@ -17,24 +19,42 @@ PolyNav2D* PolyNav2D::current = nullptr;
 // ---------------------------------------------------------------------------------------
 // Transforms and obstacles
 
-NavTransformLevel NavTransformLevel::From(float x, float y, float sx, float sy, float degrees)
+NavTransformLevel NavTransformLevel::FromQuaternion(float x, float y, float sx, float sy, float qz, float qw)
 {
     NavTransformLevel l;
     l.position = {x, y};
     l.scale = {sx, sy};
-    if (degrees != 0.0f) {
-        const float half = degrees * 0.0174532924f * 0.5f; // Mathf.Deg2Rad
-        l.qz = std::sin(half);
-        l.qw = std::cos(half);
-    }
+    l.qz = qz;
+    l.qw = qw;
     return l;
+}
+
+namespace {
+
+// A quaternion component from its exact value: sqrt(1/2), 0 and 1 as the prefabs store them.
+float StoredComponent(double v)
+{
+    const double half = std::sqrt(0.5);
+    const float storedHalf = 0.707106829f; // 0x3F3504F4
+    if (std::fabs(std::fabs(v) - half) < 1e-7) return v < 0 ? -storedHalf : storedHalf;
+    if (std::fabs(v) < 1e-7) return 0.0f;
+    if (std::fabs(std::fabs(v) - 1.0) < 1e-7) return v < 0 ? -1.0f : 1.0f;
+    return static_cast<float>(v);
+}
+
+} // namespace
+
+NavTransformLevel NavTransformLevel::From(float x, float y, float sx, float sy, float degrees)
+{
+    if (degrees == 0.0f) return FromQuaternion(x, y, sx, sy, 0.0f, 1.0f);
+    const double half = static_cast<double>(degrees) * 3.14159265358979323846 / 360.0;
+    return FromQuaternion(x, y, sx, sy, StoredComponent(std::sin(half)), StoredComponent(std::cos(half)));
 }
 
 Vector2 NavTransform::TransformPoint(Vector2 p) const
 {
     for (const NavTransformLevel& l : levels) {
-        // Scale.
-        float x = p.x * l.scale.x, y = p.y * l.scale.y, z = 0.0f;
+        float x = p.x, y = p.y, z = 0.0f;
         // Quaternion * Vector3 with the rotation (0, 0, qz, qw).
         const float qx = 0.0f, qy = 0.0f, qz = l.qz, qw = l.qw;
         float num = qx * 2.0f, num2 = qy * 2.0f, num3 = qz * 2.0f;
@@ -43,8 +63,8 @@ Vector2 NavTransform::TransformPoint(Vector2 p) const
         float num10 = qw * num, num11 = qw * num2, num12 = qw * num3;
         float rx = (1.0f - (num5 + num6)) * x + (num7 - num12) * y + (num8 + num11) * z;
         float ry = (num7 + num12) * x + (1.0f - (num4 + num6)) * y + (num9 - num10) * z;
-        // Translate.
-        p = {rx + l.position.x, ry + l.position.y};
+        // Scale and translate, fused.
+        p = {std::fma(rx, l.scale.x, l.position.x), std::fma(ry, l.scale.y, l.position.y)};
     }
     return p;
 }
@@ -482,15 +502,15 @@ bool PolyNav2D::PointIsConcave(const std::vector<Vector2>& points, int point)
     Vector2 vector3 = points[static_cast<size_t>(point == 0 ? n - 1 : point - 1)];
     Vector2 vector4{vector.x - vector3.x, vector.y - vector3.y};
     Vector2 vector5{vector2.x - vector.x, vector2.y - vector.y};
-    return vector4.x * vector5.y - vector4.y * vector5.x > 0.0f;
+    return D(vector4.x) * D(vector5.y) - D(vector4.y) * D(vector5.x) > 0.0;
 }
 
 bool PolyNav2D::SegmentsCross(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
 {
-    float num = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+    float num = F((D(b.x) - D(a.x)) * (D(d.y) - D(c.y)) - (D(b.y) - D(a.y)) * (D(d.x) - D(c.x)));
     if (num == 0.0f) return false;
-    float num2 = (a.y - c.y) * (d.x - c.x) - (a.x - c.x) * (d.y - c.y);
-    float num3 = (a.y - c.y) * (b.x - a.x) - (a.x - c.x) * (b.y - a.y);
+    float num2 = F((D(a.y) - D(c.y)) * (D(d.x) - D(c.x)) - (D(a.x) - D(c.x)) * (D(d.y) - D(c.y)));
+    float num3 = F((D(a.y) - D(c.y)) * (D(b.x) - D(a.x)) - (D(a.x) - D(c.x)) * (D(b.y) - D(a.y)));
     if (num2 == 0.0f || num3 == 0.0f) return false;
     float num4 = num2 / num;
     float num5 = num3 / num;

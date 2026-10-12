@@ -40,6 +40,8 @@ struct SceneRow {
     std::string path;
     bool active = true;
     float x = 0.0f, y = 0.0f, sx = 1.0f, sy = 1.0f, rotation = 0.0f;
+    bool hasQuaternion = false; // the local rotation's quaternion (z, w) as stored (PrefabNode)
+    float qz = 0.0f, qw = 1.0f;
     std::string sprite, layer; // layer empty: no SpriteRenderer
     int order = 0;
     bool flipX = false, flipY = false, rendererEnabled = false;

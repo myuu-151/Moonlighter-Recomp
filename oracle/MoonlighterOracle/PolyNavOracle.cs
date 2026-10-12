@@ -169,7 +169,9 @@ namespace MoonlighterOracle
                     from.CancelInvoke("DisableRoom");
                     AccessTools.Method(typeof(DungeonRoom), "DisableRoom").Invoke(from, null);
                 }
-                for (int f = 0; f < 120 && (nav.regenerateFlag || nav.pendingRequest); f++) yield return null;
+                // (regenerateFlag stays set in the Dungeon scene: its LateUpdate never regenerates, the
+                // map comes from DisableRoom's GenerateMap(true) above. Only a request can be waited on.)
+                for (int f = 0; f < 120 && nav.pendingRequest; f++) yield return null;
                 yield return null;
 
                 Json j = null;
@@ -223,7 +225,7 @@ namespace MoonlighterOracle
             var j = new Json().Obj().Prop("ev", "polynavRoom").Prop("room", room.name)
                 .Prop("roomInfo", room.roomInfo != null ? room.roomInfo.name : "");
             j.Key("roomPos"); V2(j, room.transform.position);
-            j.Prop("gridX", room.gridSlicesX).Key("grid").Arr();
+            j.Prop("gridX", room.gridSlicesX).Prop("gridY", room.gridSlicesY).Key("grid").Arr();
             if (room.obstaclesGrid != null) foreach (int v in room.obstaclesGrid) j.Val(v);
             j.EndArr();
 
@@ -233,7 +235,8 @@ namespace MoonlighterOracle
             j.Key("rot").Arr().Bits(nav.transform.rotation.z).Bits(nav.transform.rotation.w).EndArr();
             j.Key("size"); V2(j, box != null ? box.size : Vector2.zero);
             j.Key("offset"); V2(j, box != null ? box.offset : Vector2.zero);
-            j.Key("inflate").Bits(nav.inflateRadius).Prop("pending", nav.pendingRequest).Prop("regen", nav.regenerateFlag).EndObj();
+            j.Key("inflate").Bits(nav.inflateRadius).Prop("pending", nav.pendingRequest).Prop("regen", nav.regenerateFlag)
+                .Prop("generateOnUpdate", nav.generateOnUpdate).Prop("enabled", nav.enabled).EndObj();
 
             j.Key("rows").Arr();
             Rows(j, room.transform, "");

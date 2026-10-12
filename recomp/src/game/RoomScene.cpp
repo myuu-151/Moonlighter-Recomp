@@ -135,6 +135,9 @@ SceneRow RowFrom(const PrefabNode& n, const std::string& path)
     r.sx = n.sx;
     r.sy = n.sy;
     r.rotation = n.rotation;
+    r.hasQuaternion = n.hasQuaternion;
+    r.qz = n.qz;
+    r.qw = n.qw;
     r.sprite = n.sprite;
     r.layer = n.layer;
     r.order = n.order;
@@ -215,10 +218,16 @@ std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPos
         const std::string door = kDoorPaths[sd.index];
         SceneRow* d = FindRow(out, door);
         if (!d) continue;
-        float x = d->x, y = d->y, rotation = d->rotation;
+        float x = d->x, y = d->y, rotation = d->rotation, qz = d->qz, qw = d->qw;
+        bool hasQuaternion = d->hasQuaternion;
         removeDoor(door);
         size_t first = out.size();
-        if (Instantiate(out, "DungeonLevelDoors", sd.prefab, sd.bundle, x, y)) out[first].rotation = rotation;
+        if (Instantiate(out, "DungeonLevelDoors", sd.prefab, sd.bundle, x, y)) {
+            out[first].rotation = rotation;
+            out[first].hasQuaternion = hasQuaternion;
+            out[first].qz = qz;
+            out[first].qw = qw;
+        }
     }
 
     // The doors' state: disabled or connected doors, arrival points, the boundaries' layers.
