@@ -1,5 +1,7 @@
 #include "unity/Random.h"
 
+#include <cmath>
+
 namespace unity {
 namespace Random {
 
@@ -69,6 +71,14 @@ int32_t Range(int32_t min, int32_t max)
         return static_cast<int32_t>(static_cast<uint32_t>(min) - NextU32() % span);
     }
     return min;
+}
+
+Vector2 insideUnitCircle()
+{
+    const float angle = Range(0.0f, 3.14159274f * 2.0f); // kPI * 2
+    Vector2 v{std::cos(angle), std::sin(angle)};
+    const float r = std::sqrt(Range(0.0f, 1.0f));
+    return {v.x * r, v.y * r};
 }
 
 } // namespace Random

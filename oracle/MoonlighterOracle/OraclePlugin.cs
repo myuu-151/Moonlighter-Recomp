@@ -54,6 +54,12 @@ namespace MoonlighterOracle
                 Harvest.InstallSafety(harmony);
                 StartCoroutine(PolyNavOracle.Run(this, quit, navArg.Contains("=") ? navArg.Substring(navArg.IndexOf('=') + 1) : ""));
             }
+            string slimeArg = Array.Find(args, a => a.StartsWith("-oracle-slime"));
+            if (slimeArg != null)
+            {
+                Harvest.InstallSafety(harmony);
+                StartCoroutine(SlimeOracle.Run(this, quit, slimeArg.Contains("=") ? slimeArg.Substring(slimeArg.IndexOf('=') + 1) : ""));
+            }
         }
 
         private IEnumerator RunAll(bool quit)

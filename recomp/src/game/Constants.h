@@ -17,6 +17,9 @@ bool GetBool(const std::string& key);
 // Empty vector where C# returns null (missing key / not a list / wrong element types).
 std::vector<float> GetFloatArray(const std::string& key);
 std::vector<std::string> GetStringArray(const std::string& key);
+// A list of lists of doubles (float[][]); empty where C# returns null (any row not a list,
+// any element not written as a double).
+std::vector<std::vector<float>> GetFloat2DArray(const std::string& key);
 
 } // namespace Constants
 } // namespace game
