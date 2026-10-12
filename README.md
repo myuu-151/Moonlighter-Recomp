@@ -150,4 +150,12 @@ GameCube: the same sources compile with devkitPPC (`-mogc -mcpu=750 -meabi -mhar
       PC (`recomp/tools/preview`) and the GameCube
 - [ ] `GenerateSounds` and the other frame-timed waits (draws there depend on frame timing;
       not generation)
-- [ ] The rest of the game: player, enemies' AI, combat, town and shop, UI, saves, audio
+- [x] Will (`game/HeroMerchantController`, `unity/Animator`): walking, the corner slide, doors,
+      the roll, falling into holes and back, and the main attack with every weapon type's
+      combo (the weapon's own Animator, hitbox and sprite: `game/Weapon`), replayed against the
+      game frame by frame (`player_walk_test`: walk, roll, diagonals, fall, attack; positions,
+      Animator states and times, sprites and hitboxes bit for bit). The Animator keeps
+      normalized time as Unity does and samples the clips' curves exactly
+- [x] Box2D 2.3.1 for his Rigidbody2D's contacts (`unity/PhysicsWorld`), the layer matrix
+- [x] PolyNav (`game/PolyNav*`): the enemies' pathfinding map, A* and agents
+- [ ] Enemies' AI (BabySlime first), combat damage both ways, town and shop, UI, saves, audio
