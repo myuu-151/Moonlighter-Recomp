@@ -44,7 +44,8 @@ EnemyBehaviour::CommonEnemyCulture BabySlimeCulture(const std::string& prefabNam
 
 // An enemy object from its prefab, Instantiated under `parents` (nearest first: the spawn
 // point's local position, the enemy container's, the room's) with its behaviour (a
-// BabySlimeBehaviour for the BabySlime prefabs, else a plain EnemyBehaviour). Not yet Init:
+// BabySlimeBehaviour for the BabySlime prefabs, a TangleBehaviour (game/Tangle.h) for the
+// prefabs that have one, else a plain EnemyBehaviour). Not yet Init:
 // call enemy->Init(name, stats, context) (SpawnEnemy does, at the floor's generation).
 std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const unity::AnimatorController* controller,
                                  const std::vector<unity::Vector2>& parents);

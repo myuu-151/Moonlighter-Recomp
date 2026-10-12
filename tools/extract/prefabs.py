@@ -56,6 +56,7 @@ FIELDS = {
     'Enemy': ('itemDrops', 'dropRadius', 'dropOffset'),
     'EnemyBehaviour': ENEMY_BEHAVIOUR,
     'BabySlimeBehaviour': ENEMY_BEHAVIOUR,  # an EnemyBehaviour
+    'TangleBehaviour': ENEMY_BEHAVIOUR + ('tangleCulture',),  # an EnemyBehaviour (tangleCulture: CommonEnemyCulture)
     'PolyNavAgent': ('maxSpeed', 'mass', 'stoppingDistance', 'slowingDistance', 'accelerationRate', 'decelerationRate',
                      'avoidRadius', 'lookAheadDistance', 'repath', 'restrict', 'closerPointOnInvalid', 'roundCorners',
                      'rotateTransform'),

@@ -14,6 +14,8 @@ the port uses (TARGETS):
   items / NewGlovesForestGloves (override of EmptyTrainingGloves), exact
                                                                -> animators/forest_gloves.json,
       sprites/weapons/forest_gloves/ (the Forest Gloves', what the oracle's save slot holds)
+  enemies_golem / Tangle (controller), exact                   -> animators/Tangle.json,
+      sprites/enemies/Tangle/ (its cycle and its dead sprite)
 
   animators/<name>.json:
     controller, override (the override's name, null for a plain controller)
@@ -83,6 +85,7 @@ TARGETS = (
     ('enemies_golem', 'BabySlime', 'controller', 'BabySlime', 'enemies/BabySlime', 'prefab', False),
     ('items', 'BroomSpear', 'override', 'broom_spear', 'weapons/broom_spear', 'prefab', True),
     ('items', 'NewGlovesForestGloves', 'override', 'forest_gloves', 'weapons/forest_gloves', 'prefab', True),
+    ('enemies_golem', 'Tangle', 'controller', 'Tangle', 'enemies/Tangle', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).

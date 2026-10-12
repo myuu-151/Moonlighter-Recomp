@@ -60,6 +60,13 @@ namespace MoonlighterOracle
                 Harvest.InstallSafety(harmony);
                 StartCoroutine(SlimeOracle.Run(this, quit, slimeArg.Contains("=") ? slimeArg.Substring(slimeArg.IndexOf('=') + 1) : ""));
             }
+            // The Tangle lane (TangleOracle.cs; to join the generic enemy oracle).
+            string tangleArg = Array.Find(args, a => a.StartsWith("-oracle-tangle"));
+            if (tangleArg != null)
+            {
+                Harvest.InstallSafety(harmony);
+                StartCoroutine(TangleOracle.Run(this, quit, tangleArg.Contains("=") ? tangleArg.Substring(tangleArg.IndexOf('=') + 1) : ""));
+            }
         }
 
         private IEnumerator RunAll(bool quit)

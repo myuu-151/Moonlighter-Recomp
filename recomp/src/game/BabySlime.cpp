@@ -1,5 +1,7 @@
 #include "game/BabySlime.h"
 
+#include "game/Tangle.h"
+
 namespace game {
 
 void BabySlimeBehaviour::Init()
@@ -44,6 +46,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
             auto slime = std::make_unique<BabySlimeBehaviour>(*enemy);
             slime->babySlimeCulture = BabySlimeCulture(prefab.name);
             enemy->enemyBehaviour = std::move(slime);
+            behaviourFields = &b;
+        } else if (b.cls == "TangleBehaviour") { // (game/Tangle.h)
+            enemy->enemyBehaviour = MakeTangleBehaviour(*enemy, b);
             behaviourFields = &b;
         } else if (b.cls == "EnemyBehaviour") {
             enemy->enemyBehaviour = std::make_unique<EnemyBehaviour>(*enemy);

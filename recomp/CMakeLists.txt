@@ -66,6 +66,7 @@ add_library(mlcore STATIC
     src/game/EnemyStats.cpp
     src/game/Enemy.cpp
     src/game/BabySlime.cpp
+    src/game/Tangle.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -152,6 +153,14 @@ add_executable(slime_test tests/slime_test.cpp)
 target_link_libraries(slime_test PRIVATE mlcore)
 add_test(NAME slime
          COMMAND slime_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The Tangle against the game (data/oracle/tangle.jsonl, `-oracle-tangle`; skipped if there's
+# none), and its self-checks (Physics2D.Raycast, the weave).
+add_executable(tangle_test tests/tangle_test.cpp)
+target_link_libraries(tangle_test PRIVATE mlcore)
+add_test(NAME tangle
+         COMMAND tangle_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/tangle.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
