@@ -359,6 +359,12 @@ namespace MoonlighterOracle
             var ability = ctrl.currentEquipedAbility;
             setup.Key("cooldown").Bits(ability != null ? ability.coolDownTime : -1f);
             setup.Key("statSpeed").Bits(hero.heroMerchantStats.speed.Value);
+            // His health and defense (damage: the fall's, the enemies').
+            var st = hero.heroMerchantStats;
+            setup.Key("maxHealth").Bits(st.currentHealth.maxValue).Key("health").Bits(st.currentHealth.Value)
+                .Key("defense").Bits(st.defense.Value).Key("strength").Bits(st.strength.Value)
+                .Key("absorption").Bits(st.absorption.Value).Key("absorptionMax").Bits(st.absorption.maxValue)
+                .Key("shield").Bits(st.shield.Value);
             var rb = hero.GetComponent<Rigidbody2D>();
             setup.Prop("body", rb != null ? rb.bodyType.ToString() : "none");
             if (rb != null)
@@ -450,6 +456,13 @@ namespace MoonlighterOracle
                 j.Key("animSpeed").Bits(anim.speed);
                 j.Prop("intangible", tr.Field("isIntangible").GetValue<bool>());
                 j.Prop("falling", tr.Field("isFalling").GetValue<bool>());
+                // Damage: health, its Stat's variability (invincible), the blink, the damaged effect.
+                var hst = HeroMerchant.Instance.heroMerchantStats;
+                j.Key("hp").Bits(hst.currentHealth.Value).Prop("hpVar", (bool)hst.currentHealth.variableStat)
+                    .Key("abs").Bits(hst.absorption.Value).Key("shield").Bits(hst.shield.Value)
+                    .Prop("art", ctrl.heroMerchantArt != null && ctrl.heroMerchantArt.activeSelf)
+                    .Prop("damaged", tr.Field("playingDamagedEffect").GetValue<bool>())
+                    .Prop("holesIntangible", tr.Field("isHolesIntangible").GetValue<bool>());
                 // The weapon: its Animator, the combo, the main attack's hitbox.
                 j.Prop("combo", ctrl.comboCounter);
                 var wa = ctrl.weaponAnimator;

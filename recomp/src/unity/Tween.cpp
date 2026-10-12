@@ -15,11 +15,12 @@ float EaseEvaluate(Ease ease, float time, float duration)
     return time / duration;
 }
 
-int Tweens::DelayedCall(float delay, std::function<void()> callback)
+int Tweens::DelayedCall(float delay, std::function<void()> callback, bool ignoreTimeScale)
 {
     Tween t;
     t.id = nextId_++;
     t.delay = delay;
+    t.unscaled = ignoreTimeScale;
     t.onComplete = std::move(callback);
     tweens_.push_back(std::move(t));
     return tweens_.back().id;
@@ -43,9 +44,21 @@ void Tweens::Complete(int id)
         }
 }
 
+void Tweens::Kill(int id)
+{
+    if (id == 0) return;
+    for (size_t i = 0; i < tweens_.size(); i++)
+        if (tweens_[i].id == id) {
+            tweens_.erase(tweens_.begin() + static_cast<long>(i));
+            return;
+        }
+    killedPending_.push_back(id); // (it may be completing this update: its callback won't run)
+}
+
 void Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay)
 {
     Tween t;
+    t.id = nextId_++;
     t.get = std::move(get);
     t.set = std::move(set);
     t.end = end;
@@ -55,23 +68,25 @@ void Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set
     tweens_.push_back(std::move(t));
 }
 
-void Tweens::Timer(float duration, float delay, std::function<void()> onComplete)
+int Tweens::Timer(float duration, float delay, std::function<void()> onComplete)
 {
     Tween t;
+    t.id = nextId_++;
     t.duration = duration;
     t.delay = delay;
     t.onComplete = std::move(onComplete);
     tweens_.push_back(std::move(t));
+    return tweens_.back().id;
 }
 
-void Tweens::Update(float deltaTime)
+void Tweens::Update(float deltaTime, float unscaledDeltaTime)
 {
     // Callbacks can add tweens: those wait for the next update (they're past this pass's end).
     const size_t count = tweens_.size();
     std::vector<size_t> done;
     for (size_t i = 0; i < count; i++) {
         Tween& t = tweens_[i];
-        float dt = deltaTime;
+        float dt = t.unscaled ? unscaledDeltaTime : deltaTime;
         if (!t.delayComplete) {
             t.elapsedDelay += dt;
             if (t.elapsedDelay < t.delay) continue;
@@ -94,13 +109,20 @@ void Tweens::Update(float deltaTime)
         }
         if (complete) done.push_back(i);
     }
-    // Completed ones go (their callbacks run in order, after this frame's values are set).
-    std::vector<std::function<void()>> callbacks;
+    // Completed ones go (their callbacks run in order, after this frame's values are set; one
+    // that an earlier callback kills doesn't run).
+    std::vector<std::pair<int, std::function<void()>>> callbacks;
     for (size_t k = done.size(); k-- > 0;) {
-        if (tweens_[done[k]].onComplete) callbacks.insert(callbacks.begin(), std::move(tweens_[done[k]].onComplete));
+        if (tweens_[done[k]].onComplete) callbacks.insert(callbacks.begin(), {tweens_[done[k]].id, std::move(tweens_[done[k]].onComplete)});
         tweens_.erase(tweens_.begin() + static_cast<long>(done[k]));
     }
-    for (auto& cb : callbacks) cb();
+    killedPending_.clear();
+    for (auto& [id, cb] : callbacks) {
+        bool killed = false;
+        for (int k : killedPending_) killed |= k == id;
+        if (!killed) cb();
+    }
+    killedPending_.clear();
 }
 
 } // namespace unity

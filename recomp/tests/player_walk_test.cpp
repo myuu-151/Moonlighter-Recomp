@@ -412,6 +412,18 @@ int main(int argc, char** argv)
     // Where a fall puts him back: the door he came in by (recordings in a room past the first).
     hero.roomIsInit = room->name == "Init";
     if (const Value* r = start.Find("respawn")) hero.respawn = V2(*r);
+    // His health and defense (his equipment's), from recordings that have them.
+    if (const Value* m = start.Find("maxHealth")) {
+        hero.stats.currentHealth.maxValue = Bits(*m);
+        hero.stats.currentHealth.value = Bits(start["health"]);
+        hero.stats.defense.value = Bits(start["defense"]);
+        hero.stats.strength.value = Bits(start["strength"]);
+        if (const Value* a = start.Find("absorption")) {
+            hero.stats.absorption.maxValue = Bits(start["absorptionMax"]);
+            hero.stats.absorption.value = Bits(*a);
+            hero.stats.shield.value = Bits(start["shield"]);
+        }
+    }
 
     // From the first frame as recorded.
     const Value& f0 = frames[0];
@@ -463,7 +475,7 @@ int main(int argc, char** argv)
 
     int bodyChecked = 0, bodyBad = 0, touching = 0;
     int checked = 0, posBad = 0, velBad = 0, stateBad = 0, timeBad = 0, dirBad = 0, spriteBad = 0, rollBad = 0, rollFrames = 0, shown = 0;
-    int weaponBad = 0, hitboxBad = 0;
+    int weaponBad = 0, hitboxBad = 0, damageBad = 0, damageFrames = 0;
     double worstTime = 0.0;
     for (size_t i = 1; i < frames.size(); i++) {
         const Value& f = frames[i];
@@ -503,6 +515,21 @@ int main(int argc, char** argv)
                  Bits(f["speedFactor"]) != hero.speedFactor;
         }
         rollBad += rb;
+        // Damage (recordings with "hp"): health bit for bit, invincible, the blink, the damaged
+        // effect, the layer.
+        if (const Value* hp = f.Find("hp")) {
+            damageFrames++;
+            const Value* abs = f.Find("abs");
+            const bool db2 = Bits(*hp) != hero.stats.currentHealth.value ||
+                             (abs && (Bits(*abs) != hero.stats.absorption.value || Bits(f["shield"]) != hero.stats.shield.value)) || f["hpVar"].b != hero.stats.currentHealth.variableStat ||
+                             f["art"].b != hero.artVisible || f["damaged"].b != hero.playingDamagedEffect ||
+                             f["holesIntangible"].b != hero.isHolesIntangible || f["layer"].AsInt() != hero.layer;
+            damageBad += db2;
+            if (db2 && (debug || shown < 12))
+                std::printf("  damage game: hp %.9g var %d art %d damaged %d layer %lld | port: hp %.9g var %d art %d damaged %d layer %d\n", Bits(*hp),
+                            f["hpVar"].b, f["art"].b, f["damaged"].b, static_cast<long long>(f["layer"].AsInt()), hero.stats.currentHealth.value,
+                            hero.stats.currentHealth.variableStat, hero.artVisible, hero.playingDamagedEffect, hero.layer);
+        }
         touching += box2d && hero.Body() && hero.Body()->TouchingCount() > 0;
         // His body after the frame's last step (recordings with "rb": position, velocity).
         if (const Value* body = f.Find("rb"); body && box2d && hero.Body()) {
@@ -582,11 +609,13 @@ int main(int argc, char** argv)
         std::printf("weapon (combo, Animator, sprite) %3d match %5d differ\n", checked - weaponBad, weaponBad);
         std::printf("main attack hitbox             %5d match %5d differ\n", checked - hitboxBad, hitboxBad);
     }
+    if (damageFrames)
+        std::printf("damage (health, invincible, blink, damaged effect, layer) %d match %d differ\n", damageFrames - damageBad, damageBad);
     if (box2d) std::printf("his Rigidbody2D in Box2D: touching a collider in %d frames\n", touching);
     if (bodyChecked)
         std::printf("his Rigidbody2D (Box2D)        %5d match %5d differ\n", bodyChecked - bodyBad, bodyBad);
     (void)built;
-    bool ok = !differ && !bodyBad && !posBad && !velBad && !dirBad && !stateBad && !timeBad && !spriteBad && !weaponBad && !hitboxBad;
+    bool ok = !differ && !bodyBad && !posBad && !velBad && !dirBad && !stateBad && !timeBad && !spriteBad && !weaponBad && !hitboxBad && !damageBad;
     std::printf("\n%s\n", ok ? "ALL MATCH" : "MISMATCHES");
     return ok ? 0 : 1;
 }

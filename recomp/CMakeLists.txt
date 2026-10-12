@@ -50,6 +50,7 @@ add_library(mlcore STATIC
     src/unity/Physics2D.cpp
     src/unity/Tween.cpp
     src/game/HeroMerchantController.cpp
+    src/game/HeroMerchantStats.cpp
     src/game/Weapon.cpp
     src/game/SceneTransform.cpp
     src/game/RoomPhysics.cpp

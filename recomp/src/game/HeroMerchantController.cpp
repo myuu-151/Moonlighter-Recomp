@@ -130,6 +130,28 @@ HeroMerchantController::HeroMerchantController(const unity::AnimatorController& 
                                                const unity::Physics2D& physics)
     : animator(controller), s_(settings), physics_(physics)
 {
+    // HeroMerchantStats.Init, and its health's subscribers in the order they subscribe: the
+    // stats' HealthValueChanged, the controller's OnHealthChanged, the health bar's PlayAnimation.
+    stats.Init();
+    previousHealth_ = stats.currentHealth.value;
+    stats.currentHealth.onStateUpdated = [this](float v) {
+        if (!stats.isDead && v <= stats.currentHealth.minValue) stats.isDead = true; // Die (the rest isn't ported)
+        OnHealthChanged(v);
+        if (v - stats.currentHealth.value < 0.0f) PlayDamagedEffect(); // WillHealthBar.PlayAnimation
+    };
+    // The health bar's other two: the absorption slider going down, each shield image removed.
+    stats.absorption.onStateUpdated = [this](float v) {
+        if (v < stats.absorption.value) PlayDamagedEffect();
+    };
+    stats.shield.onStateUpdated = [this](float v) {
+        for (int n = static_cast<int>(stats.shield.value); n > static_cast<int>(v); n--) PlayDamagedEffect();
+    };
+    if (Constants::GetFloat("willFallDamage") > 0.0f) { // (the table loaded)
+        willFallDamage_ = Constants::GetFloat("willFallDamage");
+        willInvincibleBlinkDuration_ = Constants::GetFloat("willInvincibleBlinkDuration");
+        willDamagedRedTime_ = Constants::GetFloat("willDamagedRedTime");
+        willDamagedWhiteTime_ = Constants::GetFloat("willDamagedWhiteTime");
+    }
     // SMAnimatorHandler's registrations (Start): the roll's, the main attacks', Idle's and Walk's.
     animator.onStateEnter = [this](int32_t hash) {
         if (IsRollState(hash)) animator.speed = 1.25f; // AbilityUseStarted
@@ -189,7 +211,7 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
     }
 
     // DOTween's update runs before his (a tween he starts this frame first moves the next).
-    tweens.Update(deltaTime);
+    tweens.Update(deltaTime, input.unscaledDeltaTime < 0.0f ? deltaTime : input.unscaledDeltaTime);
 
     stick_ = input.stick;
     const Vector2 stick = input.stick;
@@ -399,6 +421,15 @@ void HeroMerchantController::SetDirection(Direction direction)
 // UseAbility with the Dash ability (Ability.UseAbility's cooldown, Dash.UseAbility).
 void HeroMerchantController::UseAbility(Vector2 stick)
 {
+    // A roll ends the damaged effect (and with it the hit's intangibility).
+    if (playingDamagedEffect) {
+        KillDamagedEffectTweens();
+        SetPlayingDamagedEffectToFalse();
+        flashAmount = 0.0f; // SetPlayerShaderToDefault
+        flashTinted = false;
+        EnableHeroMerchantArt();
+    }
+    if (weapon) weapon->animator.SetTrigger("ResetWeapon");
     SetDirection(inputDirection);
     abilityAvailable = false;
     abilityReadyAt_ = now_ + s_.abilityCooldown;
@@ -531,6 +562,16 @@ void HeroMerchantController::MainAttackUseEnd()
         for (const char* t : {"MainAttackUp", "MainAttackDown", "MainAttackLeft", "MainAttackRight"}) weapon->animator.ResetTrigger(t);
 }
 
+// ResetCurrentWeaponAnimator: the weapon's direction triggers off, its secondary bools false.
+void HeroMerchantController::ResetCurrentWeaponAnimator()
+{
+    if (!weapon) return;
+    for (const char* dir : {"Down", "Left", "Up", "Right"}) {
+        weapon->animator.ResetTrigger(std::string("MainAttack") + dir);
+        weapon->animator.SetBool(std::string("SecondaryAttack") + dir, false);
+    }
+}
+
 void HeroMerchantController::IdleStateStart()
 {
     comboCounter = 0; // ResetComboCounter
@@ -575,6 +616,8 @@ void HeroMerchantController::PlayFallAnimation()
     isFalling = true;
     timePushingHoles = 0.0f;
     SetIntangibleMode();
+    stats.SetInvencible(tweens);
+    ResetCurrentWeaponAnimator();
     const float time = 0.6f;
     // A tile on the way he faces (the next one if he's less than half into it), as he goes.
     tweens.DelayedCall(time * 0.1f, [this, time] {
@@ -595,11 +638,15 @@ void HeroMerchantController::PlayFallAnimation()
     });
     // The art's spin (0.2 s on, 0.6 s): its end is the fall's.
     tweens.Timer(time, 0.2f, [this] {
+        stats.SetVencible(tweens);
         animator.SetTrigger("EndFall");
         isFalling = false;
         EnableMoveInput();
         canMove = true; // AllowMovement
         TeleportTo(roomIsInit ? lastHolesFreePosition : respawn);
+        // The fall's cost (no BlackCatAmulet; no ArmorAmulet's extra).
+        const int damage = static_cast<int>(std::max(1.0f, stats.currentHealth.maxValue * willFallDamage_));
+        DealDamageToPlayer(static_cast<float>(damage), "Fall");
         SetDefaultMode();
     });
 }
@@ -616,7 +663,132 @@ void HeroMerchantController::SetDefaultMode()
 {
     isIntangible = false;
     isHolesIntangible = false;
-    if (!CheckForHoles()) layer = unity::kLayerDefault; // over a hole still: he falls again
+    if (!CheckForHoles()) { // over a hole still: he falls again
+        layer = unity::kLayerDefault;
+        stats.currentHealth.variableStat = true;
+    }
+}
+
+void HeroMerchantController::DealDamageToPlayer(float attackStrength, const char* damageSource, DamageType type)
+{
+    (void)damageSource;
+    if (stats.isDead) return;
+    const float totalDamage = type != DamageType::Self ? CalcHitDamage(attackStrength, stats.defense.value) : attackStrength;
+    const float num2 = stats.currentHealth.value + stats.absorption.value;
+    float num3 = num2 - (num2 - totalDamage);
+    num3 = num3 < 0.0f ? 0.0f : num3 > num2 ? num2 : num3;
+    auto hit = [&] {
+        if (type == DamageType::Self) return;
+        stats.SetInvencible(tweens, 1.0f);
+        StartPlayingInvencibilityEffect(1.0f, 0.2f);
+        SetIntangibleMode();
+    };
+    // A shield takes the whole hit; absorption takes what it can; the health the rest.
+    if (stats.shield.value > 0.0f) {
+        stats.shield.Set(stats.shield.value - 1.0f);
+        num3 = 0.0f;
+        hit();
+    }
+    if (num3 > 0.0f && stats.absorption.value > 0.0f) {
+        const float rest = std::max(0.0f, num3 - stats.absorption.value);
+        stats.absorption.Set(stats.absorption.value - num3);
+        num3 = rest;
+        hit();
+    }
+    if (num3 > 0.0f) {
+        stats.currentHealth.Set(stats.currentHealth.value - num3);
+        hit();
+    }
+}
+
+// Stat's subscriber: a drop sets the Animator's Damaged trigger (no transition reads it).
+void HeroMerchantController::OnHealthChanged(float newHealth)
+{
+    if (previousHealth_ > newHealth) animator.SetTrigger("Damaged");
+    previousHealth_ = newHealth;
+}
+
+void HeroMerchantController::KillDamagedEffectTweens()
+{
+    for (int* t : {&tweenColorWhite_, &tweenColorRed_, &tweenColorDefault_, &tweenHidePlayerFromInvincible_, &tweenSetPlayerDamagedEffectToFalse_}) {
+        tweens.Kill(*t);
+        *t = 0;
+    }
+}
+
+// The health bar's colour flash, unscaled (DOVirtual's default): red, white, red, then the
+// default; the effect (and the hit's intangibility) ends 10 reds later.
+void HeroMerchantController::PlayDamagedEffect()
+{
+    playingDamagedEffect = true;
+    KillDamagedEffectTweens();
+    flashAmount = 1.0f;
+    flashTinted = true;
+    float t = willDamagedRedTime_;
+    tweenColorWhite_ = tweens.DelayedCall(t, [this] { flashTinted = false; });
+    t += willDamagedWhiteTime_;
+    tweenColorRed_ = tweens.DelayedCall(t, [this] { flashTinted = true; });
+    t += willDamagedRedTime_;
+    tweenColorDefault_ = tweens.DelayedCall(t, [this] { flashAmount = 0.0f; flashTinted = false; });
+    t += 10.0f * willDamagedRedTime_;
+    tweenSetPlayerDamagedEffectToFalse_ = tweens.DelayedCall(t, [this] { SetPlayingDamagedEffectToFalse(); });
+}
+
+void HeroMerchantController::SetPlayingDamagedEffectToFalse()
+{
+    playingDamagedEffect = false;
+    if (!abilityInUse && stats.currentHealth.value > 0.0f) SetDefaultMode();
+}
+
+// The blink (scaled): the art off after `delay`, back on and off every blink duration, on for
+// good at `time`.
+void HeroMerchantController::StartPlayingInvencibilityEffect(float time, float delay)
+{
+    tweenDelayedHide_ = tweens.DelayedCall(delay, [this] { HidePlayerArtFromInvincibleEffect(); }, false);
+    tweens.DelayedCall(time, [this] { StopPlayingInvencibilityEffect(); }, false);
+}
+
+void HeroMerchantController::HidePlayerArtFromInvincibleEffect()
+{
+    if (stats.isDead) return;
+    DisableHeroMerchantArt();
+    tweenHidePlayerFromInvincible_ = tweens.DelayedCall(willInvincibleBlinkDuration_, [this] { ShowPlayerArtFromInvincibleEffect(); }, false);
+}
+
+void HeroMerchantController::ShowPlayerArtFromInvincibleEffect()
+{
+    if (stats.isDead) return;
+    EnableHeroMerchantArt();
+    tweenShowPlayerFromInvincible_ = tweens.DelayedCall(willInvincibleBlinkDuration_, [this] { HidePlayerArtFromInvincibleEffect(); }, false);
+}
+
+void HeroMerchantController::StopPlayingInvencibilityEffect()
+{
+    if (stats.isDead) return;
+    EnableHeroMerchantArt();
+    flashTinted = false; // SetPlayerShaderColorToWhite
+    flashAmount = 0.0f;
+}
+
+// (Showing or hiding the art kills the blink's tweens: the caller schedules the next.)
+void HeroMerchantController::EnableHeroMerchantArt()
+{
+    artVisible = true;
+    KillInvencibleEffectTweens();
+}
+
+void HeroMerchantController::DisableHeroMerchantArt()
+{
+    artVisible = false;
+    KillInvencibleEffectTweens();
+}
+
+void HeroMerchantController::KillInvencibleEffectTweens()
+{
+    for (int* t : {&tweenDelayedHide_, &tweenHidePlayerFromInvincible_, &tweenShowPlayerFromInvincible_}) {
+        tweens.Kill(*t);
+        *t = 0;
+    }
 }
 
 void HeroMerchantController::EnableMoveInput()

@@ -36,8 +36,15 @@
 // input back; Idle and Walk reset the combo. A press early in a swing (the type's
 // attack-to-attack window) is thrown away, and so is a roll early in one (attackToRoll).
 //
+// Damage (HeroMerchant.DealDamageToPlayer): defense takes its share, the health drops (its
+// Stat reporting first: the Animator's Damaged trigger, the health bar's damaged effect), and
+// he's invincible for 1 s (scaled), blinks (the art off at 0.2 s, then every 0.1 s, on again at
+// 1 s) and is intangible until the damaged effect ends (1.04 s unscaled: SetDefaultMode). A fall
+// costs willFallDamage of his max health, dealt as he's put back.
+//
 // Not yet: secondary attacks, the bow's arrows, trick weapons, abilities other than the roll,
-// the fall's damage, knockback.
+// knockback, amulets, the camera's shake (it draws Random.insideUnitSphere per
+// hit: the RNG's sync with enemies will need it), death past isDead.
 
 #include <string>
 #include <vector>
@@ -47,6 +54,7 @@
 #include "unity/Tween.h"
 #include "unity/PhysicsWorld.h"
 #include "unity/Vector2.h"
+#include "game/HeroMerchantStats.h"
 #include "game/Weapon.h"
 
 namespace game {
@@ -89,8 +97,9 @@ public:
         unity::Vector2 stick; // LeftStick.X, .Y
         bool roll = false;    // LeftTrigger.WasPressed
         bool attack = false;  // Action1.WasPressed
-        float unscaledDeltaTime = -1.0f; // Time.unscaledDeltaTime (the weapon's Animator's); < 0: deltaTime
+        float unscaledDeltaTime = -1.0f; // Time.unscaledDeltaTime (the weapon's Animator's, DOTween's unscaled); < 0: deltaTime
     };
+    enum class DamageType { Normal, ItemDrain, Self }; // HeroMerchant.DamageType
 
     // From his prefab (hero_merchant's HeroMerchant: its collider and the controller's layer
     // masks) and the constants table.
@@ -127,6 +136,10 @@ public:
     int comboCounter = 0, maxComboCounter = 3;
     bool canAttack = true, attackInputEnabled = true;
     const unity::Collider2D* doorEntered = nullptr; // this frame's
+    HeroMerchantStats stats;   // HeroMerchant's heroMerchantStats (Init'd from the constants)
+    bool artVisible = true;    // heroMerchantArt.activeSelf (the invincibility blink)
+    float flashAmount = 0.0f;  // the art's _FlashAmount (the damaged effect)
+    bool flashTinted = false;  // its _Color: the health bar's colour (true) or white
     unity::Animator animator;
     int layer = unity::kLayerDefault; // gameObject.layer
 
@@ -137,6 +150,8 @@ public:
     unity::Rigidbody2D* Body() const { return body_; }
 
     void SetDirection(Direction direction);
+    // HeroMerchant.DealDamageToPlayer (no shield, absorption or amulets yet).
+    void DealDamageToPlayer(float attackStrength, const char* damageSource, DamageType type = DamageType::Normal);
     void TeleportTo(unity::Vector2 to);
     bool CheckForHoles();
     void PlayFallAnimation();
@@ -154,6 +169,7 @@ private:
     void MainAttackUseStart();
     void MainAttackUseEnd();
     void IdleStateStart();
+    void ResetCurrentWeaponAnimator();
     void MoveWithAttackIfInputDirection(Direction direction, float time);
     bool IsPlayingMovingMainAttackAnimation() const;
     bool IsPlayingMainAttackAnimation() const;
@@ -161,6 +177,17 @@ private:
     bool CanAttackAgain() const;
     bool CanRollFromAttack() const;
     void DashAbilityUseStart();
+    void OnHealthChanged(float newHealth);
+    void PlayDamagedEffect();
+    void SetPlayingDamagedEffectToFalse();
+    void StartPlayingInvencibilityEffect(float time, float delay);
+    void HidePlayerArtFromInvincibleEffect();
+    void ShowPlayerArtFromInvincibleEffect();
+    void StopPlayingInvencibilityEffect();
+    void EnableHeroMerchantArt();
+    void DisableHeroMerchantArt();
+    void KillInvencibleEffectTweens();
+    void KillDamagedEffectTweens();
     void SetIntangibleMode(int isHolesEnabled = 0);
     void SetDefaultMode();
     void EnableMoveInput();
@@ -185,6 +212,11 @@ private:
     std::vector<float> restoreAtFrameEnd_;
     int nextEffectId_ = 1, dashEffect_ = 0; // Dash's static speedEffect
     int moveWillWhileAttackingTween_ = 0;
+    // The damaged effect's and the blink's tweens (killed as the game kills them).
+    int tweenColorWhite_ = 0, tweenColorRed_ = 0, tweenColorDefault_ = 0, tweenSetPlayerDamagedEffectToFalse_ = 0;
+    int tweenDelayedHide_ = 0, tweenHidePlayerFromInvincible_ = 0, tweenShowPlayerFromInvincible_ = 0;
+    float previousHealth_ = 0.0f;
+    float willFallDamage_ = 0.05f, willInvincibleBlinkDuration_ = 0.1f, willDamagedRedTime_ = 0.08f, willDamagedWhiteTime_ = 0.08f;
 };
 
 } // namespace game
