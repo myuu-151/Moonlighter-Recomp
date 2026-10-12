@@ -15,12 +15,32 @@ float EaseEvaluate(Ease ease, float time, float duration)
     return time / duration;
 }
 
-void Tweens::DelayedCall(float delay, std::function<void()> callback)
+int Tweens::DelayedCall(float delay, std::function<void()> callback)
 {
     Tween t;
+    t.id = nextId_++;
     t.delay = delay;
     t.onComplete = std::move(callback);
     tweens_.push_back(std::move(t));
+    return tweens_.back().id;
+}
+
+bool Tweens::IsPlaying(int id) const
+{
+    for (const Tween& t : tweens_)
+        if (t.id == id) return true;
+    return false;
+}
+
+void Tweens::Complete(int id)
+{
+    for (size_t i = 0; i < tweens_.size(); i++)
+        if (tweens_[i].id == id) {
+            std::function<void()> cb = std::move(tweens_[i].onComplete);
+            tweens_.erase(tweens_.begin() + static_cast<long>(i));
+            if (cb) cb();
+            return;
+        }
 }
 
 void Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay)

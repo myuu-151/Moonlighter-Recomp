@@ -27,7 +27,9 @@ git ignores), for the port and its tests.
    - animators/hero_merchant.json, sprites/hero/: the hero's Animator controller, clips and sprites;
      animators/BabySlime.json, sprites/enemies/BabySlime/: the same for the enemies the port has;
      animators/broom_spear.json, sprites/weapons/broom_spear/: the hero's starting weapon's
-     (with its curves exact: the attack colliders' sizes, offsets and activity).
+     (with its curves exact: the attack colliders' sizes, offsets and activity), and
+     animators/forest_gloves.json, sprites/weapons/forest_gloves/ the same for the Forest Gloves
+     (what the oracle's save slot equips: the main attack is checked with them).
 
 Nothing from the game is stored in this repository. Needs Python 3 with UnityPy
 (py -m pip install UnityPy).

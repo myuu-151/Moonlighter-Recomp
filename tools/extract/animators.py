@@ -11,6 +11,9 @@ the port uses (TARGETS):
   items / BroomSpear (override of EmptyTrainingSpear), exact   -> animators/broom_spear.json,
       sprites/weapons/broom_spear/ (what the clips show: the Broom Spear prefab's renderers
       have no sprite of their own)
+  items / NewGlovesForestGloves (override of EmptyTrainingGloves), exact
+                                                               -> animators/forest_gloves.json,
+      sprites/weapons/forest_gloves/ (the Forest Gloves', what the oracle's save slot holds)
 
   animators/<name>.json:
     controller, override (the override's name, null for a plain controller)
@@ -79,6 +82,7 @@ TARGETS = (
     ('hero_merchant', 'HeroMerchant', 'override', 'hero_merchant', 'hero', 'bundle', False),
     ('enemies_golem', 'BabySlime', 'controller', 'BabySlime', 'enemies/BabySlime', 'prefab', False),
     ('items', 'BroomSpear', 'override', 'broom_spear', 'weapons/broom_spear', 'prefab', True),
+    ('items', 'NewGlovesForestGloves', 'override', 'forest_gloves', 'weapons/forest_gloves', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).

@@ -29,7 +29,15 @@
 // With a PhysicsWorld (physicsWorld), his Dynamic Rigidbody2D's contacts push him out of
 // rocks and holes as Box2D does; without one, only the round trip through its centre of mass.
 //
-// Not yet: attacks, abilities other than the roll, the fall's damage, knockback.
+// The main attack (Action1): the equipped weapon's type's trigger (SpearMainAttack,
+// GlovesMainAttack, ...) starts <Type>Main{First,Second,Third}<Dir> by ComboCounter; entering one
+// disables move input, lunges if the stick points his way (velocity 1 for 0.1 s), triggers the
+// weapon's Animator (game/Weapon: its hitbox and sprite) and counts the combo; leaving gives
+// input back; Idle and Walk reset the combo. A press early in a swing (the type's
+// attack-to-attack window) is thrown away, and so is a roll early in one (attackToRoll).
+//
+// Not yet: secondary attacks, the bow's arrows, trick weapons, abilities other than the roll,
+// the fall's damage, knockback.
 
 #include <string>
 #include <vector>
@@ -39,6 +47,7 @@
 #include "unity/Tween.h"
 #include "unity/PhysicsWorld.h"
 #include "unity/Vector2.h"
+#include "game/Weapon.h"
 
 namespace game {
 
@@ -57,6 +66,9 @@ public:
         // Dash: RisenObstacle | LevelBoundary | PlayerSpecificShopCollider.
         int rollLayers = (1 << 8) | (1 << 11) | (1 << 17);
         float abilityCooldown = 0.0f; // the equipped ability item's cooldown
+        // <type>AttackToAttackNormalizedTimeWindow, by WeaponType (None unused).
+        float attackToAttackWindow[6] = {0.55f, 0.55f, 0.55f, 0.65f, 0.55f, 0.55f};
+        float mainAttackToSecondaryWindow = 0.55f, attackToRollWindow = 0.55f, moveTimeWhileAttacking = 0.35f;
         int holesMask = 1 << 14;      // SunkenObstacle
         // His Rigidbody2D (hero_merchant's): Dynamic, mass 1 by hand, drag 5, no gravity,
         // rotation frozen, continuous; the centre of mass is his BoxCollider2D's centre.
@@ -76,6 +88,8 @@ public:
     struct Input {
         unity::Vector2 stick; // LeftStick.X, .Y
         bool roll = false;    // LeftTrigger.WasPressed
+        bool attack = false;  // Action1.WasPressed
+        float unscaledDeltaTime = -1.0f; // Time.unscaledDeltaTime (the weapon's Animator's); < 0: deltaTime
     };
 
     // From his prefab (hero_merchant's HeroMerchant: its collider and the controller's layer
@@ -109,6 +123,9 @@ public:
     bool roomIsInit = false;
     unity::Vector2 respawn;
     unity::Tweens tweens; // DOTween's, for him
+    Weapon* weapon = nullptr; // the equipped one, nullptr bare-handed
+    int comboCounter = 0;
+    bool canAttack = true, attackInputEnabled = true;
     const unity::Collider2D* doorEntered = nullptr; // this frame's
     unity::Animator animator;
     int layer = unity::kLayerDefault; // gameObject.layer
@@ -134,6 +151,15 @@ private:
     bool IsTag(const char* tag) const;
 
     void UseAbility(unity::Vector2 stick);
+    void MainAttackUseStart();
+    void MainAttackUseEnd();
+    void IdleStateStart();
+    void MoveWithAttackIfInputDirection(Direction direction, float time);
+    bool IsPlayingMovingMainAttackAnimation() const;
+    bool IsPlayingMainAttackAnimation() const;
+    bool IsPlayingMainAttackAnimationToSecondaryAttackTimeWindow() const;
+    bool CanAttackAgain() const;
+    bool CanRollFromAttack() const;
     void DashAbilityUseStart();
     void SetIntangibleMode(int isHolesEnabled = 0);
     void SetDefaultMode();
@@ -158,6 +184,7 @@ private:
     std::vector<SpeedEffect> speedEffects_;
     std::vector<float> restoreAtFrameEnd_;
     int nextEffectId_ = 1, dashEffect_ = 0; // Dash's static speedEffect
+    int moveWillWhileAttackingTween_ = 0;
 };
 
 } // namespace game

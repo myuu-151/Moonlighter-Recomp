@@ -157,7 +157,7 @@ public:
     bool IsInTransition() const { return inTransition_; }
     float TransitionNormalizedTime() const { return transitionProgress_; }
     int CurrentState() const { return current_; }
-    float CurrentTime() const { return time_; } // seconds into the current state
+    float CurrentTime() const { return time_ * Length(current_); } // seconds into the current state (at its speed)
     // The sprite the SpriteRenderer shows (nullptr: the clip doesn't set one).
     const std::string* Sprite() const;
 
@@ -216,10 +216,13 @@ private:
     const AnimatorController& c_;
     std::vector<float> values_;
     int current_ = 0, next_ = -1;
-    float time_ = 0.0f, nextTime_ = 0.0f; // seconds into the state
+    // Normalized time into the state, as Unity keeps it: each frame adds (deltaTime * speed) /
+    // length in floats, and a clip plays at normalized time * length (bit for bit the game's).
+    float time_ = 0.0f, nextTime_ = 0.0f;
     bool inTransition_ = false;
     float transitionProgress_ = 0.0f, transitionDuration_ = 0.0f;
     bool entered_ = false;
+    bool motionlessEntered_ = false; // a state without a clip entered this frame (writes nothing yet)
     std::vector<Slot> slots_;
     std::vector<Sample> sampleA_, sampleB_;
 };

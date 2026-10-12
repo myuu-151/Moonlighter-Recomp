@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
@@ -78,6 +78,33 @@ namespace MoonlighterOracle
             new Segment(30, 0f, 0f),
         };
 
+        private const int Attack = 1;
+
+        // `-oracle-walk=attack`: the starting weapon's main attack (A): single hits in each
+        // direction, a three-hit combo, presses too early (thrown away), an attack while
+        // holding a direction (the lunge), and turning mid-combo.
+        private static readonly Segment[] AttackScript =
+        {
+            new Segment(20, 0f, 0f),
+            new Segment(10, 0f, -1f),            // face down
+            new Segment(50, 0f, 0f, Attack),     // one hit
+            new Segment(25, 0f, 0f, Attack),     // three in a row: 25 frames apart
+            new Segment(25, 0f, 0f, Attack),
+            new Segment(60, 0f, 0f, Attack),
+            new Segment(10, 1f, 0f),             // face right
+            new Segment(12, 0f, 0f, Attack),     // a second press too early...
+            new Segment(48, 0f, 0f, Attack),     // ...thrown away
+            new Segment(40, 1f, 0f, Attack),     // holding right: the lunge
+            new Segment(20, 0f, 0f),
+            new Segment(10, -1f, 0f),            // face left
+            new Segment(25, 0f, 0f, Attack),
+            new Segment(25, 0f, 1f, Attack),     // turning up for the second hit
+            new Segment(60, 0f, 0f),
+            new Segment(10, 0f, 1f),             // face up
+            new Segment(50, 0f, 0f, Attack),
+            new Segment(30, 0f, 0f),
+        };
+
         private static Segment[] Script; // Run picks it
 
         // `-oracle-walk=fall`: in a room with holes (entered through a door, as DungeonDoor.
@@ -88,7 +115,7 @@ namespace MoonlighterOracle
             new Segment(20, 0f, 0f),
             new Segment(90, toward.x, toward.y), // into the hole: 0.6 s of pushing, then the fall
             new Segment(90, 0f, 0f),             // the fall (0.8 s) and back at the door
-            new Segment(40, -toward.x, -toward.y),
+            new Segment(40, toward.y, toward.x),   // along the wall (not back through the door)
             new Segment(20, 0f, 0f),
         };
 
@@ -251,7 +278,7 @@ namespace MoonlighterOracle
 
         public static IEnumerator Run(MonoBehaviour host, bool quit, string script = "")
         {
-            Script = script == "roll" ? RollScript : script == "diag" ? DiagScript : script == "rocks" ? RocksScript : WalkScript;
+            Script = script == "roll" ? RollScript : script == "diag" ? DiagScript : script == "rocks" ? RocksScript : script == "attack" ? AttackScript : WalkScript;
             var log = OraclePlugin.Log;
             // The harvest's first steps: the slot, the town, the Golem gate on a fixed seed.
             yield return Harvest.LoadSlot();
@@ -314,6 +341,9 @@ namespace MoonlighterOracle
             V2(setup, "colliderOffset", ctrl.characterCollider.offset);
             setup.Key("moveSpeed").Bits(ctrl.currentPlayerMoveSpeed).Key("speedFactor").Bits(ctrl.speedFactor);
             setup.Prop("godModeLayers", ctrl.godModeCollisionDetectionLayers.value).Prop("script", script);
+            // The equipped weapon's item (its type, prefab and controller follow from it).
+            var weapon = ctrl.currentEquippedWeapon;
+            setup.Prop("weapon", weapon != null && weapon.weaponMaster != null ? weapon.weaponMaster.name : null);
             setup.Prop("holesMask", tr.Field("holesMask").GetValue<LayerMask>().value);
             // DOTween's globals (the fall's tweens): how its clock runs.
             setup.Prop("dotweenSmoothDeltaTime", DG.Tweening.DOTween.useSmoothDeltaTime)
@@ -420,6 +450,26 @@ namespace MoonlighterOracle
                 j.Key("animSpeed").Bits(anim.speed);
                 j.Prop("intangible", tr.Field("isIntangible").GetValue<bool>());
                 j.Prop("falling", tr.Field("isFalling").GetValue<bool>());
+                // The weapon: its Animator, the combo, the main attack's hitbox.
+                j.Prop("combo", ctrl.comboCounter);
+                var wa = ctrl.weaponAnimator;
+                if (wa != null)
+                {
+                    var wi = wa.GetCurrentAnimatorStateInfo(0);
+                    j.Key("wstate").Val(wi.shortNameHash).Key("wt").Bits(wi.normalizedTime).Prop("wtrans", wa.IsInTransition(0));
+                    var hit = wa.transform.Find("MainAttack/Collider");
+                    var box = hit != null ? hit.GetComponent<BoxCollider2D>() : null;
+                    j.Prop("hitbox", hit != null && hit.gameObject.activeInHierarchy && box != null && box.enabled);
+                    if (box != null)
+                    {
+                        V2(j, "hitOffset", box.offset);
+                        V2(j, "hitSize", box.size);
+                        V2(j, "hitPos", hit.position);
+                    }
+                    var wart = wa.transform.Find("MainAttack/Art");
+                    var wsr = wart != null ? wart.GetComponent<SpriteRenderer>() : null;
+                    j.Prop("wsprite", wsr != null && wsr.sprite != null ? wsr.sprite.name : null);
+                }
                 var ab = ctrl.currentEquipedAbility;
                 j.Prop("abilityInUse", ab != null && ab.isInUse);
                 j.Prop("abilityAvailable", ab != null && Traverse.Create(ab).Field("abilityAvailable").GetValue<bool>());

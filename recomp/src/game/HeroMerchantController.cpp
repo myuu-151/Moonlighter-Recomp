@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 #include "game/Constants.h"
 #include "game/Prefabs.h"
+#include "game/Weapon.h"
 
 namespace game {
 
@@ -34,6 +37,42 @@ Vector2 ClampMagnitude(Vector2 v, float max)
     return v;
 }
 
+// The states SMAnimatorHandler's registrations name (HeroMerchantController.Start).
+bool IsStateIn(int32_t hash, const char* const* names, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+        if (unity::StringToHash(names[i]) == hash) return true;
+    return false;
+}
+
+// The main attacks' states: <Type>Main{First,Second,Third}<Dir> (the gloves' <...>Punch<Dir>)
+// and the bow's BowAttackAnimation<Dir>.
+bool IsMainAttackState(int32_t hash)
+{
+    static const std::vector<int32_t> kHashes = [] {
+        std::vector<int32_t> h;
+        static const char* const kDirs[4] = {"Down", "Right", "Left", "Up"};
+        static const char* const kHits[3] = {"First", "Second", "Third"};
+        for (std::string type : {"ShortSword", "BigSword", "Spear", "Gloves"})
+            for (const char* hit : kHits)
+                for (const char* dir : kDirs) h.push_back(unity::StringToHash(type + "Main" + hit + (type == "Gloves" ? "Punch" : "") + dir));
+        for (const char* dir : kDirs) h.push_back(unity::StringToHash(std::string("BowAttackAnimation") + dir));
+        return h;
+    }();
+    return std::find(kHashes.begin(), kHashes.end(), hash) != kHashes.end();
+}
+
+// By WeaponType: the main attack's trigger and the secondary attack's bool.
+const char* const kMainAttackTrigger[6] = {"", "ShortSwordMainAttack", "BigSwordMainAttack", "SpearMainAttack", "GlovesMainAttack", "BowMainAttack"};
+const char* const kSecondaryAttackBool[6] = {"", "ShortSwordSecondaryAttack", "BigSwordSecondaryAttack", "SpearSecondaryAttack",
+                                             "GlovesSecondaryAttack", "BowSecondaryAttack"};
+
+bool IsIdleOrWalkState(int32_t hash)
+{
+    static const char* const kNames[8] = {"IdleDown", "IdleUp", "IdleRight", "IdleLeft", "WalkDown", "WalkUp", "WalkLeft", "WalkRight"};
+    return IsStateIn(hash, kNames, 8);
+}
+
 bool IsRollState(int32_t hash)
 {
     static const int32_t kRolls[4] = {unity::StringToHash("AbilityRight"), unity::StringToHash("AbilityLeft"), unity::StringToHash("AbilityUp"),
@@ -53,6 +92,11 @@ HeroMerchantController::Settings HeroMerchantController::SettingsFrom(const Pref
     s.merchantColliderXOffset = Constants::GetFloat("merchantColliderXOffset");
     s.merchantColliderYOffset = Constants::GetFloat("merchantColliderYOffset");
     s.tileSize = Constants::GetFloat("tileSize");
+    static const char* const kWindows[6] = {nullptr, "shortSword", "bigSword", "spear", "gloves", "bow"};
+    for (int i = 1; i < 6; i++) s.attackToAttackWindow[i] = Constants::GetFloat(std::string(kWindows[i]) + "AttackToAttackNormalizedTimeWindow");
+    s.mainAttackToSecondaryWindow = Constants::GetFloat("mainAttackToSecondaryAttackNormalizedTimeWindow");
+    s.attackToRollWindow = Constants::GetFloat("attackToRollNormalizedTimeWindow");
+    s.moveTimeWhileAttacking = Constants::GetFloat("moveTimeWhileAttacking");
     const PrefabNode& root = hero.nodes[0];
     for (const ColliderDef& c : root.colliders)
         if (c.type == "BoxCollider2D") {
@@ -86,11 +130,14 @@ HeroMerchantController::HeroMerchantController(const unity::AnimatorController& 
                                                const unity::Physics2D& physics)
     : animator(controller), s_(settings), physics_(physics)
 {
-    // SMAnimatorHandler's registrations (Init): the roll states.
+    // SMAnimatorHandler's registrations (Start): the roll's, the main attacks', Idle's and Walk's.
     animator.onStateEnter = [this](int32_t hash) {
         if (IsRollState(hash)) animator.speed = 1.25f; // AbilityUseStarted
+        if (IsMainAttackState(hash)) MainAttackUseStart();
+        if (IsIdleOrWalkState(hash)) IdleStateStart(); // (WalkStateStart is IdleStateStart)
     };
     animator.onStateExit = [this](int32_t hash) {
+        if (IsMainAttackState(hash)) MainAttackUseEnd();
         if (!IsRollState(hash)) return;
         // AbilityUseEnded
         animator.speed = 1.0f;
@@ -155,7 +202,8 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
     for (int d = 0; d < 4; d++) animator.SetBool(kInput[d], d == static_cast<int>(inputDirection));
 
     // Last frame's velocity moves him.
-    if (std::fabs(velX) >= s_.lowerDeadZone || std::fabs(velY) >= s_.lowerDeadZone || IsPlayingRollAnimation()) {
+    if (std::fabs(velX) >= s_.lowerDeadZone || std::fabs(velY) >= s_.lowerDeadZone || IsPlayingMovingMainAttackAnimation() ||
+        IsPlayingRollAnimation()) {
         Vector2 move = ClampMagnitude(Vector2{velX, velY}, 0.75f) * currentPlayerMoveSpeed * speedFactor * deltaTime;
         position = position + move;
     }
@@ -171,13 +219,39 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
         !animator.IsInTransition())
         UpdateMoveAnimations(stick, deltaTime);
 
-    // The roll (LeftTrigger): the equipped ability, unless one's already playing.
-    if (canMove && input.roll && !isFalling && abilityAvailable && !IsTag("Ability")) UseAbility(stick);
+    // The main attack (Action1): the weapon type's trigger, unless a swing is still early on or
+    // a secondary attack or a roll is playing; bare-handed, the gloves'.
+    if (input.attack && canMove && canAttack && attackInputEnabled && !isFalling) {
+        if (!weapon) {
+            animator.SetTrigger("GlovesMainAttack");
+            isMoveInputEnabled = false; // DisableMoveInput
+            velX = velY = 0.0f;
+        } else if (CanAttackAgain() && weapon->type != WeaponType::None) {
+            animator.SetTrigger(kMainAttackTrigger[static_cast<int>(weapon->type)]);
+        }
+    }
+
+    // The secondary attack's part (Action3 isn't ported: never pressed): late in a swing the
+    // weapon's Animator is told it may follow with one; the type's bool stays off.
+    if (canMove && canAttack && attackInputEnabled && !IsPlayingRollAnimation() && !isFalling && weapon) {
+        const bool main = IsPlayingMainAttackAnimation(), late = IsPlayingMainAttackAnimationToSecondaryAttackTimeWindow();
+        if ((main && late) || !main) {
+            if (late) weapon->animator.SetTrigger("mainAttackToSecondaryAttack");
+            if (weapon->type != WeaponType::None) animator.SetBool(kSecondaryAttackBool[static_cast<int>(weapon->type)], false);
+        }
+    }
+
+    // The roll (LeftTrigger): the equipped ability, unless one's already playing or a swing is
+    // early on.
+    if (canMove && canAttack && input.roll && !isFalling && abilityAvailable && CanRollFromAttack()) UseAbility(stick);
 
     // Objects destroyed during Update go before the animation pass; those the Animator's events
     // destroy wait for the end of the frame (after LateUpdate).
     for (float m : restoreAtFrameEnd_) speedFactor *= 1.0f / m;
     restoreAtFrameEnd_.clear();
+    // The weapon's Animator (a child's) runs before his: what his state callbacks set on it
+    // takes effect the next frame.
+    if (weapon) weapon->Update(input.unscaledDeltaTime < 0.0f ? deltaTime : input.unscaledDeltaTime);
     animator.Update(deltaTime);
 }
 
@@ -365,6 +439,103 @@ void HeroMerchantController::DashAbilityUseStart()
     isHorizontalMoveInputEnabled = false;
     isVerticalMoveInputEnabled = false;
     SetIntangibleMode();
+}
+
+bool HeroMerchantController::IsPlayingMovingMainAttackAnimation() const
+{
+    return IsTag("SwordAndShieldMainAttack") || IsTag("BigSwordMainAttack") || IsTag("SpearMainAttack") || IsTag("GlovesMainAttack");
+}
+
+bool HeroMerchantController::IsPlayingMainAttackAnimation() const
+{
+    return IsPlayingMovingMainAttackAnimation() || IsTag("BowMainAttack");
+}
+
+bool HeroMerchantController::IsPlayingMainAttackAnimationToSecondaryAttackTimeWindow() const
+{
+    return IsPlayingMainAttackAnimation() && animator.GetCurrentAnimatorStateInfo().normalizedTime >= s_.mainAttackToSecondaryWindow;
+}
+
+// Update's Action1 test: not early in a swing (each type's window), not in a secondary attack,
+// a bow shot or a roll.
+bool HeroMerchantController::CanAttackAgain() const
+{
+    const float t = animator.GetCurrentAnimatorStateInfo().normalizedTime;
+    using T = WeaponType;
+    auto early = [&](const char* tag, T type) { return IsTag(tag) && t <= s_.attackToAttackWindow[static_cast<int>(type)]; };
+    return !early("SwordAndShieldMainAttack", T::ShortSword) && !IsTag("SwordAndShieldSecondaryAttack") &&
+           !early("BigSwordMainAttack", T::BigSword) && !IsTag("BigSwordSecondaryAttack") && !early("SpearMainAttack", T::Spear) &&
+           !IsTag("SpearSecondaryAttack") && !early("GlovesMainAttack", T::Gloves) && !IsTag("GlovesSecondaryAttack") &&
+           !IsTag("BowMainAttack") && !IsPlayingRollAnimation() && !IsTag("BowSecondaryAttack");
+}
+
+// Update's LeftTrigger test: not early in a swing (attackToRoll), in a secondary attack or a
+// roll. The game's tags as written: "SwordAndShieldSecondaryMainAttack" and "GlovesMainUp" are
+// no state's, so the shield's secondary and the gloves' punches don't stop a roll.
+bool HeroMerchantController::CanRollFromAttack() const
+{
+    const float t = animator.GetCurrentAnimatorStateInfo().normalizedTime;
+    auto early = [&](const char* tag) { return IsTag(tag) && t < s_.attackToRollWindow; };
+    return !early("SwordAndShieldMainAttack") && !IsTag("SwordAndShieldSecondaryMainAttack") && !early("BigSwordMainAttack") &&
+           !IsTag("BigSwordSecondaryAttack") && !early("SpearMainAttack") && !IsTag("SpearSecondaryAttack") && !early("GlovesMainUp") &&
+           !IsTag("GlovesSecondaryAttack") && !early("BowMainAttack") && !IsTag("BowSecondaryAttack") && !IsTag("Ability");
+}
+
+// Move<Dir>WithAttackIfInputDirection: a step his way if the stick points that way (velocity 1
+// for 0.1 s), and the axis stopped after `time` (both DOVirtual.DelayedCalls).
+void HeroMerchantController::MoveWithAttackIfInputDirection(Direction direction, float time)
+{
+    if (moveWillWhileAttackingTween_ && tweens.IsPlaying(moveWillWhileAttackingTween_)) tweens.Complete(moveWillWhileAttackingTween_);
+    const bool horizontal = direction == Left || direction == Right;
+    auto stop = [this, horizontal] {
+        if (IsPlayingRollAnimation()) return; // StopMoving*: not during a roll
+        if (horizontal) velX = 0.0f;
+        else velY = 0.0f;
+    };
+    // Mathf.Approximately(v, 0): only (sub)normal zeros.
+    if (inputDirection == direction && (stick_.x != 0.0f || stick_.y != 0.0f)) {
+        if (direction == Left) velX = -1.0f;
+        if (direction == Right) velX = 1.0f;
+        if (direction == Back) velY = 1.0f;
+        if (direction == Front) velY = -1.0f;
+        tweens.DelayedCall(0.1f, stop);
+    }
+    moveWillWhileAttackingTween_ = tweens.DelayedCall(time, stop);
+}
+
+void HeroMerchantController::MainAttackUseStart()
+{
+    ResetSpeedFactor();
+    velX = velY = 0.0f; // DisableMoveInput
+    isMoveInputEnabled = false;
+    MoveWithAttackIfInputDirection(heroDirection, s_.moveTimeWhileAttacking);
+    static const char* const kTriggers[4] = {"MainAttackLeft", "MainAttackRight", "MainAttackUp", "MainAttackDown"}; // by Direction
+    if (weapon)
+        for (const char* t : kTriggers) weapon->animator.ResetTrigger(t);
+    animator.speed = 1.0f;
+    if (weapon) {
+        weapon->animator.SetTrigger(kTriggers[heroDirection]);
+        weapon->animator.SetInteger("ComboCounter", comboCounter);
+    }
+    comboCounter++; // IncreaseComboCounter
+    animator.SetInteger("ComboCounter", comboCounter);
+}
+
+void HeroMerchantController::MainAttackUseEnd()
+{
+    if (!IsPlayingRollAnimation() && !IsTag("SpearSecondaryAttack")) EnableMoveInput();
+    SetDirection(inputDirection);
+    for (const char* t : {"ShortSwordMainAttack", "BigSwordMainAttack", "SpearMainAttack", "GlovesMainAttack", "BowMainAttack"})
+        animator.ResetTrigger(t);
+    if (weapon)
+        for (const char* t : {"MainAttackUp", "MainAttackDown", "MainAttackLeft", "MainAttackRight"}) weapon->animator.ResetTrigger(t);
+}
+
+void HeroMerchantController::IdleStateStart()
+{
+    comboCounter = 0; // ResetComboCounter
+    animator.SetInteger("ComboCounter", comboCounter);
+    if (weapon) weapon->animator.SetInteger("ComboCounter", comboCounter);
 }
 
 void HeroMerchantController::TeleportTo(Vector2 to)

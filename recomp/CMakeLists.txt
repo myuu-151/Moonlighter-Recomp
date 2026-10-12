@@ -50,6 +50,7 @@ add_library(mlcore STATIC
     src/unity/Physics2D.cpp
     src/unity/Tween.cpp
     src/game/HeroMerchantController.cpp
+    src/game/Weapon.cpp
     src/game/SceneTransform.cpp
     src/game/RoomPhysics.cpp
     src/game/HoleColliders.cpp
@@ -109,6 +110,11 @@ add_test(NAME player_roll
 add_test(NAME player_diagonals
          COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_diag.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# The main attack: the recording's save slot equips Forest Spirit Gloves (recordings since name it).
+add_test(NAME player_attack
+         COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_attack.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+set_tests_properties(player_attack PROPERTIES ENVIRONMENT "ML_WALK_WEAPON=Forest Spirit Gloves")
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
 add_executable(preview tools/preview.cpp)

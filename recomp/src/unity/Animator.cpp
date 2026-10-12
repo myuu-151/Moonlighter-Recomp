@@ -328,13 +328,14 @@ AnimatorStateInfo Animator::Info(int state, float time) const
     info.tagHash = s.tagHash;
     info.length = Length(state);
     info.loop = s.loop;
-    info.normalizedTime = info.length > 0.0f ? time / info.length : 0.0f;
+    info.normalizedTime = time;
     return info;
 }
 
-float Animator::ClipTime(int state, float time) const
+float Animator::ClipTime(int state, float normalizedTime) const
 {
     const AnimatorState& s = c_.states[static_cast<size_t>(state)];
+    const float time = normalizedTime * Length(state);
     if (s.clip < 0) return time;
     const AnimationClip& clip = c_.clips[static_cast<size_t>(s.clip)];
     return clip.loop && clip.length > 0.0f ? std::fmod(time, clip.length) : std::min(time, clip.length);
@@ -375,6 +376,14 @@ void Animator::SampleState(int state, float time, std::vector<Sample>& side) con
 void Animator::Evaluate()
 {
     if (slots_.empty()) return;
+    // A state without a clip writes its defaults from the frame after it's entered: the frame
+    // it's entered keeps what was there (the gloves' AttackIdle after a punch, in the game).
+    if (motionlessEntered_ && !inTransition_) {
+        motionlessEntered_ = false;
+        for (Slot& slot : slots_) slot.driven = false;
+        return;
+    }
+    motionlessEntered_ = false;
     SampleState(current_, time_, sampleA_);
     if (inTransition_) SampleState(next_, nextTime_, sampleB_);
     // Unverified (no transition of the Broom Spear's has a duration): in a crossfade a float
@@ -477,16 +486,18 @@ void Animator::Take(const AnimatorTransition& t, float overshoot)
 {
     for (const AnimatorCondition& c : t.conditions)
         if (c.param >= 0 && c_.params[static_cast<size_t>(c.param)].type == AnimatorParameter::Trigger) values_[static_cast<size_t>(c.param)] = 0.0f;
-    float start = t.offset * Length(t.dest) + overshoot;
+    const float destLength = Length(t.dest);
+    const float start = t.offset + overshoot / destLength;
     if (t.duration <= 0.0f) {
         if (onStateExit) onStateExit(c_.states[static_cast<size_t>(current_)].hash);
         current_ = t.dest;
         time_ = start;
+        motionlessEntered_ = c_.states[static_cast<size_t>(current_)].clip < 0;
         if (onStateEnter) onStateEnter(c_.states[static_cast<size_t>(current_)].hash);
         // The new state is evaluated this frame: from its start through the time carried over.
-        const float base = start - overshoot;
+        const float base = t.offset * destLength;
         FireAt(current_, base);
-        if (overshoot > 0.0f) Advance(current_, base, start, true);
+        if (overshoot > 0.0f) Advance(current_, base, base + overshoot, true);
         return;
     }
     inTransition_ = true;
@@ -505,7 +516,7 @@ void Animator::Play(const std::string& state, float normalizedTime)
     if (inTransition_ && onStateExit) onStateExit(c_.states[static_cast<size_t>(next_)].hash);
     inTransition_ = false;
     current_ = s;
-    time_ = normalizedTime * Length(s);
+    time_ = normalizedTime;
     if (onStateEnter) onStateEnter(c_.states[static_cast<size_t>(current_)].hash);
 }
 
@@ -523,14 +534,16 @@ void Animator::Step(float deltaTime)
         if (onStateEnter) onStateEnter(c_.states[static_cast<size_t>(current_)].hash);
     }
     const AnimatorState& s = c_.states[static_cast<size_t>(current_)];
+    const float len = Length(current_);
     float prev = time_;
-    time_ += deltaTime * s.speed;
+    time_ += deltaTime * s.speed / len;
     if (inTransition_) {
-        Advance(current_, prev, time_, true);
+        Advance(current_, prev * len, time_ * len, true);
         const AnimatorState& n = c_.states[static_cast<size_t>(next_)];
+        const float nlen = Length(next_);
         float nprev = nextTime_;
-        nextTime_ += deltaTime * n.speed;
-        Advance(next_, nprev, nextTime_, true);
+        nextTime_ += deltaTime * n.speed / nlen;
+        Advance(next_, nprev * nlen, nextTime_ * nlen, true);
         transitionProgress_ += transitionDuration_ > 0.0f ? deltaTime / transitionDuration_ : 1.0f;
         if (transitionProgress_ >= 1.0f) {
             if (onStateExit) onStateExit(s.hash);
@@ -542,20 +555,20 @@ void Animator::Step(float deltaTime)
         }
         return;
     }
-    float len = Length(current_);
-    float prevNorm = prev / len, norm = time_ / len;
+    const float prevNorm = prev, norm = time_;
     const AnimatorTransition* t = Find(c_.anyState, -1, prevNorm, norm);
     if (!t) t = Find(s.transitions, current_, prevNorm, norm);
     if (t && t->hasExitTime) {
         // The state plays up to its exit time (an event right at it doesn't fire: the clip
         // looping back to its start as the roll ends doesn't start it again), and the rest of
-        // the frame carries into the next state.
+        // the frame carries into the next state, at that state's speed.
         float crossing = t->exitTime < 1.0f ? std::floor(norm - t->exitTime) + t->exitTime : t->exitTime;
-        Advance(current_, prev, crossing * len, false);
-        Take(*t, (norm - crossing) * len);
+        Advance(current_, prev * len, crossing * len, false);
+        const float rest = (norm - crossing) * len / s.speed; // seconds (times the Animator's speed)
+        Take(*t, rest * c_.states[static_cast<size_t>(t->dest)].speed);
         return;
     }
-    Advance(current_, prev, time_, true);
+    Advance(current_, prev * len, time_ * len, true);
     if (t) Take(*t, 0.0f);
 }
 

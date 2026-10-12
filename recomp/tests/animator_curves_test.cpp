@@ -179,7 +179,12 @@ void AttackChecks(const unity::AnimatorController& c, const ColliderDefaults& d)
     Check(activeFrames == 15, "active for 15 frames of 1/60 (" + std::to_string(activeFrames) + ")");
     const float exitAt = 0.9f * 0.5833333134651184f;
     Check(frames == static_cast<int>(std::ceil(exitAt / kDt)), "in FirstAttackDown for " + std::to_string(frames) + " frames");
-    Check(ColliderIs(a, d.active, d.ox, d.oy, d.sx, d.sy), "back in AttackIdle: the defaults again: " + ColliderStr(a));
+    // AttackIdle has no clip: the frame it's entered writes nothing (the game's gloves keep the
+    // punch's last pose that frame, walk_attack.jsonl), the next writes its defaults.
+    Check(!a.Driven(kCollider, "m_Size.x") && a.Property(kCollider, "m_Size.x") == 30.0f,
+          "entering AttackIdle drives nothing yet (the attack's last values stay): " + ColliderStr(a));
+    a.Update(kDt);
+    Check(ColliderIs(a, d.active, d.ox, d.oy, d.sx, d.sy), "then AttackIdle: the defaults again: " + ColliderStr(a));
     Check(a.Sprite(kArt) && a.Sprite(kArt)->empty(), "and the default sprite");
 
     // The combo from the idle: ComboCounter picks the any-state transition (Equals).

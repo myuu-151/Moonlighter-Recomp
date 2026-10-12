@@ -20,8 +20,12 @@ float EaseEvaluate(Ease ease, float time, float duration);
 
 class Tweens {
 public:
-    // DOVirtual.DelayedCall(delay, callback): the callback once `delay` has passed.
-    void DelayedCall(float delay, std::function<void()> callback);
+    // DOVirtual.DelayedCall(delay, callback): the callback once `delay` has passed. Returns
+    // its handle.
+    int DelayedCall(float delay, std::function<void()> callback);
+    // Tween.IsPlaying / Tween.Complete (runs its callback now) for a handle.
+    bool IsPlaying(int id) const;
+    void Complete(int id);
     // transform.DOMove(end, duration): from the position when it starts.
     void Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease = Ease::OutQuad,
               float delay = 0.0f);
@@ -35,6 +39,7 @@ public:
 
 private:
     struct Tween {
+        int id = 0;
         float delay = 0.0f, elapsedDelay = 0.0f, duration = 0.0f, position = 0.0f;
         bool delayComplete = false, started = false;
         Ease ease = Ease::OutQuad;
@@ -44,6 +49,7 @@ private:
         std::function<void()> onComplete;
     };
     std::vector<Tween> tweens_;
+    int nextId_ = 1;
 };
 
 } // namespace unity
