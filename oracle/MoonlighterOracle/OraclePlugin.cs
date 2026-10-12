@@ -33,6 +33,7 @@ namespace MoonlighterOracle
 
             string[] args = Environment.GetCommandLineArgs();
             bool quit = Array.IndexOf(args, "-oracle-quit") >= 0;
+            if (Unobtrusive.Wanted(args)) StartCoroutine(Unobtrusive.Keep());
             if (Array.IndexOf(args, "-oracle-run") >= 0)
                 StartCoroutine(RunAll(quit));
             string harvestArg = Array.Find(args, a => a.StartsWith("-oracle-harvest"));
