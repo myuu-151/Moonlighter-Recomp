@@ -5,8 +5,9 @@ the root, whether it's active, its local position and scale, and its SpriteRende
 snapshot has, so what the port builds from these can be checked against the game.
 
 Also the chests PrefabRegister holds (sharedassets0.assets: WoodChest ... MagicChest and
-the other dungeon chests), and the sorting layers' names in their drawing order (the
-TagManager's).
+the other dungeon chests), the weapons of the items bundle (the prefabs below
+CONTAINER_ONLY's folder: ItemDatabase.GetPrefab loads them by name), and the sorting layers'
+names in their drawing order (the TagManager's).
 
 Needs UnityPy.
 
@@ -33,6 +34,8 @@ import UnityPy
 BUNDLE_PREFIXES = ('dungeon_', 'enemies_', 'hero_merchant')
 # PrefabRegister's prefabs the dungeon spawns by name (SpawnChest), from the player's files.
 PLAYER_FILE = 'sharedassets0.assets'
+# Bundles of which only the prefabs below a folder are wanted (by their asset paths).
+CONTAINER_ONLY = {'items': 'assets/prefabs/items/equipment/weapons/'}
 # MonoBehaviours whose Start() draws from Random when a room comes to life, and the fields
 # that decide how many draws and what they pick; and the settings of what the port runs
 # (the hero, the enemies).
@@ -57,6 +60,8 @@ FIELDS = {
                      'rotateTransform'),
     'PolyNavObstacle': ('invertPolygon', 'extraOffset', 'shapeType'),  # shapeType 0 polygon, 1 box
     'EnemyAttackCollisionDetection': ('dealDamageToBreakables', 'gameObjectToAdvise'),
+    # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
+    'WeaponCollisionDetection': ('weaponAttackType',),
 }
 
 
@@ -134,10 +139,17 @@ def main():
     total = 0
     files = [b for b in sorted(bundles_dir.iterdir()) if b.name.startswith(BUNDLE_PREFIXES) and b.suffix != '.manifest']
     files.append(Path(args.game) / 'Moonlighter_Data' / PLAYER_FILE)
+    files += [bundles_dir / name for name in CONTAINER_ONLY]
     for bundle in files:
         only = PLAYER_PREFABS if bundle.name == PLAYER_FILE else None
         env = UnityPy.load(str(bundle))
         by_id = {obj.path_id: obj for obj in env.objects}
+        # The root game objects of the prefabs below the folder (the bundle's asset paths).
+        only_roots = None
+        if bundle.name in CONTAINER_ONLY:
+            manifest = next(obj for obj in env.objects if obj.type.name == 'AssetBundle').read_typetree()
+            only_roots = {info['asset']['m_PathID'] for path, info in manifest['m_Container']
+                          if path.startswith(CONTAINER_ONLY[bundle.name]) and path.endswith('.prefab')}
         trees = {}
 
         def tree(path_id):
@@ -203,6 +215,8 @@ def main():
                 continue  # not a root
             root_name = tree(t['m_GameObject']['m_PathID'])['m_Name']
             if only is not None and root_name not in only:
+                continue
+            if only_roots is not None and t['m_GameObject']['m_PathID'] not in only_roots:
                 continue
             rows = []
             go_path = {}

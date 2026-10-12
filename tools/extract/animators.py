@@ -8,6 +8,9 @@ the port uses (TARGETS):
   enemies_golem / BabySlime (controller)                       -> animators/BabySlime.json,
       sprites/enemies/BabySlime/ (what the clips show, plus its prefab's renderers' sprites
       and its Enemy's dead sprite)
+  items / BroomSpear (override of EmptyTrainingSpear), exact   -> animators/broom_spear.json,
+      sprites/weapons/broom_spear/ (what the clips show: the Broom Spear prefab's renderers
+      have no sprite of their own)
 
   animators/<name>.json:
     controller, override (the override's name, null for a plain controller)
@@ -22,6 +25,24 @@ the port uses (TARGETS):
     clips       [{name, length, loop, rate, sprites [[time, sprite]], events [[time, function,
                   string, float, int]], curves [{path, type, attribute, keys [[time, value]]}]}]
   sprites/<bank>/: index.bin and <n>.tex as sprites.py writes them.
+
+An exact target (--exact) adds what the port needs to play the clips' other curves as Unity
+does (the targets before it keep the format above, unchanged):
+    updateMode  the Animator's (0 normal, 1 animate physics, 2 unscaled time; null if no
+                prefab of the bundle plays it)
+    states      each also has writeDefaults (m_WriteDefaultValues)
+    clips       each also has spritePath (the renderer its sprite curve drives, null if none)
+                and its curves are, in the clip's curve order,
+                {path, type, attribute, component, source, ...}:
+      path       the object's path below the Animator's (the bindings hold its CRC32; the
+                 paths of the prefabs whose Animator plays the controller), else the number
+      attribute  the property's name (ATTRIBUTES by CRC32; a Transform's by number,
+                 TRANSFORM_ATTRIBUTES, component its x, y, z (w)), else the number
+      source 'streamed': keys [[time, c0, c1, c2, c3]], the first at -FLT_MAX: the value at t
+                 is the cubic of the last key at or before t, in d = t - time:
+                 ((c0 d + c1) d + c2) d + c3 (a step or a constant segment has c0..c2 0)
+      source 'dense':    begin, rate, samples [the value per frame from begin, 1 / rate apart]
+      source 'constant': value
 
 Enemies get a bank each (sprites/enemies/<name>/) rather than one per enemy bundle: a floor
 holds the few enemies its rooms spawn, and an enemy bundle's every clip frame (enemies_golem:
@@ -38,7 +59,7 @@ the controller and state), the port's Animator plays neither.
     python tools/extract/animators.py --game <the game's folder> --out <folder>
         (the TARGETS)
     python tools/extract/animators.py --game ... --out ... --bundle <bundle> --name <name>
-        [--kind controller|override] [--json <file name>] [--sprites <bank folder>]
+        [--kind controller|override] [--json <file name>] [--sprites <bank folder>] [--exact]
 """
 import argparse
 import json
@@ -52,10 +73,12 @@ import UnityPy
 from sprites import texels
 
 # (bundle, controller name, kind, json name, sprite bank, where the bank's extra sprites come from:
-#  'bundle' every SpriteRenderer in the bundle, 'prefab' the prefabs whose Animator plays it)
+#  'bundle' every SpriteRenderer in the bundle, 'prefab' the prefabs whose Animator plays it;
+#  exact: the exact curves, paths, write defaults and update mode)
 TARGETS = (
-    ('hero_merchant', 'HeroMerchant', 'override', 'hero_merchant', 'hero', 'bundle'),
-    ('enemies_golem', 'BabySlime', 'controller', 'BabySlime', 'enemies/BabySlime', 'prefab'),
+    ('hero_merchant', 'HeroMerchant', 'override', 'hero_merchant', 'hero', 'bundle', False),
+    ('enemies_golem', 'BabySlime', 'controller', 'BabySlime', 'enemies/BabySlime', 'prefab', False),
+    ('items', 'BroomSpear', 'override', 'broom_spear', 'weapons/broom_spear', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).
@@ -65,7 +88,10 @@ SPRITE_FIELDS = ('enemyDeadSprite',)
 TRANSFORM_CURVES = {1: 3, 2: 4, 3: 3, 4: 3}
 ATTRIBUTES = {zlib.crc32(n.encode()): n for n in (
     'm_IsActive', 'm_Enabled', 'm_FlipX', 'm_FlipY', 'm_Color.r', 'm_Color.g', 'm_Color.b', 'm_Color.a',
-    'm_SortingOrder', 'm_Size.x', 'm_Size.y', 'm_Offset.x', 'm_Offset.y', 'm_Sprite')}
+    'm_SortingOrder', 'm_Size.x', 'm_Size.y', 'm_Offset.x', 'm_Offset.y', 'm_Sprite', 'm_Radius',
+    'm_IsTrigger', 'm_Density', 'm_EdgeRadius', 'm_Simulated', 'm_Mass', 'm_GravityScale')}
+# A Transform binding's attribute is a number, not a CRC32 (its curves the x, y, z (w) components).
+TRANSFORM_ATTRIBUTES = {1: 'm_LocalPosition', 2: 'm_LocalRotation', 3: 'm_LocalScale', 4: 'localEulerAnglesRaw'}
 
 
 def signed(h):
@@ -116,6 +142,59 @@ def clip_curves(clip):
     return out
 
 
+def clip_curves_exact(clip):
+    """{curve index: what the clip holds for it}: a streamed curve's keys (each key's time and
+    its cubic's four coefficients, from the -FLT_MAX key on), a dense curve's samples, a constant."""
+    data = clip['m_MuscleClip']['m_Clip']['data']
+    out = {}
+    for time, keys in streamed_keys(data['m_StreamedClip']['data']):
+        if time == float('inf'):
+            if keys:  # the end marker holds no keys (and JSON has no infinity to write them at)
+                raise SystemExit(f"{clip['m_Name']}: streamed keys at +inf")
+            continue
+        for curve, c in keys:
+            out.setdefault(curve, {'source': 'streamed', 'keys': []})['keys'].append([time, *c])
+    base = data['m_StreamedClip']['curveCount']
+    dense = data['m_DenseClip']
+    for k in range(dense['m_CurveCount']):
+        out[base + k] = {'source': 'dense', 'begin': dense['m_BeginTime'], 'rate': dense['m_SampleRate'],
+                         'samples': [dense['m_SampleArray'][f * dense['m_CurveCount'] + k] for f in range(dense['m_FrameCount'])]}
+    base += dense['m_CurveCount']
+    for k, v in enumerate(data['m_ConstantClip']['data']):
+        out[base + k] = {'source': 'constant', 'value': v}
+    return out
+
+
+def animator_paths(env, controller_ids):
+    """({CRC32 of a path below the Animator's object: the path}, {update modes}) of the Animators
+    playing the controller: a clip binding's path is such a CRC32."""
+    objs = {o.path_id: o for o in env.objects}
+    paths, modes = {}, set()
+
+    def walk(transform_id, path):
+        t = objs[transform_id].read_typetree()
+        paths[zlib.crc32(path.encode())] = path
+        for child in t['m_Children']:
+            if child['m_FileID'] == 0 and child['m_PathID'] in objs:
+                c = objs[child['m_PathID']].read_typetree()
+                name = objs[c['m_GameObject']['m_PathID']].read_typetree()['m_Name']
+                walk(child['m_PathID'], name if path == '' else f'{path}/{name}')
+
+    for o in env.objects:
+        if o.type.name != 'Animator':
+            continue
+        a = o.read_typetree()
+        if a['m_Controller']['m_FileID'] != 0 or a['m_Controller']['m_PathID'] not in controller_ids:
+            continue
+        modes.add(a['m_UpdateMode'])
+        go = objs[a['m_GameObject']['m_PathID']].read_typetree()
+        for comp in go['m_Component']:
+            ref = comp['component']
+            if ref['m_FileID'] == 0 and ref['m_PathID'] in objs and objs[ref['m_PathID']].type.name in ('Transform', 'RectTransform'):
+                walk(ref['m_PathID'], '')
+    return paths, modes
+
+
 def find_controller(env, name, kind=None):
     """The AnimatorController or AnimatorOverrideController of that name (of that kind, if
     given). Exits if there's none, or more than one and no kind to choose."""
@@ -129,8 +208,9 @@ def find_controller(env, name, kind=None):
     return found[0]
 
 
-def extract(env, name, kind=None):
-    """(controller json, {sprite name: path id} its clips show, the controllers' path ids)."""
+def extract(env, name, kind=None, exact=False):
+    """(controller json, {sprite name: path id} its clips show, the controllers' path ids);
+    exact: with the exact curves, paths, write defaults and update mode (the module's doc)."""
     objs = {o.path_id: o for o in env.objects}
     names = {}
 
@@ -152,6 +232,13 @@ def extract(env, name, kind=None):
     label = ac['m_Name'] + (f" (override {override['m_Name']})" if override else '')
     tos = {int(k): v for k, v in ac['m_TOS']}
     tos.update({zlib.crc32(v.encode()): v for v in tos.values()})
+    paths, modes = animator_paths(env, {found.path_id, ac_obj.path_id}) if exact else ({}, set())
+    if len(modes) > 1:
+        raise SystemExit(f'{label}: its Animators have different update modes {sorted(modes)}')
+
+    def path_name(crc):
+        return paths.get(crc, tos.get(crc, crc))
+
     c = ac['m_Controller']
     if len(c['m_LayerArray']) != 1 or len(c['m_StateMachineArray']) != 1:
         raise SystemExit(f"{label}: {len(c['m_LayerArray'])} layers, {len(c['m_StateMachineArray'])} state machines: "
@@ -178,12 +265,35 @@ def extract(env, name, kind=None):
         for p in b['pptrCurveMapping']:
             if p['m_FileID'] == 0 and p['m_PathID'] in objs:
                 sprites_wanted[name_of(p)] = p['m_PathID']
-        curves = clip_curves(t)
+        curves = clip_curves_exact(t) if exact else clip_curves(t)
         entry = {'name': t['m_Name'], 'length': t['m_MuscleClip']['m_StopTime'] - t['m_MuscleClip']['m_StartTime'],
                  'loop': bool(t['m_MuscleClip']['m_LoopTime']), 'rate': t['m_SampleRate'], 'sprites': [],
                  'events': [[e['time'], e['functionName'], e['data'], e['floatParameter'], e['intParameter']]
                             for e in t['m_Events']], 'curves': []}
         first = 0
+        if exact:
+            entry['spritePath'] = None
+            for binding in b['genericBindings']:
+                n = curve_count(binding)
+                if binding['isPPtrCurve']:
+                    if binding['typeID'] == 212 and binding['customType'] == 23:
+                        if entry['spritePath'] is not None:
+                            raise SystemExit(f"{label}: clip {t['m_Name']} has more than one sprite curve")
+                        entry['spritePath'] = path_name(binding['path'])
+                        source = curves.get(first, {})
+                        if source and source['source'] != 'streamed':
+                            raise SystemExit(f"{label}: clip {t['m_Name']}'s sprite curve is {source['source']}")
+                        entry['sprites'] = [[k[0], mapping[int(k[4])]] for k in source.get('keys', [])]
+                else:
+                    attribute = (TRANSFORM_ATTRIBUTES.get(binding['attribute'], binding['attribute']) if binding['typeID'] == 4
+                                 else ATTRIBUTES.get(binding['attribute'], binding['attribute']))
+                    for k in range(n):
+                        entry['curves'].append({'path': path_name(binding['path']), 'type': binding['typeID'],
+                                                'attribute': attribute, 'component': k, **curves.get(first + k, {})})
+                first += n
+            clip_index[path_id] = len(clips)
+            clips.append(entry)
+            return clip_index[path_id]
         for binding in b['genericBindings']:
             n = curve_count(binding)
             if binding['isPPtrCurve']:
@@ -219,15 +329,18 @@ def extract(env, name, kind=None):
             raise SystemExit(f"{label}: state {tos.get(s['m_NameID'], s['m_NameID'])} is a blend tree ({len(nodes)} nodes): "
                              "blend trees aren't supported (the port's Animator plays one clip per state)")
         clip_id = nodes[0]['data']['m_ClipID'] if len(nodes) == 1 else -1
+        exact_fields = {'writeDefaults': bool(s['m_WriteDefaultValues'])} if exact else {}
         states.append({'name': tos.get(s['m_NameID'], str(s['m_NameID'])), 'hash': signed(s['m_NameID']), 'fullPathHash': signed(s['m_FullPathID']),
                        'tag': tos.get(s['m_TagID'], '') if s['m_TagID'] else '', 'tagHash': signed(s['m_TagID']), 'speed': s['m_Speed'],
                        'speedParam': param_index.get(s['m_SpeedParamID'], -1), 'loop': bool(s['m_Loop']),
                        'cycleOffset': s['m_CycleOffset'],
                        'clip': clip(ac['m_AnimationClips'][clip_id]['m_PathID']) if clip_id >= 0 and clip_id != 4294967295 else -1,
-                       'transitions': [transition(t['data']) for t in s['m_TransitionConstantArray']]})
+                       'transitions': [transition(t['data']) for t in s['m_TransitionConstantArray']]} | exact_fields)
     controller = {'controller': ac['m_Name'], 'override': override['m_Name'] if override else None, 'params': params,
                   'defaultState': sm['m_DefaultState'], 'states': states,
                   'anyState': [transition(t['data']) for t in sm['m_AnyStateTransitionConstantArray']], 'clips': clips}
+    if exact:
+        controller['updateMode'] = modes.pop() if modes else None
     return controller, sprites_wanted, {found.path_id, ac_obj.path_id}, name_of
 
 
@@ -313,9 +426,9 @@ def write_bank(env, folder, sprites_wanted):
     return count, total
 
 
-def run(game, out, bundle, name, kind, json_name, bank, mode):
+def run(game, out, bundle, name, kind, json_name, bank, mode, exact=False):
     env = UnityPy.load(str(Path(game) / 'Moonlighter_Data' / 'StreamingAssets' / 'AssetBundles' / bundle))
-    controller, sprites_wanted, ids, name_of = extract(env, name, kind)
+    controller, sprites_wanted, ids, name_of = extract(env, name, kind, exact)
     (out / 'animators').mkdir(parents=True, exist_ok=True)
     (out / 'animators' / f'{json_name}.json').write_text(json.dumps(controller), encoding='utf-8')
     count = total = 0
@@ -325,6 +438,13 @@ def run(game, out, bundle, name, kind, json_name, bank, mode):
         count, total = write_bank(env, out / 'sprites' / bank, sprites_wanted)
     print(f"   {json_name}: {len(controller['states'])} states, {len(controller['clips'])} clips, "
           f"{count} sprites, {total // 1024} KB", flush=True)
+    if exact:
+        numeric = sorted({(c['type'], c['attribute']) for clip in controller['clips'] for c in clip['curves']
+                          if not isinstance(c['attribute'], str)})
+        unresolved = sorted({c['path'] for clip in controller['clips'] for c in clip['curves'] + [{'path': clip['spritePath']}]
+                             if c['path'] is not None and not isinstance(c['path'], str)})
+        if numeric or unresolved:
+            print(f'   {json_name}: unresolved attributes (type, attribute) {numeric}, paths {unresolved}', flush=True)
 
 
 def main():
@@ -338,12 +458,15 @@ def main():
     parser.add_argument('--sprites', help="the sprite bank's folder below sprites/ (default: none)")
     parser.add_argument('--sprites-from', choices=('bundle', 'prefab'), default='prefab',
                         help="the bank's sprites beside the clips': every renderer in the bundle, or the prefabs playing it")
+    parser.add_argument('--exact', action='store_true',
+                        help='the exact curves (paths, attributes, keys), write defaults and update mode')
     args = parser.parse_args()
     out = Path(args.out)
     if args.bundle:
         if not args.name:
             parser.error('--bundle needs --name')
-        run(args.game, out, args.bundle, args.name, args.kind, args.json or args.name, args.sprites, args.sprites_from)
+        run(args.game, out, args.bundle, args.name, args.kind, args.json or args.name, args.sprites, args.sprites_from,
+            args.exact)
     else:
         for target in TARGETS:
             run(args.game, out, *target)
