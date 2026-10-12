@@ -3,11 +3,14 @@
 // coroutine's `yield return new WaitForSeconds(t)` and Object.Destroy(obj, t) schedule, as the
 // game shows them (data/oracle/slime.jsonl, a slime killed by a hit inside a fixed step):
 //   - Invoke and Destroy(obj, t) count from the clock of the moment they're made: Time.time in
-//     an Update, the fixed clock inside a fixed step (a physics callback). One made inside a
-//     fixed step also runs in the pass after a later fixed step (at Time.fixedTime, before the
-//     frame's DOTween update: a flash colour set there is gone by the frame's end) if that
-//     finds it due first; one made in a frame, only in the frame's pass after the Updates (the
-//     targeting a second after EnableEnemies, due on a fixed step's time, starts in the frame);
+//     an Update, the fixed clock inside a fixed step (a physics callback). Wherever it was
+//     made, one runs in the pass after a fixed step (at Time.fixedTime, before the frame's
+//     DOTween update: a flash colour set there is gone by the frame's end) if that finds it due
+//     before the frame's pass after the Updates does (tangle.jsonl, slime_bis.jsonl: the
+//     targeting a second after an EnableEnemies run in a frame starts in a fixed step, before
+//     the Updates). The fixed clock runs on by the float fixedDeltaTime (0.0099999998): a
+//     second after a fixed step is a hair past the hundredth step after it (slime.jsonl: the
+//     targeting a second after an EnableEnemies run in a fixed step's pass starts in the frame);
 //   - a coroutine's WaitForSeconds counts from the frame's Time.time even when it's started in
 //     a fixed step, and resumes in the frame's pass only.
 // Due ones run earliest first, ties in the order they were made; one made during a pass waits

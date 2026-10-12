@@ -10,9 +10,9 @@
 // onto its PolyNavAgent's velocity (navAgent.velocity +=; the factor for a hit,
 // distance / 30, is never used: the add only happens without one).
 //
-// Where its LateUpdate falls against its agent's (both on the default script order: the
-// recording's "late" says which ran first) decides whether the agent's steering takes the
-// weave in the same frame or the next: the driver calls the two in the game's order.
+// Its LateUpdate runs before its agent's (both on the default script order; tangle.jsonl: in
+// all 1866 frames with both), so the agent's steering takes the weave in the same frame: the
+// driver calls TangleBehaviour::LateUpdate, then the agent's.
 //
 // Its Animator (animators/Tangle.json): a movement loop (TangleMovement, 0.5 s, four
 // sprites), and four empty attack states that "Attacking" with DistanceX/Y take it to and

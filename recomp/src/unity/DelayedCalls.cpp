@@ -22,7 +22,7 @@ void DelayedCalls::Add(const void* owner, const std::string& name, Kind kind, do
     c.fn = std::move(fn);
     c.repeat = repeat;
     c.pass = inPass_ ? pass_ : -1;
-    c.fixedPass = inFixedStep && kind != Kind::Coroutine;
+    c.fixedPass = kind != Kind::Coroutine; // (wherever it's made)
     calls_.push_back(std::move(c));
 }
 

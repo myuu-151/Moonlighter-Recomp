@@ -31,9 +31,26 @@ float EaseEvaluate(Ease ease, float time, float duration)
 {
     switch (ease) {
     case Ease::Linear: return time / duration;
-    case Ease::OutQuad: time /= duration; return -time * (time - 2.0f);
-    case Ease::InCirc: time /= duration; return -(static_cast<float>(std::sqrt(static_cast<double>(1.0f - time * time))) - 1.0f);
-    case Ease::InCubic: time /= duration; return time * time * time;
+    // As the game's Mono runs EaseManager's IL: each return one expression in doubles, rounded
+    // once; `(time /= duration)` is `div; dup; starg`: that factor is the unrounded quotient,
+    // while `time` read after it is the float the argument holds (slime_bis.jsonl,
+    // tangle.jsonl: the death fade's DOColor, 88 of 88 frames bit for bit; rounding both or
+    // neither misses 13). Math.Sqrt takes a double.
+    case Ease::OutQuad: {
+        const double q = static_cast<double>(time) / static_cast<double>(duration);
+        const double t = static_cast<double>(static_cast<float>(q));
+        return static_cast<float>((0.0 - q) * (t - 2.0));
+    }
+    case Ease::InCirc: {
+        const double q = static_cast<double>(time) / static_cast<double>(duration);
+        const double t = static_cast<double>(static_cast<float>(q));
+        return static_cast<float>(0.0 - (static_cast<double>(static_cast<float>(std::sqrt(1.0 - q * t))) - 1.0));
+    }
+    case Ease::InCubic: {
+        const double q = static_cast<double>(time) / static_cast<double>(duration);
+        const double t = static_cast<double>(static_cast<float>(q));
+        return static_cast<float>(q * t * t);
+    }
     }
     return time / duration;
 }
@@ -93,6 +110,13 @@ void Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set
     tweens_.push_back(std::move(t));
 }
 
+void Tweens::To(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
+                bool ignoreTimeScale)
+{
+    Move(std::move(get), std::move(set), end, duration, ease, delay, ignoreTimeScale);
+    tweens_.back().fused = true;
+}
+
 int Tweens::Timer(float duration, float delay, std::function<void()> onComplete)
 {
     Tween t;
@@ -130,7 +154,13 @@ void Tweens::Update(float deltaTime, float unscaledDeltaTime)
         if (complete) t.position = t.duration;
         if (t.set) {
             float e = t.duration > 0.0f ? EaseEvaluate(t.ease, t.position, t.duration) : 1.0f;
-            t.set(t.start + t.change * e);
+            if (t.fused) {
+                const double d = static_cast<double>(e);
+                t.set({static_cast<float>(static_cast<double>(t.start.x) + static_cast<double>(t.change.x) * d),
+                       static_cast<float>(static_cast<double>(t.start.y) + static_cast<double>(t.change.y) * d)});
+            } else {
+                t.set(t.start + t.change * e);
+            }
         }
         if (complete) done.push_back(i);
     }
