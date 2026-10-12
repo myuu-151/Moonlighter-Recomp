@@ -105,6 +105,8 @@ public:
 
     // The frame's animation pass (Unity runs it after the scripts' Update).
     void Update(float deltaTime);
+    // Animator.speed: scales the time every state (and transition) advances by.
+    float speed = 1.0f;
     // Animator.Play: straight to a state, at a normalized time.
     void Play(const std::string& state, float normalizedTime = 0.0f);
 
@@ -128,7 +130,9 @@ private:
     bool Conditions(const AnimatorTransition& t) const;
     const AnimatorTransition* Find(const std::vector<AnimatorTransition>& list, int from, float prevNorm, float norm) const;
     void Take(const AnimatorTransition& t, float overshoot);
-    void Advance(int state, float from, float to);
+    // Fires the state's clip events in (from, to] (or (from, to) without `includeEnd`).
+    void Advance(int state, float from, float to, bool includeEnd);
+    void FireAt(int state, float time); // the events at exactly `time`
     int ParamOrThrow(const std::string& name, int type) const;
 
     const AnimatorController& c_;

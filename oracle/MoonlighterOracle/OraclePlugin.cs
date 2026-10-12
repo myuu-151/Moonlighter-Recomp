@@ -42,10 +42,11 @@ namespace MoonlighterOracle
                 Harvest.InstallSafety(harmony);
                 StartCoroutine(Harvest.Run(this, runs, quit));
             }
-            if (Array.IndexOf(args, "-oracle-walk") >= 0)
+            string walkArg = Array.Find(args, a => a.StartsWith("-oracle-walk"));
+            if (walkArg != null)
             {
                 Harvest.InstallSafety(harmony);
-                StartCoroutine(Walk.Run(this, quit));
+                StartCoroutine(Walk.Run(this, quit, walkArg.Contains("=") ? walkArg.Substring(walkArg.IndexOf('=') + 1) : ""));
             }
         }
 

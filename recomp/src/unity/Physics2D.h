@@ -9,6 +9,7 @@
 
 #include <deque>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "unity/Vector2.h"
@@ -25,6 +26,9 @@ struct Collider2D {
     // the transform's position and scale applied to offset and size.
     bool hasWorldBox = false;
     Vector2 worldMin, worldMax;
+    // A compound collider (a PolygonCollider2D made of tiles, the holes'): its world boxes, the
+    // world box above being their bounds. Empty: just the box.
+    std::vector<std::pair<Vector2, Vector2>> parts;
     // World box, without the skin.
     Vector2 Min() const;
     Vector2 Max() const;

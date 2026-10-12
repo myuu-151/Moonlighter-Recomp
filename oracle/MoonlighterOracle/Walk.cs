@@ -19,7 +19,8 @@ namespace MoonlighterOracle
         private static int startFrame = -1;
         private static StreamWriter writer;
 
-        /// One segment: frames to hold, stick x and y, buttons Action1..4 pressed on its first frame.
+        /// One segment: frames to hold, stick x and y, buttons pressed on its first frame
+        /// (1 Action1, 2 Action2, 4 Action3, 8 Action4, 16 LeftTrigger: the roll).
         private struct Segment
         {
             public int frames;
@@ -31,7 +32,35 @@ namespace MoonlighterOracle
         // Inside the floor's first room (Will starts in its middle; the doors are in the middle
         // of each wall, so the script keeps to the sides): walls, corners, a diagonal, a stick
         // under the dead zone.
-        private static readonly Segment[] Script =
+        private const int Roll = 16;
+
+        // `-oracle-walk=roll`: rolls from the middle of the room, each with the cooldown long
+        // gone: from standing (facing), while walking, diagonally, and into a wall.
+        private static readonly Segment[] RollScript =
+        {
+            new Segment(20, 0f, 0f),
+            new Segment(45, 1f, 0f, Roll),    // right, rolling at once
+            new Segment(60, 0f, 0f),
+            new Segment(45, 0f, 1f, Roll),    // up
+            new Segment(60, 0f, 0f),
+            new Segment(30, -1f, 0f),         // walking left...
+            new Segment(45, -1f, 0f, Roll),   // ...then rolling on
+            new Segment(60, 0f, 0f),
+            new Segment(45, 0f, 0f, Roll),    // standing: the way he faces
+            new Segment(60, 0f, 0f),
+            new Segment(45, 0.7071068f, -0.7071068f, Roll), // diagonal
+            new Segment(60, 0f, 0f),
+            new Segment(30, 0f, 1f),          // up...
+            new Segment(150, 1f, 0f),         // ...to the east wall above the door
+            new Segment(45, 1f, 0f, Roll),    // a roll into the wall
+            new Segment(60, 0f, 0f),
+            new Segment(45, 0f, -0.45f, Roll), // a short stick: down
+            new Segment(60, 0f, 0f),
+        };
+
+        private static Segment[] Script; // Run picks it
+
+        private static readonly Segment[] WalkScript =
         {
             new Segment(20, 0f, 0f),
             new Segment(25, 0f, 1f),          // up a bit
@@ -49,7 +78,7 @@ namespace MoonlighterOracle
             new Segment(30, 0f, 0f),
         };
 
-        private static readonly int ScriptFrames = Script.Aggregate(0, (n, s) => n + s.frames);
+        private static int ScriptFrames => Script.Aggregate(0, (n, s) => n + s.frames);
 
         /// The script's input for this frame (frame 0 is the first scripted one).
         private static bool Current(out Segment seg, out bool first)
@@ -93,7 +122,8 @@ namespace MoonlighterOracle
                 if (!Active || startFrame < 0) return true;
                 var a = InputActionsManager.Instance != null ? InputActionsManager.Instance.actions : null;
                 if (a == null) return true;
-                int bit = __instance == a.Action1 ? 1 : __instance == a.Action2 ? 2 : __instance == a.Action3 ? 4 : __instance == a.Action4 ? 8 : 0;
+                int bit = __instance == a.Action1 ? 1 : __instance == a.Action2 ? 2 : __instance == a.Action3 ? 4 : __instance == a.Action4 ? 8
+                    : __instance == a.LeftTrigger ? Roll : 0;
                 if (bit == 0) return true;
                 bool down = Current(out Segment s, out bool first) && first && (s.buttons & bit) != 0;
                 __instance.CommitWithValue(down ? 1f : 0f, updateTick, deltaTime);
@@ -143,8 +173,9 @@ namespace MoonlighterOracle
             }
         }
 
-        public static IEnumerator Run(MonoBehaviour host, bool quit)
+        public static IEnumerator Run(MonoBehaviour host, bool quit, string script = "")
         {
+            Script = script == "roll" ? RollScript : WalkScript;
             var log = OraclePlugin.Log;
             // The harvest's first steps: the slot, the town, the Golem gate on a fixed seed.
             yield return Harvest.LoadSlot();
@@ -164,18 +195,26 @@ namespace MoonlighterOracle
                 yield return new WaitForSecondsRealtime(0.5f);
             }
             if (GameManager.Instance.isGamePaused) GameManager.Instance.UnpauseGame();
+            // The floor's loading panel can stay in GUIManager's slot after it closed (see the
+            // harvest); with it there the roll's CanUseAbility is false. Real play has it empty.
+            var stale = GUIManager.Instance.currentInventory;
+            if (stale != null && !stale.IsActive()) GUIManager.Instance.currentInventory = null;
             yield return new WaitForSecondsRealtime(2f);
 
             var hero = HeroMerchant.Instance;
             var ctrl = hero.heroMerchantController;
             var tr = Traverse.Create(ctrl);
-            writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, "walk.jsonl"), append: false) { AutoFlush = false };
+            writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, script == "" ? "walk.jsonl" : "walk_" + script + ".jsonl"), append: false) { AutoFlush = false };
             var setup = new Json().Obj().Prop("ev", "walkStart").Prop("session", Trace.Session).Prop("floor", Trace.Floor)
                 .Prop("collisionLayers", ctrl.collisionDetectionLayers.value)
                 .Prop("slideLayers", ctrl.slideCollisionDetectionLayers.value);
             V2(setup, "colliderSize", ctrl.characterCollider.size);
             V2(setup, "colliderOffset", ctrl.characterCollider.offset);
             setup.Key("moveSpeed").Bits(ctrl.currentPlayerMoveSpeed).Key("speedFactor").Bits(ctrl.speedFactor);
+            setup.Prop("godModeLayers", ctrl.godModeCollisionDetectionLayers.value).Prop("script", script);
+            var ability = ctrl.currentEquipedAbility;
+            setup.Key("cooldown").Bits(ability != null ? ability.coolDownTime : -1f);
+            setup.Key("statSpeed").Bits(hero.heroMerchantStats.speed.Value);
             var rb = hero.GetComponent<Rigidbody2D>();
             setup.Prop("body", rb != null ? rb.bodyType.ToString() : "none");
             Emit(setup);
@@ -232,6 +271,15 @@ namespace MoonlighterOracle
                 j.Prop("canMove", ctrl._canMove).Prop("moveInput", tr.Field("_isMoveInputEnabled").GetValue<bool>())
                     .Prop("dir", (int)ctrl.heroDirection);
                 j.Key("speedFactor").Bits(ctrl.speedFactor);
+                j.Key("animSpeed").Bits(anim.speed);
+                j.Prop("intangible", tr.Field("isIntangible").GetValue<bool>());
+                var ab = ctrl.currentEquipedAbility;
+                j.Prop("abilityInUse", ab != null && ab.isInUse);
+                j.Prop("abilityAvailable", ab != null && Traverse.Create(ab).Field("abilityAvailable").GetValue<bool>());
+                // The roll's gate: the trigger as the controller reads it, and the conditions.
+                j.Key("lt").Arr().Val(a.LeftTrigger.IsPressed).Val(a.LeftTrigger.WasPressed).EndArr();
+                j.Prop("canAttack", ctrl.canAttack).Prop("canUse", ab != null && ab.CanUseAbility())
+                    .Prop("panel", GUIManager.Instance.currentInventory != null ? GUIManager.Instance.currentInventory.GetType().Name : "");
                 var art = ctrl.transform.Find("HeroMerchantArt/Will");
                 var sr = art != null ? art.GetComponent<SpriteRenderer>() : null;
                 j.Prop("sprite", sr != null && sr.sprite != null ? sr.sprite.name : null);

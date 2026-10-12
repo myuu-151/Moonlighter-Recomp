@@ -44,6 +44,8 @@ add_library(mlcore STATIC
     src/game/HeroMerchantController.cpp
     src/game/SceneTransform.cpp
     src/game/RoomPhysics.cpp
+    src/game/HoleColliders.cpp
+    src/game/Items.cpp
 )
 target_include_directories(mlcore PUBLIC src)
 
@@ -78,6 +80,9 @@ add_executable(player_walk_test tests/player_walk_test.cpp)
 target_link_libraries(player_walk_test PRIVATE mlcore)
 add_test(NAME player_walk
          COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME player_roll
+         COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_roll.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.

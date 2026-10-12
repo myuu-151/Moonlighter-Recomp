@@ -33,12 +33,22 @@ Vector2 ClampMagnitude(Vector2 v, float max)
     return v;
 }
 
+bool IsRollState(int32_t hash)
+{
+    static const int32_t kRolls[4] = {unity::StringToHash("AbilityRight"), unity::StringToHash("AbilityLeft"), unity::StringToHash("AbilityUp"),
+                                      unity::StringToHash("AbilityDown")};
+    for (int32_t h : kRolls)
+        if (h == hash) return true;
+    return false;
+}
+
 } // namespace
 
 HeroMerchantController::Settings HeroMerchantController::SettingsFrom(const Prefab& hero)
 {
     Settings s;
     s.lowerDeadZone = Constants::GetFloat("lowerDeadZone");
+    s.kBaseSpeed = Constants::GetFloat("kBaseSpeed");
     s.merchantColliderXOffset = Constants::GetFloat("merchantColliderXOffset");
     s.merchantColliderYOffset = Constants::GetFloat("merchantColliderYOffset");
     s.tileSize = Constants::GetFloat("tileSize");
@@ -52,6 +62,7 @@ HeroMerchantController::Settings HeroMerchantController::SettingsFrom(const Pref
         if (b.cls == "HeroMerchantController") {
             s.collisionLayers = static_cast<int>(b.Field("collisionDetectionLayers"));
             s.slideLayers = static_cast<int>(b.Field("slideCollisionDetectionLayers"));
+            s.godModeLayers = static_cast<int>(b.Field("godModeCollisionDetectionLayers"));
         }
     return s;
 }
@@ -69,6 +80,31 @@ HeroMerchantController::HeroMerchantController(const unity::AnimatorController& 
                                                const unity::Physics2D& physics)
     : animator(controller), s_(settings), physics_(physics)
 {
+    // SMAnimatorHandler's registrations (Init): the roll states.
+    animator.onStateEnter = [this](int32_t hash) {
+        if (IsRollState(hash)) animator.speed = 1.25f; // AbilityUseStarted
+    };
+    animator.onStateExit = [this](int32_t hash) {
+        if (!IsRollState(hash)) return;
+        // AbilityUseEnded
+        animator.speed = 1.0f;
+        SetDirection(inputDirection);
+        EnableMoveInput();
+        velX = velY = 0.0f; // StopMovingVerticalyAndHorizontaly
+        SetDefaultMode();
+    };
+    // The clips' events (on the hero's GameObject: the controller's methods).
+    animator.onEvent = [this](const unity::AnimationEvent& e) {
+        if (e.function == "AbilityUseStart") {
+            // Ability.SendAbilityUseStart: in use, and every component's AbilityUseStart.
+            abilityInUse = true;
+            DashAbilityUseStart();
+        } else if (e.function == "AbilityUseEnd") {
+            abilityInUse = false;
+            DestroySpeedEffect(dashEffect_); // Dash.AbilityUseEnd
+            UpdateAnimationHeroDirection(stick_);
+        }
+    };
 }
 
 bool HeroMerchantController::IsTag(const char* tag) const
@@ -76,15 +112,34 @@ bool HeroMerchantController::IsTag(const char* tag) const
     return animator.GetCurrentAnimatorStateInfo().IsTag(tag);
 }
 
-void HeroMerchantController::Update(float deltaTime, Vector2 stick)
+void HeroMerchantController::Update(float deltaTime, const Input& input)
 {
+    // Last frame's end (after LateUpdate): SpeedEffects destroyed then undo their multiplier.
+    for (float m : restoreAtFrameEnd_) speedFactor *= 1.0f / m;
+    restoreAtFrameEnd_.clear();
+
+    // The physics steps before this frame's scripts (every 0.01 s of game time): his Dynamic
+    // Rigidbody2D takes the transform as its centre of mass (position + the collider's centre)
+    // and writes back the centre minus it, which rounds where the sum changes exponent.
+    fixedTime_ += deltaTime;
+    while (fixedTime_ >= kFixedStep) {
+        fixedTime_ -= kFixedStep;
+        const Vector2 c = s_.colliderOffset;
+        position = Vector2{(position.x + c.x) - c.x, (position.y + c.y) - c.y};
+    }
+
+    stick_ = input.stick;
+    const Vector2 stick = input.stick;
+    now_ += deltaTime;
+    if (!abilityAvailable && now_ >= abilityReadyAt_) abilityAvailable = true; // MakeAbilityAvailable
+
     // Update: the input direction's bools.
     static const char* const kInput[4] = {"LeftInput", "RightInput", "UpInput", "DownInput"};
-    Direction input = ParseInputToDirection(stick, stick.x, stick.y);
-    for (int d = 0; d < 4; d++) animator.SetBool(kInput[d], d == static_cast<int>(input));
+    inputDirection = ParseInputToDirection(stick, stick.x, stick.y);
+    for (int d = 0; d < 4; d++) animator.SetBool(kInput[d], d == static_cast<int>(inputDirection));
 
     // Last frame's velocity moves him.
-    if (std::fabs(velX) >= s_.lowerDeadZone || std::fabs(velY) >= s_.lowerDeadZone) {
+    if (std::fabs(velX) >= s_.lowerDeadZone || std::fabs(velY) >= s_.lowerDeadZone || IsPlayingRollAnimation()) {
         Vector2 move = ClampMagnitude(Vector2{velX, velY}, 0.75f) * currentPlayerMoveSpeed * speedFactor * deltaTime;
         position = position + move;
     }
@@ -95,6 +150,13 @@ void HeroMerchantController::Update(float deltaTime, Vector2 stick)
         !animator.IsInTransition())
         UpdateMoveAnimations(stick, deltaTime);
 
+    // The roll (LeftTrigger): the equipped ability, unless one's already playing.
+    if (canMove && input.roll && !isFalling && abilityAvailable && !IsTag("Ability")) UseAbility(stick);
+
+    // Objects destroyed during Update go before the animation pass; those the Animator's events
+    // destroy wait for the end of the frame (after LateUpdate).
+    for (float m : restoreAtFrameEnd_) speedFactor *= 1.0f / m;
+    restoreAtFrameEnd_.clear();
     animator.Update(deltaTime);
 }
 
@@ -118,35 +180,51 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
             }
         };
 
-        unity::RaycastHit2D hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{velX, 0.0f}, 4.0f, s_.collisionLayers);
-        if (hit && Sign((hit.point - position).x) == Sign(velX)) {
-            if (velY == 0.0f && std::fabs(velX) > 0.5f && hit.collider->tag != "DungeonLevelDoor") {
-                const Collider2D* c1 = overlap(Vector2{xo + velX * 14.0f, yo + (0.0f - tile) / 2.0f}, Vector2{size.x, size.y / 2.0f});
-                const Collider2D* c2 = overlap(Vector2{xo + velX * 14.0f, yo + tile / 2.0f}, Vector2{size.x, size.y / 2.0f});
-                nearer(c1, c2, true);
-                const Collider2D* c3 = overlap(Vector2{xo + (0.0f - tile) / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
-                const Collider2D* c4 = overlap(Vector2{xo + tile / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
-                nearer(c3, c4, true);
-                if (!c1 && (!c3 || !c4)) velY += -0.5f;
-                if (!c2 && (!c3 || !c4)) velY += 0.5f;
+        if (!isIntangible || isHolesIntangible || playingDamagedEffect) {
+            unity::RaycastHit2D hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{velX, 0.0f}, 4.0f, s_.collisionLayers);
+            if (hit && Sign((hit.point - position).x) == Sign(velX)) {
+                if (velY == 0.0f && std::fabs(velX) > 0.5f && hit.collider->tag != "DungeonLevelDoor") {
+                    const Collider2D* c1 = overlap(Vector2{xo + velX * 14.0f, yo + (0.0f - tile) / 2.0f}, Vector2{size.x, size.y / 2.0f});
+                    const Collider2D* c2 = overlap(Vector2{xo + velX * 14.0f, yo + tile / 2.0f}, Vector2{size.x, size.y / 2.0f});
+                    nearer(c1, c2, true);
+                    const Collider2D* c3 = overlap(Vector2{xo + (0.0f - tile) / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
+                    const Collider2D* c4 = overlap(Vector2{xo + tile / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
+                    nearer(c3, c4, true);
+                    if (!c1 && (!c3 || !c4)) velY += -0.5f;
+                    if (!c2 && (!c3 || !c4)) velY += 0.5f;
+                }
+                velX = 0.0f;
+                if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
             }
-            velX = 0.0f;
-            if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
-        }
-        hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{0.0f, velY}, 4.0f, s_.collisionLayers);
-        if (hit && Sign((hit.point - position).y) == Sign(velY)) {
-            if (velX == 0.0f && std::fabs(velY) > 0.5f && hit.collider->tag != "DungeonLevelDoor") {
-                const Collider2D* c5 = overlap(Vector2{xo + (0.0f - tile) / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
-                const Collider2D* c6 = overlap(Vector2{xo + tile / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
-                nearer(c5, c6, false);
-                const Collider2D* c7 = overlap(Vector2{xo + velX * 14.0f, yo + (0.0f - tile) / 2.0f}, Vector2{size.x, size.y / 2.0f});
-                const Collider2D* c8 = overlap(Vector2{xo + velX * 14.0f, yo + tile / 2.0f}, Vector2{size.x, size.y / 2.0f});
-                nearer(c7, c8, false);
-                if (!c6 && (!c7 || !c8)) velX += 0.5f;
-                if (!c5 && (!c7 || !c8)) velX += -0.5f;
+            hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{0.0f, velY}, 4.0f, s_.collisionLayers);
+            if (hit && Sign((hit.point - position).y) == Sign(velY)) {
+                if (velX == 0.0f && std::fabs(velY) > 0.5f && hit.collider->tag != "DungeonLevelDoor") {
+                    const Collider2D* c5 = overlap(Vector2{xo + (0.0f - tile) / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
+                    const Collider2D* c6 = overlap(Vector2{xo + tile / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
+                    nearer(c5, c6, false);
+                    const Collider2D* c7 = overlap(Vector2{xo + velX * 14.0f, yo + (0.0f - tile) / 2.0f}, Vector2{size.x, size.y / 2.0f});
+                    const Collider2D* c8 = overlap(Vector2{xo + velX * 14.0f, yo + tile / 2.0f}, Vector2{size.x, size.y / 2.0f});
+                    nearer(c7, c8, false);
+                    if (!c6 && (!c7 || !c8)) velX += 0.5f;
+                    if (!c5 && (!c7 || !c8)) velX += -0.5f;
+                }
+                velY = 0.0f;
+                if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
             }
-            velY = 0.0f;
-            if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
+        } else {
+            // Intangible (rolling): only rocks and walls stop him, and take the speed boost.
+            unity::RaycastHit2D hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{velX, 0.0f}, 4.0f, s_.godModeLayers);
+            if (hit && Sign((hit.point - position).x) == Sign(velX)) {
+                ResetSpeedFactor();
+                velX = 0.0f;
+                if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
+            }
+            hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{0.0f, velY}, 4.0f, s_.godModeLayers);
+            if (hit && Sign((hit.point - position).y) == Sign(velY)) {
+                ResetSpeedFactor();
+                velY = 0.0f;
+                if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
+            }
         }
         timePushingDoors = door ? timePushingDoors + deltaTime : 0.0f;
         if (timePushingDoors > maxTimePushingDoors && door) {
@@ -159,11 +237,13 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
         return;
     bool moving = canMove && (std::fabs(stick.x) >= s_.lowerDeadZone || std::fabs(stick.y) >= s_.lowerDeadZone);
     animator.SetBool("Walk", moving);
-    if (!IsTag("SwordAndShieldSecondaryAttack")) {
-        // UpdateAnimationHeroDirection
-        if (!((std::fabs(stick.x) < s_.lowerDeadZone && std::fabs(stick.y) < s_.lowerDeadZone) || !canMove || !isMoveInputEnabled))
-            UpdateDirection(stick.x, stick.y);
-    }
+    if (!IsTag("SwordAndShieldSecondaryAttack")) UpdateAnimationHeroDirection(stick);
+}
+
+void HeroMerchantController::UpdateAnimationHeroDirection(Vector2 stick)
+{
+    if ((std::fabs(stick.x) < s_.lowerDeadZone && std::fabs(stick.y) < s_.lowerDeadZone) || !canMove || !isMoveInputEnabled) return;
+    UpdateDirection(stick.x, stick.y);
 }
 
 HeroMerchantController::Direction HeroMerchantController::ParseInputToDirection(Vector2 stick, float x, float y) const
@@ -177,6 +257,20 @@ HeroMerchantController::Direction HeroMerchantController::ParseInputToDirection(
     }
     if (y < 0.0f) return std::fabs(x) > std::fabs(y) ? Right : Front;
     return std::fabs(x) > std::fabs(y) ? Right : Back;
+}
+
+HeroMerchantController::EightDirection HeroMerchantController::ParseInputToEightDirection(Vector2 stick, float x, float y) const
+{
+    if (std::fabs(stick.x) < s_.lowerDeadZone && std::fabs(stick.y) < s_.lowerDeadZone) return static_cast<EightDirection>(heroDirection);
+    if (x == 0.0f && y == 0.0f) return static_cast<EightDirection>(heroDirection);
+    const bool diagonal = std::fabs(std::fabs(x) - std::fabs(y)) < 0.5f;
+    const bool wide = std::fabs(x) > std::fabs(y);
+    if (x < 0.0f) {
+        if (y < 0.0f) return diagonal ? E_LeftDown : wide ? E_Left : E_Front;
+        return diagonal ? E_LeftUp : wide ? E_Left : E_Back;
+    }
+    if (y < 0.0f) return diagonal ? E_RightDown : wide ? E_Right : E_Front;
+    return diagonal ? E_RightUp : wide ? E_Right : E_Back;
 }
 
 void HeroMerchantController::UpdateDirection(float x, float y)
@@ -198,6 +292,94 @@ void HeroMerchantController::SetDirection(Direction direction)
     animator.SetBool("DownDirection", direction == Front);
     animator.SetBool("LeftDirection", direction == Left);
     animator.SetBool("RightDirection", direction == Right);
+}
+
+// UseAbility with the Dash ability (Ability.UseAbility's cooldown, Dash.UseAbility).
+void HeroMerchantController::UseAbility(Vector2 stick)
+{
+    SetDirection(inputDirection);
+    abilityAvailable = false;
+    abilityReadyAt_ = now_ + s_.abilityCooldown;
+
+    DashAbilityUseStart();
+    dashEffect_ = AddSpeedEffectModifier(1.5f * (s_.kBaseSpeed / currentPlayerMoveSpeed));
+    // Start/StopMoving*: the stop only acts outside a roll (the Animator isn't in one yet).
+    const bool rolling = IsPlayingRollAnimation();
+    auto stopX = [&] { if (!rolling) velX = 0.0f; };
+    auto stopY = [&] { if (!rolling) velY = 0.0f; };
+    switch (ParseInputToEightDirection(stick, stick.x, stick.y)) {
+    case E_Front: velY = -1.0f; stopX(); break;
+    case E_Back: velY = 1.0f; stopX(); break;
+    case E_Left: velX = -1.0f; stopY(); break;
+    case E_Right: velX = 1.0f; stopY(); break;
+    case E_LeftUp: velX = -1.0f; velY = 1.0f; break;
+    case E_LeftDown: velX = -1.0f; velY = -1.0f; break;
+    case E_RightUp: velX = 1.0f; velY = 1.0f; break;
+    case E_RightDown: velX = 1.0f; velY = -1.0f; break;
+    }
+    unity::RaycastHit2D hit = physics_.BoxCast(s_.colliderOffset + position, s_.colliderSize, 0.0f, Vector2{velX, 0.0f}, 4.0f, s_.rollLayers);
+    if (hit && Sign((hit.point - position).x) == Sign(velX)) {
+        ResetSpeedFactor();
+        stopX();
+    }
+    hit = physics_.BoxCast(s_.colliderOffset + position, s_.colliderSize, 0.0f, Vector2{0.0f, velY}, 4.0f, s_.rollLayers);
+    if (hit && Sign((hit.point - position).y) == Sign(velY)) {
+        ResetSpeedFactor();
+        stopY();
+    }
+    animator.SetTrigger("Ability");
+}
+
+// Dash.AbilityUseStart: no move input (keeping the velocity), intangible.
+void HeroMerchantController::DashAbilityUseStart()
+{
+    isMoveInputEnabled = false;
+    isHorizontalMoveInputEnabled = false;
+    isVerticalMoveInputEnabled = false;
+    SetIntangibleMode();
+}
+
+void HeroMerchantController::SetIntangibleMode(int isHolesEnabled)
+{
+    isHolesIntangible = isHolesEnabled > 0;
+    isIntangible = true;
+}
+
+void HeroMerchantController::SetDefaultMode()
+{
+    isIntangible = false;
+    isHolesIntangible = false;
+}
+
+void HeroMerchantController::EnableMoveInput()
+{
+    isMoveInputEnabled = true;
+    isHorizontalMoveInputEnabled = true;
+    isVerticalMoveInputEnabled = true;
+}
+
+int HeroMerchantController::AddSpeedEffectModifier(float multiplier)
+{
+    ResetSpeedFactor();
+    speedFactor *= multiplier;
+    speedEffects_.push_back({nextEffectId_, multiplier});
+    return nextEffectId_++;
+}
+
+void HeroMerchantController::ResetSpeedFactor()
+{
+    for (const SpeedEffect& e : speedEffects_) restoreAtFrameEnd_.push_back(e.multiplier);
+    speedEffects_.clear();
+}
+
+void HeroMerchantController::DestroySpeedEffect(int id)
+{
+    for (size_t i = 0; i < speedEffects_.size(); i++)
+        if (speedEffects_[i].id == id) {
+            restoreAtFrameEnd_.push_back(speedEffects_[i].multiplier);
+            speedEffects_.erase(speedEffects_.begin() + static_cast<long>(i));
+            return;
+        }
 }
 
 } // namespace game

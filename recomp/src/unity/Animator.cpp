@@ -238,7 +238,7 @@ const AnimatorTransition* Animator::Find(const std::vector<AnimatorTransition>& 
     return nullptr;
 }
 
-void Animator::Advance(int state, float from, float to)
+void Animator::Advance(int state, float from, float to, bool includeEnd)
 {
     if (!onEvent || state < 0) return;
     const AnimatorState& s = c_.states[static_cast<size_t>(state)];
@@ -250,9 +250,20 @@ void Animator::Advance(int state, float from, float to)
     for (int k = first; k <= last; k++) {
         for (const AnimationEvent& e : clip.events) {
             float at = static_cast<float>(k) * clip.length + e.time;
-            if ((at > from || (from == 0.0f && at == 0.0f)) && at <= to) onEvent(e);
+            if (at > from && (includeEnd ? at <= to : at < to)) onEvent(e);
         }
     }
+}
+
+void Animator::FireAt(int state, float time)
+{
+    if (!onEvent || state < 0) return;
+    const AnimatorState& s = c_.states[static_cast<size_t>(state)];
+    if (s.clip < 0) return;
+    const AnimationClip& clip = c_.clips[static_cast<size_t>(s.clip)];
+    float t = clip.loop && clip.length > 0.0f ? std::fmod(time, clip.length) : time;
+    for (const AnimationEvent& e : clip.events)
+        if (e.time == t) onEvent(e);
 }
 
 void Animator::Take(const AnimatorTransition& t, float overshoot)
@@ -265,6 +276,10 @@ void Animator::Take(const AnimatorTransition& t, float overshoot)
         current_ = t.dest;
         time_ = start;
         if (onStateEnter) onStateEnter(c_.states[static_cast<size_t>(current_)].hash);
+        // The new state is evaluated this frame: from its start through the time carried over.
+        const float base = start - overshoot;
+        FireAt(current_, base);
+        if (overshoot > 0.0f) Advance(current_, base, start, true);
         return;
     }
     inTransition_ = true;
@@ -289,6 +304,7 @@ void Animator::Play(const std::string& state, float normalizedTime)
 
 void Animator::Update(float deltaTime)
 {
+    deltaTime = deltaTime * speed;
     if (!entered_) {
         entered_ = true;
         if (onStateEnter) onStateEnter(c_.states[static_cast<size_t>(current_)].hash);
@@ -296,12 +312,12 @@ void Animator::Update(float deltaTime)
     const AnimatorState& s = c_.states[static_cast<size_t>(current_)];
     float prev = time_;
     time_ += deltaTime * s.speed;
-    Advance(current_, prev, time_);
     if (inTransition_) {
+        Advance(current_, prev, time_, true);
         const AnimatorState& n = c_.states[static_cast<size_t>(next_)];
         float nprev = nextTime_;
         nextTime_ += deltaTime * n.speed;
-        Advance(next_, nprev, nextTime_);
+        Advance(next_, nprev, nextTime_, true);
         transitionProgress_ += transitionDuration_ > 0.0f ? deltaTime / transitionDuration_ : 1.0f;
         if (transitionProgress_ >= 1.0f) {
             if (onStateExit) onStateExit(s.hash);
@@ -317,14 +333,17 @@ void Animator::Update(float deltaTime)
     float prevNorm = prev / len, norm = time_ / len;
     const AnimatorTransition* t = Find(c_.anyState, -1, prevNorm, norm);
     if (!t) t = Find(s.transitions, current_, prevNorm, norm);
-    if (t) {
-        float overshoot = 0.0f;
-        if (t->hasExitTime) {
-            float crossing = t->exitTime < 1.0f ? std::floor(norm - t->exitTime) + t->exitTime : t->exitTime;
-            overshoot = (norm - crossing) * len;
-        }
-        Take(*t, overshoot);
+    if (t && t->hasExitTime) {
+        // The state plays up to its exit time (an event right at it doesn't fire: the clip
+        // looping back to its start as the roll ends doesn't start it again), and the rest of
+        // the frame carries into the next state.
+        float crossing = t->exitTime < 1.0f ? std::floor(norm - t->exitTime) + t->exitTime : t->exitTime;
+        Advance(current_, prev, crossing * len, false);
+        Take(*t, (norm - crossing) * len);
+        return;
     }
+    Advance(current_, prev, time_, true);
+    if (t) Take(*t, 0.0f);
 }
 
 } // namespace unity

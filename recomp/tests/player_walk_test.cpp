@@ -177,6 +177,8 @@ int main(int argc, char** argv)
     settings.colliderOffset = V2(start["colliderOffset"]);
     settings.collisionLayers = static_cast<int>(start["collisionLayers"].AsInt());
     settings.slideLayers = static_cast<int>(start["slideLayers"].AsInt());
+    if (const Value* g = start.Find("godModeLayers")) settings.godModeLayers = static_cast<int>(g->AsInt());
+    if (const Value* c = start.Find("cooldown")) settings.abilityCooldown = Bits(*c);
     game::HeroMerchantController hero(controller, settings, physics);
     hero.currentPlayerMoveSpeed = Bits(start["moveSpeed"]);
     hero.speedFactor = Bits(start["speedFactor"]);
@@ -195,11 +197,14 @@ int main(int argc, char** argv)
     hero.animator.Play(controller.states[static_cast<size_t>(s0)].name, Bits(f0["t"]));
     hero.animator.SetBool("Walk", controller.states[static_cast<size_t>(s0)].tag == "Walk");
 
-    int checked = 0, posBad = 0, velBad = 0, stateBad = 0, timeBad = 0, dirBad = 0, spriteBad = 0, shown = 0;
+    int checked = 0, posBad = 0, velBad = 0, stateBad = 0, timeBad = 0, dirBad = 0, spriteBad = 0, rollBad = 0, rollFrames = 0, shown = 0;
     double worstTime = 0.0;
     for (size_t i = 1; i < frames.size(); i++) {
         const Value& f = frames[i];
-        hero.Update(Bits(f["dt"]), V2(f["stick"]));
+        game::HeroMerchantController::Input input;
+        input.stick = V2(f["stick"]);
+        input.roll = (f["in"][2].AsInt() & 16) != 0; // LeftTrigger pressed this frame
+        hero.Update(Bits(f["dt"]), input);
         checked++;
         Vector2 pos = V2(f["pos"]);
         float vx = Bits(f["vel"][0]), vy = Bits(f["vel"][1]);
@@ -215,6 +220,16 @@ int main(int argc, char** argv)
         bool tb = !sb && dt > 1e-4;
         bool db = f["dir"].AsInt() != hero.heroDirection;
         bool spb = wantSprite && wantSprite->IsString() && (!sprite || *sprite != wantSprite->s);
+        // The roll's state (recordings from -oracle-walk=roll on): intangible, the Animator's
+        // speed, the ability in use, the speed factor (bit for bit).
+        bool rb = false;
+        if (const Value* in = f.Find("intangible")) {
+            rollFrames++;
+            rb = in->b != hero.isIntangible || Bits(f["animSpeed"]) != hero.animator.speed || f["abilityInUse"].b != hero.abilityInUse ||
+                 Bits(f["speedFactor"]) != hero.speedFactor;
+        }
+        rollBad += rb;
+        spb = spb || rb;
         if (!sb) worstTime = std::max(worstTime, dt);
         posBad += pb;
         velBad += vb;
@@ -225,6 +240,10 @@ int main(int argc, char** argv)
         if (debug || ((pb || vb || sb || tb || db || spb) && shown < 12)) {
             if (!debug) shown++;
             int ps = controller.StateByHash(wantState);
+            if (f.Find("intangible"))
+                std::printf("  roll  game: intangible %d anim speed %g in use %d speed factor %.9g | port: %d %g %d %.9g\n", f["intangible"].b,
+                            Bits(f["animSpeed"]), f["abilityInUse"].b, Bits(f["speedFactor"]), hero.isIntangible, hero.animator.speed,
+                            hero.abilityInUse, hero.speedFactor);
             std::printf("frame %3lld%s dt %.5f stick (%.3f, %.3f)\n  game: pos (%.4f, %.4f) vel (%.3f, %.3f) %s t %.4f dir %lld sprite %s\n"
                         "  port: pos (%.4f, %.4f) vel (%.3f, %.3f) %s t %.4f dir %d sprite %s\n",
                         static_cast<long long>(f["f"].AsInt()), (pb || vb || sb || tb || db || spb) ? " MISMATCH" : "", Bits(f["dt"]),
@@ -244,7 +263,9 @@ int main(int argc, char** argv)
     std::printf("direction                      %5d match %5d differ\n", checked - dirBad, dirBad);
     std::printf("Animator state                 %5d match %5d differ\n", checked - stateBad, stateBad);
     std::printf("Animator normalized time       %5d match %5d differ   (worst %.2e)\n", checked - stateBad - timeBad, timeBad, worstTime);
-    std::printf("sprite                         %5d match %5d differ\n", checked - spriteBad, spriteBad);
+    std::printf("sprite (and roll state)        %5d match %5d differ\n", checked - spriteBad, spriteBad);
+    if (rollFrames)
+        std::printf("roll state (intangible, Animator speed, in use, speed factor) %d match %d differ\n", rollFrames - rollBad, rollBad);
     (void)built;
     bool ok = !differ && !posBad && !velBad && !dirBad && !stateBad && !timeBad && !spriteBad;
     std::printf("\n%s\n", ok ? "ALL MATCH" : "MISMATCHES");

@@ -15,6 +15,7 @@
 
 #include "game/Constants.h"
 #include "game/HeroMerchantController.h"
+#include "game/HoleColliders.h"
 #include "game/Prefabs.h"
 #include "game/RoomPhysics.h"
 #include "game/RoomScene.h"
@@ -76,6 +77,7 @@ int main(int argc, char** argv)
             unity::Vector2 at = RoomPosition(pc.x, pc.y);
             physics.Clear();
             int n = AddRoomColliders(RoomSceneTree(*pc.room, at), at, physics);
+            n += AddHoleColliders(*pc.room, at, physics);
             hero.position = at;
             std::printf("room %d (%d, %d) %s at (%g, %g): %d colliders\n", c, pc.x, pc.y, pc.info->name.c_str(), at.x, at.y, n);
             for (const unity::Collider2D& k : physics.Colliders())
