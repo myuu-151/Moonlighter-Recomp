@@ -20,8 +20,10 @@ void Stat::Set(float v)
 
 float CalcHitDamage(float hitStrength, float targetDefense)
 {
-    // Mathf.RoundToInt is Math.Round: half to even (nearbyint in the default rounding mode).
-    const float num = static_cast<float>(static_cast<int>(std::nearbyint(hitStrength * (targetDefense / 100.0f))));
+    // Mono evaluates the expression in double (rounding to float only at the call's float
+    // parameter); Mathf.RoundToInt is Math.Round: half to even (nearbyint).
+    const float product = static_cast<float>(static_cast<double>(hitStrength) * (static_cast<double>(targetDefense) / 100.0));
+    const float num = static_cast<float>(static_cast<int>(std::nearbyint(static_cast<double>(product))));
     const float d = hitStrength - num;
     return d < 0.0f ? 0.0f : d;
 }

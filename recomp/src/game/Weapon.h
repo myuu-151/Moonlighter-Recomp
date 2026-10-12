@@ -37,6 +37,7 @@ public:
     // The main attack's hitbox, local to the hero (a trigger).
     bool hitboxActive = false;
     unity::Vector2 hitboxOffset, hitboxSize;
+    unity::Vector2 hitboxPosition; // MainAttack/Collider's local position (with MainAttack's)
     // MainAttack/Art's sprite (nullptr: none), and whether its SpriteRenderer is on.
     const std::string* Sprite() const;
     bool artEnabled = true;

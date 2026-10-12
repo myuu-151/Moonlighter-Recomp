@@ -23,7 +23,9 @@ Weapon::Weapon(const unity::AnimatorController& controller, const Prefab& prefab
 {
     // What the Animator binds as defaults: the prefab's.
     for (const PrefabNode& n : prefab.nodes) {
+        if (n.path == "MainAttack") hitboxPosition = hitboxPosition + unity::Vector2{n.x, n.y};
         if (n.path == kHitbox) {
+            hitboxPosition = hitboxPosition + unity::Vector2{n.x, n.y};
             hitboxActive = n.active;
             for (const ColliderDef& c : n.colliders)
                 if (c.type == "BoxCollider2D") {
