@@ -74,27 +74,32 @@ target_link_libraries(cave_oracle_test PRIVATE mlcore)
 
 enable_testing()
 add_test(NAME cave_oracle
-         COMMAND cave_oracle_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle)
+         COMMAND cave_oracle_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 add_executable(room_oracle_test tests/room_oracle_test.cpp)
 target_link_libraries(room_oracle_test PRIVATE mlcore)
 add_test(NAME room_oracle
-         COMMAND room_oracle_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/rooms.json)
+         COMMAND room_oracle_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/rooms.json
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 add_executable(fill_oracle_test tests/fill_oracle_test.cpp)
 target_link_libraries(fill_oracle_test PRIVATE mlcore)
 add_test(NAME fill_oracle
-         COMMAND fill_oracle_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/rooms.json)
+         COMMAND fill_oracle_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/rooms.json
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 add_executable(room_sync_test tests/room_sync_test.cpp)
 target_link_libraries(room_sync_test PRIVATE mlcore)
 add_test(NAME room_sync
-         COMMAND room_sync_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/rooms.json ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/generation_data_counts.json)
+         COMMAND room_sync_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/rooms.json ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/generation_data_counts.json
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 add_executable(floor_sync_test tests/floor_sync_test.cpp)
 target_link_libraries(floor_sync_test PRIVATE mlcore)
 add_test(NAME floor_sync
-         COMMAND floor_sync_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/generation_data_counts.json)
+         COMMAND floor_sync_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/generation_data_counts.json
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 add_executable(room_doors_test tests/room_doors_test.cpp)
 target_link_libraries(room_doors_test PRIVATE mlcore)
