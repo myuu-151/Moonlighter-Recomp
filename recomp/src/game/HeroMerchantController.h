@@ -104,6 +104,11 @@ public:
         bool roll = false;    // LeftTrigger.WasPressed
         bool attack = false;  // Action1.WasPressed
         float unscaledDeltaTime = -1.0f; // Time.unscaledDeltaTime (the weapon's Animator's, DOTween's unscaled); < 0: deltaTime
+        // The physics steps before this frame's scripts, where they're known (a recording's);
+        // < 0: every 0.01 s of the game time accumulated since the first frame. Unity's fixed
+        // clock has its own phase against the frames' (it runs while fixedTime + 0.01 <= time),
+        // which the first frame doesn't tell: one step more or fewer moves a contact's push.
+        int fixedSteps = -1;
     };
     enum class DamageType { Normal, ItemDrain, Self }; // HeroMerchant.DamageType
 

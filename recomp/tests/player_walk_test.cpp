@@ -14,7 +14,8 @@
 // ML_WALK_BOX2D=1 steps his Rigidbody2D in a unity::PhysicsWorld (Box2D) with the room's
 // colliders, instead of the contact-free round trip; the oracle's rock (-oracle-walk=rocks,
 // ".../OracleRock" in the recording) is added to the room, and where the recording has his
-// body's position and velocity ("rb") they're compared too.
+// body's position and velocity ("rb") they're compared too. Those recordings also have each
+// frame's physics steps ("fixed"), which the replay takes as the game did.
 //
 // Usage: player_walk_test [walk.jsonl] [hero_merchant.json] [trace.jsonl]
 //        (ML_WALK_DEBUG=1: every frame; the trace defaults to the one next to walk.jsonl)
@@ -484,6 +485,9 @@ int main(int argc, char** argv)
         input.roll = (f["in"][2].AsInt() & 16) != 0;  // LeftTrigger pressed this frame
         input.attack = (f["in"][2].AsInt() & 1) != 0; // Action1
         if (const Value* u = f.Find("udt")) input.unscaledDeltaTime = Bits(*u);
+        // The frame's physics steps as the game took them (recordings with "fixed"): the port's
+        // own fixed clock starts at an arbitrary phase.
+        if (const Value* fixed = f.Find("fixed")) input.fixedSteps = static_cast<int>(fixed->size());
         hero.Update(Bits(f["dt"]), input);
         checked++;
         Vector2 pos = V2(f["pos"]);

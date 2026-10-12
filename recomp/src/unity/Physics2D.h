@@ -5,7 +5,7 @@
 // distance 0, transforms aren't synced to physics automatically.
 //
 // Box colliders, axis-aligned (the rooms' walls, doors and props). Box2D keeps a skin of
-// `kSkin` around every polygon; casts and overlaps see it.
+// `kSkin` around every polygon; overlaps see it, casts stop kCastReach from the core.
 
 #include <deque>
 #include <string>
@@ -44,6 +44,12 @@ struct RaycastHit2D {
 class Physics2D {
 public:
     static constexpr float kSkin = 0.01f; // Box2D's polygon radius (the default contact offset)
+    // How near a cast comes to a core before it hits: Box2D's time of impact stops at its
+    // target separation, max(b2_linearSlop, both skins - 3 b2_linearSlop) = 0.005, not at the
+    // skins' 0.02. walk_rocks.jsonl bounds it below 0.0109: a 0.0109 gap beside a rock's corner
+    // that Will's horizontal cast slid past (frame 747; 0.02 stopped him there). Within that
+    // bound the recordings can't tell values apart.
+    static constexpr float kCastReach = 0.005f;
 
     Collider2D& Add(const Collider2D& c);
     void Clear() { colliders_.clear(); }
