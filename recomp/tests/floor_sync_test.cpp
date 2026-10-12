@@ -524,6 +524,7 @@ struct SnapRoom {
     std::string name;
     float x = 0.0f, y = 0.0f;
     std::vector<SceneObject> objects;
+    std::vector<SceneRow> rows; // every object below the room, local transforms
 };
 
 std::vector<SnapRoom> SnapshotRooms(const Value& floorEnd)
@@ -546,6 +547,13 @@ std::vector<SnapRoom> SnapshotRooms(const Value& floorEnd)
         bool enemy = depth == 3 && rel.rfind("DungeonLevelEnemies/EnemySpawn/", 0) == 0;
         const auto& at = enemy ? stack[depth - 1] : stack[depth];
         rooms.back().objects.push_back({rel, at.first, at.second, o[4].IsString() ? o[4].s : std::string()});
+        SceneRow row;
+        row.path = rel;
+        row.active = o[1].b;
+        row.x = lx;
+        row.y = ly;
+        if (o[4].IsString()) row.sprite = o[4].s;
+        rooms.back().rows.push_back(row);
     }
     return rooms;
 }
@@ -570,6 +578,33 @@ const char* SceneCategory(const std::string& rel, const std::vector<std::string>
         if (endsWith("(Clone)") && detailNames.count(rel.substr(0, rel.size() - 7))) return "details";
     }
     return nullptr;
+}
+
+// Every object: path ("@n" spawner indices dropped), active, local position, sprite.
+std::string RowKey(const SceneRow& r)
+{
+    std::string path = r.path;
+    for (size_t at = path.find('@'); at != std::string::npos; at = path.find('@')) {
+        size_t end = at + 1;
+        while (end < path.size() && path[end] >= '0' && path[end] <= '9') end++;
+        path.erase(at, end - at);
+    }
+    char buf[96];
+    std::snprintf(buf, sizeof buf, "|%d|%.9g,%.9g|", r.active ? 1 : 0, r.x, r.y);
+    return path + buf + r.sprite;
+}
+
+// A path with its numbers blanked, to group differences: "Books (12)/Gibs" -> "Books (#)/Gibs".
+std::string PathPattern(const std::string& key)
+{
+    std::string path = key.substr(0, key.find('|')), out;
+    for (char c : path) {
+        if (c >= '0' && c <= '9') {
+            if (out.empty() || out.back() != '#') out += '#';
+        } else
+            out += c;
+    }
+    return out;
 }
 
 const char* const kSceneCategories[] = {"enemies", "chests", "rocks", "walls", "details", "art"};
@@ -638,6 +673,10 @@ int main(int argc, char** argv)
     int wndPinned = 0, wndAmbiguous = 0, wndNoSolution = 0, wndRoomOk = 0, wndRoomDiffer = 0;
     std::map<std::string, int> sceneMatch, sceneDiffer; // rooms, per object category
     std::map<std::string, int> sceneObjects;            // objects the game had, per category
+    long deepMatched = 0, deepTotal = 0;                // every object of every room
+    long spriteMatched = 0, spriteTotal = 0;            // those with a sprite
+    std::map<std::string, long> spriteMissing, spriteExtra;
+    std::map<std::string, long> deepMissing, deepExtra; // by path pattern
     int sceneRoomsMissing = 0;
     std::vector<std::string> notes;
     std::string lastSession;
@@ -821,8 +860,46 @@ int main(int argc, char** argv)
                     }
                 }
             };
+            // Every object of the room against the port's whole tree.
+            auto deep = [&](const RoomFill* room, const std::string& name, int x, int y) {
+                unity::Vector2 at = RoomPosition(x, y);
+                const SnapRoom* sr = nullptr;
+                for (const SnapRoom& r : snap)
+                    if (r.name == name && r.x == at.x && r.y == at.y) sr = &r;
+                if (!sr) return;
+                std::map<std::string, int> want, got;
+                for (const SceneRow& r : sr->rows) want[RowKey(r)]++;
+                for (const SceneRow& r : RoomSceneTree(*room, at)) got[RowKey(r)]++;
+                // (sprites: objects that draw something, what a renderer needs right)
+                auto drawn = [](const std::string& k) { return k.back() != '|'; };
+                for (const auto& [k, n] : want) {
+                    int g = got.count(k) ? got[k] : 0;
+                    deepMatched += std::min(n, g);
+                    deepTotal += n;
+                    if (drawn(k)) {
+                        spriteMatched += std::min(n, g);
+                        spriteTotal += n;
+                        if (n > g) spriteMissing[PathPattern(k)] += n - g;
+                    }
+                    if (n > g) deepMissing[PathPattern(k)] += n - g;
+                }
+                for (const auto& [k, n] : got) {
+                    int w = want.count(k) ? want[k] : 0;
+                    static int debugShown = 0;
+                    if (n > w && std::getenv("ML_SCENE_DEBUG") && k.find(std::getenv("ML_SCENE_DEBUG")) != std::string::npos && debugShown++ < 3) {
+                        std::printf("  [debug] %s: port has %s\n", name.c_str(), k.c_str());
+                        std::string door = k.substr(0, k.find("/art"));
+                        for (const SceneRow& r : sr->rows)
+                            if (r.path.rfind(door, 0) == 0) std::printf("      game %s\n", RowKey(r).c_str());
+                    }
+                    if (n > w) deepExtra[PathPattern(k)] += n - w;
+                    if (n > w && drawn(k)) spriteExtra[PathPattern(k)] += n - w;
+                }
+            };
             for (size_t ci = 0; ci < floor.cells.size(); ci++) {
                 const PlacedCell& c = floor.cells[ci];
+                deep(c.room, c.info->name + (static_cast<int>(ci) == floor.shrineCell ? "_Shrine" : ""), c.x, c.y);
+                if (c.secret) deep(c.secret, c.secretInfo->name, c.x, c.y);
                 check(c.room, c.info->name + (static_cast<int>(ci) == floor.shrineCell ? "_Shrine" : ""), c.x, c.y);
                 if (c.secret) check(c.secret, c.secretInfo->name, c.x, c.y);
             }
@@ -850,6 +927,22 @@ int main(int argc, char** argv)
     for (const char* c : kSceneCategories) {
         std::printf("Scene, %-31s %4d match  %4d differ   (rooms; %d objects)\n", c, sceneMatch[c], sceneDiffer[c], sceneObjects[c]);
         sceneDiffers += sceneDiffer[c];
+    }
+    std::printf("Scene, every object (path, active, local position, sprite): %ld of %ld (%.1f%%)\n", deepMatched, deepTotal,
+                deepTotal ? 100.0 * double(deepMatched) / double(deepTotal) : 0.0);
+    auto top = [](const std::map<std::string, long>& m, const char* what) {
+        std::vector<std::pair<long, std::string>> v;
+        for (const auto& [k, n] : m) v.push_back({n, k});
+        std::sort(v.rbegin(), v.rend());
+        for (size_t i = 0; i < v.size() && i < 25; i++) std::printf("    %s %6ld  %s\n", what, v[i].first, v[i].second.c_str());
+    };
+    std::printf("Scene, objects with a sprite: %ld of %ld (%.1f%%)\n", spriteMatched, spriteTotal,
+                spriteTotal ? 100.0 * double(spriteMatched) / double(spriteTotal) : 0.0);
+    if (std::getenv("ML_SCENE_DETAIL")) {
+        top(spriteMissing, "game only");
+        top(spriteExtra, "port only");
+        top(deepMissing, "game only (any)");
+        top(deepExtra, "port only (any)");
     }
     if (sceneRoomsMissing) std::printf("  rooms not found in the snapshot      %4d\n", sceneRoomsMissing);
     for (const std::string& n : notes) std::printf("    %s\n", n.c_str());

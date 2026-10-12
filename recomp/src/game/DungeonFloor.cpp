@@ -75,6 +75,9 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
             // (Chest.Awake, engine side). DungeonBossRoom.RoomPlaced then depends on the save:
             // if this culture's boss is already defeated, noBossEnemyController.InitEnemies()
             // picks the post-boss enemy set (a weighted pick: one roll) and spawns it.
+            for (PlacedCell& c : cells)
+                if (bossEnterRoom && c.cave == bossEnterRoom)
+                    c.room->specialDoors.push_back({0, "EnterBossDoor", std::string("dungeon_") + CultureBundle(culture_)});
             engine.BossRoomPlaced();
             bool defeated = engine.BossDefeated();
             if (defeated) (void)Random::Range(0.0f, 1.0f);
@@ -133,6 +136,9 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
         if (corrupted && std::find(floor.enemyBundles.begin(), floor.enemyBundles.end(), info->culture) == floor.enemyBundles.end())
             floor.enemyBundles.push_back(info->culture);
         cell.room = PlaceRoom(info, 20, 11, info->culture, floor, engine);
+        const std::string floorBundle = std::string("dungeon_") + CultureBundle(culture_);
+        if (caveRoom == L.initCaveRoom)
+            cell.room->specialDoors.push_back({L.lastDoorDirectionIndex, level_ == 0 ? "FirstLevelDoor" : "LastLevelDoor", floorBundle});
         auto* placed = cs::gcnew<PlacedRoom>();
         placed->x = x;
         placed->y = y;
@@ -149,6 +155,7 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
             int pick = GetRandomIndex(dirs->Count());
             nextLevelDoor = pick >= 0 ? (*dirs)[pick] : 0; // GetRandom on an empty list gives default(int)
             fi.lastDoorDirectionIndex = nextLevelDoor;
+            cell.room->specialDoors.push_back({nextLevelDoor, "NextLevelDoor", floorBundle});
         }
         if (secretHost) {
             DungeonRoomInfo* secretInfo = db_->sendToHomeRoomInfo;
@@ -159,7 +166,7 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
             engine.BeginRoom(secretInfo, x, y, true);
             cell.secretInfo = secretInfo;
             cell.secret = PlaceRoom(secretInfo, 20, 11, secretInfo->culture, floor, engine);
-            AddSecretRoom(cell);
+            AddSecretRoom(cell, "SecretRoomAdvisor");
         }
         cells.push_back(cell);
     }
@@ -168,13 +175,18 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
     engine.SpecialRoomsAfterGeneration();
 }
 
-// AddSecretRoom: the advisor goes on one of the host room's hole tiles.
-void DungeonFloor::AddSecretRoom(const PlacedCell& host)
+// AddSecretRoom: the rope in the secret room; the advisor goes on one of the host room's
+// hole tiles.
+void DungeonFloor::AddSecretRoom(PlacedCell& host, const char* advisor)
 {
-    int holes = 0;
-    for (int t : host.room->obstaclesGrid)
-        if (t == 2) holes++;
-    if (holes > 0) (void)Random::Range(0, holes);
+    const std::string floorBundle = std::string("dungeon_") + CultureBundle(culture_);
+    host.secret->ropeBundle = floorBundle;
+    host.room->advisorPrefab = advisor;
+    host.room->advisorBundle = std::string(advisor) == "IntermediateAdvisor" ? "dungeon_common" : floorBundle;
+    std::vector<int> holes;
+    for (size_t t = 0; t < host.room->obstaclesGrid.size(); t++)
+        if (host.room->obstaclesGrid[t] == 2) holes.push_back(static_cast<int>(t));
+    if (!holes.empty()) host.room->advisorTile = holes[static_cast<size_t>(Random::Range(0, static_cast<int>(holes.size())))];
 }
 
 int DungeonFloor::PickWandererHost()
@@ -208,7 +220,7 @@ int DungeonFloor::WandererPostprocess(DungeonRoomInfo* intermediate, FloorEngine
     c.secretInfo = intermediate;
     c.secret = PlaceRoom(intermediate, 20, 11, intermediate->culture, floor_, engine);
     c.wandererIntermediate = true;
-    AddSecretRoom(c);
+    AddSecretRoom(c, "IntermediateAdvisor");
     return host;
 }
 

@@ -38,6 +38,17 @@ public:
         std::string light, shadow, background, walls;
         int shadowFlipX = 1, shadowFlipY = 1;
     } art;
+    // Doors replaced by special ones (DungeonRoom.roomDoors index: 0 up, 1 down, 2 left,
+    // 3 right): the init room's first/last-floor door, the next-floor door, the boss enter door.
+    struct SpecialDoor {
+        int index = 0;
+        std::string prefab, bundle;
+    };
+    std::vector<SpecialDoor> specialDoors;
+    // AddSecretRoom: the advisor this (host) room shows on one of its hole tiles, and the rope
+    // in this (secret) room.
+    std::string advisorPrefab, advisorBundle, ropeBundle;
+    int advisorTile = -1;
     // SpawnDetails: what it placed, from which register, and the room prefab's wall spawners.
     DetailsResult details;
     const DetailsData* detailsData = nullptr;

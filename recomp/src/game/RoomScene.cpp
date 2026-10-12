@@ -3,6 +3,8 @@
 #include "game/Constants.h"
 #include "game/Prefabs.h"
 
+#include <algorithm>
+
 namespace game {
 
 const unity::Vector2 kDoorBoundaries[4] = {{0.0f, 159.0f}, {0.0f, -159.0f}, {-262.0f, 0.0f}, {262.0f, 0.0f}};
@@ -190,6 +192,41 @@ std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPos
         for (const PrefabNode& n : p->nodes)
             if (!n.path.empty()) out.push_back(RowFrom(n, n.path));
 
+    static const char* const kDoors[4] = {"DungeonLevelDoors/LevelDoorUp", "DungeonLevelDoors/LevelDoorDown",
+                                          "DungeonLevelDoors/LevelDoorLeft", "DungeonLevelDoors/LevelDoorRight"};
+    auto removeDoor = [&](const std::string& door) {
+        out.erase(std::remove_if(out.begin(), out.end(), [&](const SceneRow& r) { return r.path == door || r.path.rfind(door + "/", 0) == 0; }),
+                  out.end());
+    };
+
+    // InitializeRoom: doors the design doesn't have are destroyed.
+    static const DungeonRoomInfo::Doors kSides[4] = {DungeonRoomInfo::Doors::North, DungeonRoomInfo::Doors::South,
+                                                     DungeonRoomInfo::Doors::West, DungeonRoomInfo::Doors::East};
+    for (int i = 0; i < 4; i++)
+        if (!info->availableDoors || info->availableDoors->IndexOf(kSides[i]) == -1) removeDoor(kDoors[i]);
+
+    // Special doors: the door's objects go, the special door takes its place and rotation
+    // (ReplaceSpecialDoor / AddSpecialInitDoor).
+    for (const RoomFill::SpecialDoor& sd : room.specialDoors) {
+        if (sd.index < 0 || sd.index > 3) continue;
+        const std::string door = kDoors[sd.index];
+        SceneRow* d = FindRow(out, door);
+        if (!d) continue;
+        float x = d->x, y = d->y, rotation = d->rotation;
+        removeDoor(door);
+        size_t first = out.size();
+        if (Instantiate(out, "DungeonLevelDoors", sd.prefab, sd.bundle, x, y)) out[first].rotation = rotation;
+    }
+
+    // AddSecretRoom: the advisor (host room) and the rope (secret room).
+    if (!room.advisorPrefab.empty() && room.advisorTile >= 0) {
+        unity::Vector2 p = TranslateTileToPosition(room.advisorTile, room.gridSlicesX);
+        Instantiate(out, "", room.advisorPrefab, room.advisorBundle, p.x, p.y);
+    }
+    if (!room.ropeBundle.empty())
+        if (const Prefab* rope = PrefabLibrary::Find("Rope", room.ropeBundle))
+            Instantiate(out, "", "Rope", room.ropeBundle, rope->nodes[0].x, rope->nodes[0].y);
+
     // AddLightShadow and SetBackgroundImages.
     if (room.art.set) {
         if (SceneRow* r = FindRow(out, "DungeonLevelArt/room")) r->sprite = room.art.background;
@@ -241,6 +278,15 @@ std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPos
         Container(out, "DungeonLevelRoomHoles");
         Container(out, "DungeonLevelRoomSlime");
         tiles(8, "DungeonLevelRoomFAllingRocks", std::string(RoomFill::CultureName(info->culture)) + "FallingFloor");
+
+        // SpawnRoomPrefabs: the design's own props, at their positions (ObstaclePrefabRegister:
+        // the culture's obstacles, then the common ones).
+        for (DungeonRoomInfo::PrefabSpawn* ps : *info->prefabSpawnPacks) {
+            const std::string& name = ps->prefab->name;
+            if (!Instantiate(out, "", name, dungeonBundle, ps->position.x, ps->position.y) &&
+                !Instantiate(out, "", name, "dungeon_common", ps->position.x, ps->position.y))
+                Instantiate(out, "", name, "", ps->position.x, ps->position.y);
+        }
     }
 
     // SpawnDetails.

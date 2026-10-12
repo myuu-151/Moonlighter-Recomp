@@ -69,7 +69,7 @@ public:
 private:
     void SpawnSpecialRoomsAfterGeneration(const FloorGenerationSaveInfo& fi, CaveRoom* bossEnterRoom);
 
-    void AddSecretRoom(const PlacedCell& host);
+    void AddSecretRoom(PlacedCell& host, const char* advisor);
 
     DungeonRoomDatabase* db_;
     Culture culture_;
