@@ -53,6 +53,7 @@ class EnemyBehaviour;
 class EnemyPhysics;
 class EnemyProjectiles;
 class MasterAudio;
+class RoomDrops;
 
 enum class EnemyDamageReceivedType { Normal, Effect, Familiar, Trick };
 
@@ -111,6 +112,9 @@ struct EnemyScene {
     // (where a patrol picks its tiles: HermitSlimeBehaviourNEW.ChooseNewDestination).
     unity::Vector2 roomPosition;
     int roomFloorWidth = 484, roomFloorHeight = 268, roomCenterYOffset = 0;
+    // The DungeonRoom's dropped items and OnDropListChanged (game/RoomDrops.h: the
+    // FlyingRepairGolem's thefts); none: no room list (nothing to steal).
+    RoomDrops* drops = nullptr;
 };
 
 // A child hurtbox: a trigger BoxCollider2D with an EnemyDamageReceiver, tagged

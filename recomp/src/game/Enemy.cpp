@@ -158,6 +158,9 @@ void Enemy::ResetAnimator()
     BindRootBox(); // (the root box's: game/EnemyColliders.cpp)
     // Clip events: SendMessage to the object's scripts (the behaviour).
     a.onEvent = [this](const unity::AnimationEvent& e) {
+        // An event with no function: Unity logs "AnimationEvent has no function name
+        // specified!" and calls nothing (the FlyingRepairGolem's PickingItem has one).
+        if (e.function.empty()) return;
         if (scene.onAnimationEvent) scene.onAnimationEvent(*this, e, false);
         if (enemyBehaviour) enemyBehaviour->OnAnimationEvent(e);
         if (scene.onAnimationEvent) scene.onAnimationEvent(*this, e, true);

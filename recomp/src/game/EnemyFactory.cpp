@@ -2,6 +2,7 @@
 
 #include "game/BabySlime.h"
 #include "game/BrokenGolemTurret.h"
+#include "game/FlyingRepairGolem.h"
 #include "game/GolemSoldier.h"
 #include "game/HermitSlime.h"
 #include "game/Tangle.h"
@@ -45,6 +46,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
             enemy->enemyBehaviour = MakeHermitSlimeBehaviour(*enemy, b);
         } else if (!enemy->enemyBehaviour && b.cls == "BrokenGolemTurretBehaviour") { // (game/BrokenGolemTurret.h)
             enemy->enemyBehaviour = MakeBrokenGolemTurretBehaviour(*enemy, b);
+            behaviourFields = &b;
+        } else if (!enemy->enemyBehaviour && b.cls == "FlyingRepairGolemBehaviour") { // (game/FlyingRepairGolem.h)
+            enemy->enemyBehaviour = MakeFlyingRepairGolemBehaviour(*enemy, b);
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour) {
             if (auto behaviour = MakeBehaviour(b.cls, prefab.name, *enemy)) {

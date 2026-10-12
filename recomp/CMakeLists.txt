@@ -77,6 +77,9 @@ add_library(mlcore STATIC
     src/game/PoolManager.cpp
     src/game/EnemyProjectile.cpp
     src/game/BrokenGolemTurret.cpp
+    # The FlyingRepairGolem and the room's dropped items it steals.
+    src/game/RoomDrops.cpp
+    src/game/FlyingRepairGolem.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -186,6 +189,12 @@ add_test(NAME enemy_hermit_slime
 # (`-oracle-enemy=BrokenGolemTurret`; skipped if there's none).
 add_test(NAME enemy_broken_turret
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_BrokenGolemTurret.jsonl BrokenGolemTurret
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# The FlyingRepairGolem (game/FlyingRepairGolem.h, game/RoomDrops.h): golems in a box (the chase,
+# the theft of a dropped item, the roaming, a hit, a death), and against the game
+# (`-oracle-enemy=FlyingRepairGolem`; skipped if there's none).
+add_test(NAME enemy_flyingrepairgolem
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_FlyingRepairGolem.jsonl FlyingRepairGolem
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The Tangle against the game (data/oracle/tangle.jsonl, `-oracle-tangle`; skipped if there's

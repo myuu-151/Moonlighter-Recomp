@@ -34,7 +34,13 @@
 //       - rocks on all four sides: canShoot off, the clip's ShootProjectile takes nothing;
 //  2. the replay (tests/turret_replay.h): the common one plus the shots, the looks and the pool.
 //
-// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime, BrokenGolemTurret)]
+// For the FlyingRepairGolem (enemy_FlyingRepairGolem.jsonl, prefab FlyingRepairGolem: game/
+// FlyingRepairGolem.h, game/RoomDrops.h): 1. tests/enemy_repair_checks.h (the room's drop list,
+// two golems in a box: the chase, the theft, the roaming, a hit, a death); 2. the replay plus
+// tests/repair_replay.h (the room's drop list fed from the recording, the golems' handler calls,
+// targets, fields and drops).
+//
+// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime, BrokenGolemTurret, FlyingRepairGolem)]
 //        (ML_HERMIT_BOX=1: the hermit's root box in its attack frames)
 //        (ML_ENEMY_DEBUG=1: every mismatch; ML_ENEMY_CONTACTS=<frame>: the enemies' Box2D
 //        contacts after each of that frame's steps; ML_ENEMY_BOX=1: the soldier in a box's
@@ -44,6 +50,8 @@
 #include "enemy_replay.h"
 #include "enemy_hermit_checks.h" // (the HermitSlime's self-checks)
 #include "turret_replay.h"
+#include "enemy_repair_checks.h" // (the FlyingRepairGolem's self-checks)
+#include "repair_replay.h"
 
 namespace {
 
@@ -551,6 +559,7 @@ int main(int argc, char** argv)
             CheckSoldierInABox(data);
         }
         if (name == "HermitSlime") CheckHermitSlime(*data.prefab, *data.controller, data.enemyStats, data.physics2d, data.soundGroups);
+        if (name == "FlyingRepairGolem") CheckFlyingRepairGolem(*data.prefab, *data.controller, data.enemyStats, data.physics2d, data.soundGroups);
         if (name == "BrokenGolemTurret") {
             if (data.projectilePrefab && data.projectileController && data.controller->Param("Shoot") >= 0)
                 for (int variant = 0; variant < 3; variant++) CheckTurretInABox(data, variant);
@@ -577,7 +586,10 @@ int main(int argc, char** argv)
         turret.projectileController = data.projectileController.get();
         replay.hooks = &turret;
     }
+    RepairReplay repair;
+    if (name == "FlyingRepairGolem") replay.hooks = &repair;
     const int replayed = ReplayRecording(file, replay);
     turret.Summary();
+    repair.Summary();
     return gFailed || replayed ? 1 : 0;
 }
