@@ -89,6 +89,9 @@ add_test(NAME player_walk
 add_test(NAME player_roll
          COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_roll.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME player_diagonals
+         COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_diag.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
 add_executable(preview tools/preview.cpp)

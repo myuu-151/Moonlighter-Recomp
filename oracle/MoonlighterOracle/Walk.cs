@@ -58,6 +58,22 @@ namespace MoonlighterOracle
             new Segment(60, 0f, 0f),
         };
 
+        // `-oracle-walk=diag`: digital diagonals (the D-pad / keyboard: both axes full) after
+        // holding one direction first: which way does he face?
+        private static readonly Segment[] DiagScript =
+        {
+            new Segment(20, 0f, 0f),
+            new Segment(30, -1f, 0f),         // left...
+            new Segment(40, -1f, 1f),         // ...then up and left together
+            new Segment(30, 0f, 0f),
+            new Segment(30, 0f, -1f),         // down...
+            new Segment(40, 1f, -1f),         // ...then down and right together
+            new Segment(30, 0f, 0f),
+            new Segment(30, 1f, 0f),          // right...
+            new Segment(40, 1f, 1f),          // ...then up and right together
+            new Segment(30, 0f, 0f),
+        };
+
         private static Segment[] Script; // Run picks it
 
         private static readonly Segment[] WalkScript =
@@ -175,7 +191,7 @@ namespace MoonlighterOracle
 
         public static IEnumerator Run(MonoBehaviour host, bool quit, string script = "")
         {
-            Script = script == "roll" ? RollScript : WalkScript;
+            Script = script == "roll" ? RollScript : script == "diag" ? DiagScript : WalkScript;
             var log = OraclePlugin.Log;
             // The harvest's first steps: the slot, the town, the Golem gate on a fixed seed.
             yield return Harvest.LoadSlot();
