@@ -141,6 +141,7 @@ SceneRow RowFrom(const PrefabNode& n, const std::string& path)
     r.flipY = n.flipY;
     r.rendererEnabled = n.rendererEnabled;
     for (int c = 0; c < 4; c++) r.color[c] = n.color[c];
+    r.behaviours = n.behaviours;
     return r;
 }
 
@@ -231,9 +232,13 @@ std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPos
     if (room.art.set) {
         if (SceneRow* r = FindRow(out, "DungeonLevelArt/room")) r->sprite = room.art.background;
         if (SceneRow* r = FindRow(out, "DungeonLevelArt/walls")) r->sprite = room.art.walls;
-        if (SceneRow* r = FindRow(out, "DungeonLevelArt/Lights")) r->sprite = room.art.light;
+        if (SceneRow* r = FindRow(out, "DungeonLevelArt/Lights")) {
+            r->sprite = room.art.light;
+            if (!r->sprite.empty()) r->layer = "Lights";
+        }
         if (SceneRow* r = FindRow(out, "DungeonLevelArt/Shadows")) {
             r->sprite = room.art.shadow;
+            if (!r->sprite.empty()) r->layer = "Shadows";
             r->sx = static_cast<float>(room.art.shadowFlipX);
             r->sy = static_cast<float>(room.art.shadowFlipY);
         }

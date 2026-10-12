@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "game/Prefabs.h"
 #include "game/RoomFill.h"
 #include "unity/Vector2.h"
 
@@ -43,6 +44,7 @@ struct SceneRow {
     int order = 0;
     bool flipX = false, flipY = false, rendererEnabled = false;
     float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    std::vector<Behaviour> behaviours; // the prefab object's (SpriteDepthOrderRender, ...)
 };
 
 // The whole room: the DungeonRoom prefab (as RoomPlaced leaves it) and everything

@@ -6,12 +6,14 @@
 // What these spawn (prefab instantiation, enemy Init, Chest.Awake) is engine-side and
 // handled separately; the oracle traces the RNG state around each of those.
 
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "game/RoomDatabase.h"
 #include "game/RoomDetails.h"
+#include "game/RoomGenerator.h"
 
 namespace game {
 
@@ -49,6 +51,10 @@ public:
     // in this (secret) room.
     std::string advisorPrefab, advisorBundle, ropeBundle;
     int advisorTile = -1;
+    // RasterizeHolesImage's tiles (PaintHoles turns them into the holes texture).
+    std::vector<TileSprite> holeTiles;
+    // RasterizeSlimeImage's tiles, by tile value (16 slime, 64 acid, 128 lava, 256 electric).
+    std::map<int, std::vector<TileSprite>> slimeTiles;
     // SpawnDetails: what it placed, from which register, and the room prefab's wall spawners.
     DetailsResult details;
     const DetailsData* detailsData = nullptr;

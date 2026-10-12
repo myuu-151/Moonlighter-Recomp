@@ -36,12 +36,25 @@ struct DetailsData {
     std::vector<ProbImage> lowerProb, lower2Prob;
 };
 
+// What FillRoomWithSprites paints into one of a room's floor textures: each sprite (an index
+// into the layer's list) at its position (relative to the room's centre), mirrored or not.
+struct LayerPaint {
+    struct Entry {
+        float x = 0.0f, y = 0.0f;
+        int sprite = -1;
+        bool flip = false; // the per-sprite flag (true: drawn as is; false: mirrored)
+    };
+    std::vector<Entry> entries;
+    bool Empty() const { return entries.empty(); }
+};
+
 // DungeonRoom's static caches of generated floor textures (reset when the floor's
-// DungeonManager is destroyed).
+// DungeonManager is destroyed): after three, rooms reuse one of the three.
 struct DetailsCache {
     int lowerDetailsIndex = 0;
     int lower2DetailsIndex = 0;
     static constexpr int kLength = 3; // CACHE_DETAILS_LENGTH
+    LayerPaint lower[kLength], lower2[kLength];
 };
 
 struct DetailsRoom {
@@ -65,6 +78,8 @@ struct DetailsResult {
     std::vector<std::pair<int, int>> wallPicks; // (spawner child index, wall prefab)
     int particlePick = -1;
     std::vector<Placed> breakablePicks, creaturePicks;
+    // The floor textures: LowerDetail (layer 0), BaseDetail (layer 1), MiddleDetail (layer 2).
+    LayerPaint lower, lower2, middleLayer;
 };
 
 // SpawnDetails() for one room.

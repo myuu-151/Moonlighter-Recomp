@@ -58,7 +58,7 @@ RoomFill* PlaceRoom(DungeonRoomInfo* info, int slicesX, int slicesY, Culture roo
         g->SetShadows(cs::gcnew<cs::List<int>>());
         RoomGenerator::LightShadow ls = g->AddLightShadow(roomCulture);
         // GetMiddleDetailZonesFromGrid and GenerateRocksPrefab draw nothing.
-        g->RasterizeHoles(roomCulture, fill->obstaclesGrid, fill->gridSlicesX, fill->gridSlicesY);
+        fill->holeTiles = g->RasterizeHoles(roomCulture, fill->obstaclesGrid, fill->gridSlicesX, fill->gridSlicesY);
         // SetBackgroundImages draws nothing: the room culture's background for this floor.
         if (const RoomGenerationData* d = static_cast<int>(roomCulture) < 6 ? RoomGenerator::generationDataByCulture[static_cast<int>(roomCulture)] : nullptr) {
             auto name = [](const std::vector<std::string>& names, int i) {
@@ -72,7 +72,7 @@ RoomFill* PlaceRoom(DungeonRoomInfo* info, int slicesX, int slicesY, Culture roo
             fill->art.walls = name(d->backgroundWallNames, floor.level);
             fill->art.set = true;
         }
-        for (int tile : {16, 64, 128, 256}) g->RasterizeSlime(fill->obstaclesGrid, fill->gridSlicesX, fill->gridSlicesY, tile);
+        for (int tile : {16, 64, 128, 256}) fill->slimeTiles[tile] = g->RasterizeSlime(fill->obstaclesGrid, fill->gridSlicesX, fill->gridSlicesY, tile);
         // GenerateFallingFloorPrefab draws nothing.
 
         // SpawnRoomPrefabs: prefabs (Chest.Awake for chest prefabs), then the skeleton roll.

@@ -34,6 +34,8 @@ FIELDS = {
     'BreakableObjectBehaviour': ('skins', 'currentSkin'),
     'BreakableBoxBehaviour': ('skins', 'currentSkin'),  # a BreakableObjectBehaviour (inherits its Start)
     'CarnivorousMutaeBossRoots': (),
+    # Not a draw: sets its renderer's sortingOrder from the world y in Start (what the scene draws in front).
+    'SpriteDepthOrderRender': ('offset', 'forceOrderValue', 'forcedOrderValue', 'over', 'overOffset'),
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 

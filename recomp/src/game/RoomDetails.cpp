@@ -31,15 +31,23 @@ struct SpriteDict {
     }
 };
 
-// FillRoomWithSprites: one flip draw per entry, in enumeration order. Returns "a sprite".
-bool FillRoomWithSprites(const SpriteDict& dict)
+// FillRoomWithSprites: one flip draw per entry, in enumeration order; what it paints.
+LayerPaint FillRoomWithSprites(const SpriteDict& dict)
 {
-    for (size_t i = 0; i < dict.entries.size(); i++) (void)(Random::Range(0.0f, 1.0f) > 0.5f);
-    return true;
+    LayerPaint paint;
+    for (const auto& [key, sprite] : dict.entries) {
+        LayerPaint::Entry e;
+        e.x = key.x;
+        e.y = key.y;
+        e.sprite = sprite;
+        e.flip = Random::Range(0.0f, 1.0f) > 0.5f;
+        paint.entries.push_back(e);
+    }
+    return paint;
 }
 
 // FillRoomTextureWithSprites: one draw per probability-image pixel, a pick on each hit.
-bool FillRoomTextureWithSprites(const DetailsData::ProbImage& prob, int detailsCount, const DetailsRoom& room, int& hits)
+LayerPaint FillRoomTextureWithSprites(const DetailsData::ProbImage& prob, int detailsCount, const DetailsRoom& room, int& hits)
 {
     SpriteDict dict;
     float vx = static_cast<float>(room.roomFloorWidth) / static_cast<float>(prob.w);
@@ -60,10 +68,11 @@ bool FillRoomTextureWithSprites(const DetailsData::ProbImage& prob, int detailsC
         }
     }
     if (!dict.entries.empty()) return FillRoomWithSprites(dict);
-    return false;
+    return LayerPaint();
 }
 
-int FillRoomZonesWithSprites(const std::vector<Rect>& zones, const std::vector<DetailsData::Size>& details, float generationProb, int perZone)
+int FillRoomZonesWithSprites(const std::vector<Rect>& zones, const std::vector<DetailsData::Size>& details, float generationProb, int perZone,
+                             LayerPaint& paint)
 {
     SpriteDict dict;
     int placed = 0;
@@ -83,7 +92,7 @@ int FillRoomZonesWithSprites(const std::vector<Rect>& zones, const std::vector<D
             }
         }
     }
-    if (!dict.entries.empty()) FillRoomWithSprites(dict);
+    if (!dict.entries.empty()) paint = FillRoomWithSprites(dict);
     return placed;
 }
 
@@ -163,22 +172,23 @@ DetailsResult SpawnDetails(const DetailsRoom& room, const DetailsData& data, Det
     }
 
     bool corrupted = room.culture != room.floorCulture;
-    auto layer = [&](const std::vector<DetailsData::Size>& sprites, const std::vector<DetailsData::ProbImage>& probs, int& index, int& hits) {
+    auto layer = [&](const std::vector<DetailsData::Size>& sprites, const std::vector<DetailsData::ProbImage>& probs, int& index, int& hits,
+                     LayerPaint* slots, LayerPaint& paint) {
         if (sprites.empty()) return;
         if ((index < DetailsCache::kLength) | corrupted) {
             int pick = GetRandom(static_cast<int>(probs.size()));
             if (pick >= 0 && !probs[static_cast<size_t>(pick)].null) {
-                bool made = FillRoomTextureWithSprites(probs[static_cast<size_t>(pick)], static_cast<int>(sprites.size()), room, hits);
-                if (made && !corrupted) index++;
+                paint = FillRoomTextureWithSprites(probs[static_cast<size_t>(pick)], static_cast<int>(sprites.size()), room, hits);
+                if (!paint.Empty() && !corrupted) slots[index++] = paint;
             }
         } else {
-            (void)Random::Range(0, DetailsCache::kLength); // reuse a cached texture
+            paint = slots[Random::Range(0, DetailsCache::kLength)]; // reuse a cached texture
         }
     };
-    layer(data.lower, data.lowerProb, cache.lowerDetailsIndex, res.lowerHits);
-    layer(data.lower2, data.lower2Prob, cache.lower2DetailsIndex, res.lower2Hits);
+    layer(data.lower, data.lowerProb, cache.lowerDetailsIndex, res.lowerHits, cache.lower, res.lower);
+    layer(data.lower2, data.lower2Prob, cache.lower2DetailsIndex, res.lower2Hits, cache.lower2, res.lower2);
 
-    if (!data.middle.empty()) res.middle = FillRoomZonesWithSprites(room.zones, data.middle, room.middleProb, room.middlePerZone);
+    if (!data.middle.empty()) res.middle = FillRoomZonesWithSprites(room.zones, data.middle, room.middleProb, room.middlePerZone, res.middleLayer);
 
     // The roll is drawn before the list check (left operand first).
     if (Random::Range(0.0f, 1.0f) < room.particlesProb && data.particles > 0) {

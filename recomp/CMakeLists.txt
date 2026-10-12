@@ -33,6 +33,10 @@ add_library(mlcore STATIC
     src/game/PrefabCatalog.cpp
     src/game/Prefabs.cpp
     src/game/BossRoomStart.cpp
+    src/game/Session.cpp
+    src/game/Composite.cpp
+    src/render/SpriteBank.cpp
+    src/render/DrawList.cpp
     src/game/DungeonFloor.cpp
 )
 target_include_directories(mlcore PUBLIC src)
@@ -63,3 +67,7 @@ add_executable(floor_sync_test tests/floor_sync_test.cpp)
 target_link_libraries(floor_sync_test PRIVATE mlcore)
 add_test(NAME floor_sync
          COMMAND floor_sync_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/generation_data_counts.json)
+
+# The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
+add_executable(preview tools/preview.cpp)
+target_link_libraries(preview PRIVATE mlcore)

@@ -25,6 +25,7 @@
 #include "cs/Object.h"
 #include "game/Constants.h"
 #include "game/ChestGeneration.h"
+#include "game/Composite.h"
 #include "game/DungeonFloor.h"
 #include "game/PrefabCatalog.h"
 #include "game/Prefabs.h"
@@ -525,6 +526,8 @@ struct SnapRoom {
     float x = 0.0f, y = 0.0f;
     std::vector<SceneObject> objects;
     std::vector<SceneRow> rows; // every object below the room, local transforms
+    std::map<std::string, uint32_t> textureCrc; // objects with a texture made at runtime: its CRC
+    bool recordsTextures = false;               // the snapshot has those (sessions from FrameProbe on)
 };
 
 std::vector<SnapRoom> SnapshotRooms(const Value& floorEnd)
@@ -554,6 +557,8 @@ std::vector<SnapRoom> SnapshotRooms(const Value& floorEnd)
         row.y = ly;
         if (o[4].IsString()) row.sprite = o[4].s;
         rooms.back().rows.push_back(row);
+        if (o.size() > 8) rooms.back().recordsTextures = true;
+        if (o.size() > 8 && o[8].IsArray()) rooms.back().textureCrc[rel] = static_cast<uint32_t>(o[8][2].i);
     }
     return rooms;
 }
@@ -633,6 +638,14 @@ int main(int argc, char** argv)
     std::string bundlesPath = argc > 4 ? argv[4] : "data/extracted/bundle_assets.json";
     PrefabCatalog::Load(json::Parse(ReadFile(bundlesPath)));
     PrefabLibrary::Load(json::Parse(ReadFile(data + "/prefabs.json")));
+    std::map<int, TileTextures> tileTextures; // by culture
+    for (auto [c, name] : {std::pair<int, const char*>{1, "golem"}, {2, "forest"}, {3, "desert"}, {4, "tech"}})
+        tileTextures[c].Load(ReadFile(data + "/tiles/" + name + ".bin"));
+    int holesMatch = 0, holesDiffer = 0;
+    TileTextures commonTiles;
+    commonTiles.Load(ReadFile(data + "/tiles/common.bin"));
+    std::map<std::string, std::pair<int, int>> paintChecks; // texture -> (match, differ)
+    std::map<int, int> blankSeen;                            // details textures' starting grey -> matches
     const Value* wandererIntermediate = nullptr;
     if (const Value* sr = wandererRooms.Find("specialRooms"))
         for (const Value& r : sr->arr)
@@ -836,6 +849,63 @@ int main(int argc, char** argv)
                 const SnapRoom* sr = nullptr;
                 for (const SnapRoom& r : snap)
                     if (r.name == name && r.x == at.x && r.y == at.y) sr = &r;
+                if (sr && sr->recordsTextures) {
+                    // The slime family's textures and the floor details', by their CRCs.
+                    auto check = [&](const std::string& object, const RoomTexture& t) {
+                        auto crc = sr->textureCrc.find(object);
+                        if (crc == sr->textureCrc.end() && t.Empty()) return;
+                        bool same = crc != sr->textureCrc.end() && !t.Empty() && t.Crc() == crc->second;
+                        auto& tally = paintChecks[object];
+                        (same ? tally.first : tally.second)++;
+                        if (!same && notes.size() < 8)
+                            notes.push_back(object + " texture of " + name + ": " +
+                                            (t.Empty() ? std::string("port has none") : crc == sr->textureCrc.end() ? std::string("game has none") : std::string("CRC differs")));
+                    };
+                    for (auto [tile, object] : {std::pair<int, const char*>{16, "DungeonLevelRoomSlime"}, {64, "DungeonLevelRoomAcid"},
+                                                {128, "DungeonLevelRoomLava"}, {256, "DungeonLevelRoomElectric"}}) {
+                        auto tiles = room->slimeTiles.find(tile);
+                        check(object, tiles == room->slimeTiles.end() ? RoomTexture() : PaintSlime(tiles->second, tile, commonTiles));
+                    }
+                    const TileTextures& own = tileTextures[static_cast<int>(room->roomInfo->culture)];
+                    const std::string prefix = "details" + std::to_string(level) + ".";
+                    for (auto [paint, object, list] : {std::tuple<const LayerPaint*, const char*, const char*>{&room->details.lower, "Details/LowerDetail", "lower"},
+                                                      {&room->details.lower2, "Details/BaseDetail", "lower2"},
+                                                      {&room->details.middleLayer, "Details/MiddleDetail", "middle"}}) {
+                        // Unity's new Texture2D's RGB isn't documented: whichever grey gives the game's CRC.
+                        RoomTexture best;
+                        auto crc = sr->textureCrc.find(object);
+                        for (int grey : {205, 0, 255, 128}) {
+                            const uint8_t blank[3] = {static_cast<uint8_t>(grey), static_cast<uint8_t>(grey), static_cast<uint8_t>(grey)};
+                            RoomTexture t = PaintDetailsLayer(*paint, prefix + list, own, blank);
+                            if (best.Empty()) best = t;
+                            if (crc != sr->textureCrc.end() && !t.Empty() && t.Crc() == crc->second) {
+                                best = t;
+                                blankSeen[grey]++;
+                                break;
+                            }
+                        }
+                        check(object, best);
+                        if (std::getenv("ML_PAINT_DEBUG") && crc != sr->textureCrc.end() && !best.Empty() && best.Crc() != crc->second) {
+                            std::printf("  [paint] %s %s %s:", name.c_str(), object, (prefix + list).c_str());
+                            for (const LayerPaint::Entry& e : paint->entries) {
+                                const TileTexture* tex = own.Find(prefix + list + "#" + std::to_string(e.sprite));
+                                float fx = e.x - static_cast<float>(tex ? tex->width : 0) / 2.0f + 242.0f;
+                                float fy = e.y - static_cast<float>(tex ? tex->height : 0) / 2.0f + 134.0f;
+                                std::printf(" (%.4f,%.4f s%d %c)", fx, fy, e.sprite, e.flip ? 'F' : 'm');
+                            }
+                            std::printf("\n");
+                        }
+                    }
+                    // The holes texture (RasterizeHolesImage), by its CRC.
+                    auto crc = sr->textureCrc.find("DungeonLevelRoomHoles");
+                    RoomTexture holes = PaintHoles(room->holeTiles, tileTextures[static_cast<int>(room->roomInfo->culture)]);
+                    if (crc != sr->textureCrc.end() || !holes.Empty()) {
+                        bool same = crc != sr->textureCrc.end() && !holes.Empty() && holes.Crc() == crc->second;
+                        (same ? holesMatch : holesDiffer)++;
+                        if (!same && notes.size() < 8)
+                            notes.push_back("holes texture of " + name + ": " + (holes.Empty() ? std::string("port has none") : crc == sr->textureCrc.end() ? std::string("game has none") : std::string("CRC differs")));
+                    }
+                }
                 if (!sr) {
                     sceneRoomsMissing++;
                     if (notes.size() < 8) notes.push_back("scene: no snapshot room " + name + " at " + std::to_string(x) + "," + std::to_string(y));
@@ -923,7 +993,13 @@ int main(int argc, char** argv)
     std::printf("Desert shrines (room and tile)         %4d match  %4d differ\n", shrinesMatch, shrinesDiffer);
     std::printf("Wanderer DLC host room (shuffle)       %4d match  %4d differ   (%d pinned to a unique start)\n", wndPinned + wndAmbiguous, wndNoSolution, wndPinned);
     std::printf("Wanderer intermediate room + advisor   %4d match  %4d differ\n", wndRoomOk, wndRoomDiffer);
-    int sceneDiffers = sceneRoomsMissing;
+    std::printf("Holes texture (RasterizeHolesImage, CRC)  %4d match  %4d differ\n", holesMatch, holesDiffer);
+    int sceneDiffers = sceneRoomsMissing + holesDiffer;
+    for (const auto& [object, tally] : paintChecks) {
+        std::printf("Texture %-28s (CRC)  %4d match  %4d differ\n", object.c_str(), tally.first, tally.second);
+        sceneDiffers += tally.second;
+    }
+    for (const auto& [grey, n] : blankSeen) std::printf("  details textures start grey %d: %d\n", grey, n);
     for (const char* c : kSceneCategories) {
         std::printf("Scene, %-31s %4d match  %4d differ   (rooms; %d objects)\n", c, sceneMatch[c], sceneDiffer[c], sceneObjects[c]);
         sceneDiffers += sceneDiffer[c];

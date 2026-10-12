@@ -61,6 +61,7 @@ def main():
                 sprites[field] = [name_of(p) for p in getattr(data, field)]
             elif isinstance(value, dict) and 'm_PathID' in value:
                 counts[field] = 'null' if value['m_PathID'] == 0 else 'set'
+                sprites[field] = [name_of(getattr(data, field))]
         out[culture] = {'asset': asset, 'counts': counts, 'sprites': sprites}
     missing = [c for c, a in ASSETS.items() if c not in out]
     if missing:
