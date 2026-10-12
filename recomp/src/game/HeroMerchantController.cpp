@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "game/Constants.h"
+#include "game/HeroDamage.h"
 #include "game/Prefabs.h"
 #include "game/Weapon.h"
 #include "unity/Mathf.h"
@@ -724,6 +725,9 @@ void HeroMerchantController::DealDamageToPlayer(float attackStrength, const char
         stats.currentHealth.Set(stats.currentHealth.value - num3);
         hit();
     }
+    // (HeroDamageType, game/HeroDamage.h, is this one for the enemies.)
+    static_assert(static_cast<int>(DamageType::ItemDrain) == static_cast<int>(HeroDamageType::ItemDrain), "HeroMerchant.DamageType");
+    if (type == DamageType::ItemDrain && dropRandomItems) dropRandomItems(kItemDrainDrops);
 }
 
 // HeroMerchantStats.Die and PlayDeathAnimation: stopped, the weapon reset, Death, invincible.

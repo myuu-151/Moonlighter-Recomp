@@ -2,8 +2,8 @@
 // An enemy object from its prefab (DungeonRoom's Instantiate of enemies_<culture>/<name>): the
 // root's BoxCollider2D, Rigidbody2D, layer and tag; the behaviour the prefab carries, by its
 // class (MakeBehaviour) with its serialized fields; the PolyNavAgent's fields; the
-// "AttackCollider" child's trigger (box, enabled flag, local position) and the sprite's first
-// frame. The Animator is bound once those are in (its write defaults are the prefab's).
+// "AttackCollider" child's trigger (box, enabled flag, local position), the children with an
+// EnemyDamageReceiver (hurtboxes), a trigger root's flag, and the sprite's first frame. The Animator is bound once those are in (its write defaults are the prefab's).
 
 #include <memory>
 #include <string>

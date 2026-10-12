@@ -70,6 +70,10 @@ add_library(mlcore STATIC
     src/game/MasterAudio.cpp
     src/game/EnemyFactory.cpp
     src/game/Tangle.cpp
+    # The HermitSlime, child hurtboxes and a root box the clips drive, the hero's damage types.
+    src/game/HermitSlime.cpp
+    src/game/EnemyColliders.cpp
+    src/game/HeroDamage.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -169,6 +173,10 @@ add_executable(enemy_test tests/enemy_test.cpp)
 target_link_libraries(enemy_test PRIVATE mlcore)
 add_test(NAME enemy_golem_soldier
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# The HermitSlime (its patrol, its slam, its trigger root the clips drive, its hurtbox, ItemDrain).
+add_test(NAME enemy_hermit_slime
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_HermitSlime.jsonl HermitSlime
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The Tangle against the game (data/oracle/tangle.jsonl, `-oracle-tangle`; skipped if there's

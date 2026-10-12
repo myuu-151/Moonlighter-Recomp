@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -45,6 +46,8 @@
 #include "game/EnemyFactory.h"
 #include "game/EnemyStats.h"
 #include "game/GolemSoldier.h"
+#include "game/HermitSlime.h"
+#include "game/HeroDamage.h"
 #include "game/MasterAudio.h"
 #include "game/PolyNav.h"
 #include "game/Prefabs.h"
@@ -262,6 +265,8 @@ void SetMap(game::PolyNav2D& nav, const Value& m)
     nav.GenerateNodes();
 }
 
+#include "enemy_replay_colliders.h" // (the HermitSlime's rows: ColliderReplay)
+
 int ReplayRecording(const std::string& file, const ReplayData& data)
 {
     std::ifstream in(file);
@@ -362,11 +367,20 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             if (s.enemy.get() == &e) return s.id;
         return -1;
     };
-    hero.dealDamage = [&](float strength, const std::string&, game::Enemy& e) { portDamage.emplace_back(idOf(e), strength); };
+    ColliderReplay colliderRows;
+    hero.dealDamage = [&](float strength, const std::string&, game::Enemy& e) {
+        portDamage.emplace_back(idOf(e), strength);
+        colliderRows.portTypes.emplace_back(idOf(e), static_cast<int>(game::HeroDamageType::Normal));
+    };
+    hero.dealTypedDamage = [&](float strength, const std::string&, game::HeroDamageType type, game::Enemy& e) {
+        portDamage.emplace_back(idOf(e), strength);
+        colliderRows.portTypes.emplace_back(idOf(e), static_cast<int>(type));
+    };
     game::EnemyScene scene;
     scene.calls = &calls;
     scene.tweens = &tweens;
     scene.hero = &hero;
+    ColliderReplay::Scene(scene, start);
     // MasterAudio's groups of the Golem dungeon (its creators', then the general ones').
     game::MasterAudio audio;
     if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - GolemDungeon", "Sounds - GeneralDungeons"})) scene.audio = &audio;
@@ -506,6 +520,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             e.attackOffset = V2((*ac)["offset"]);
             e.attackPosition = V2((*ac)["pos"]);
         }
+        ColliderReplay::Restore(t, e, v, s.id);
         e.sprite = an["sprite"].IsString() ? an["sprite"].s : "";
         e.flashAmount = Bits(v["flash"]);
         for (int k = 0; k < 4; k++) e.color[k] = Bits(v["color"][static_cast<size_t>(k)]);
@@ -642,7 +657,9 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                           Str(e->position()) + " body " + Str(e->body->position()) + " v " + Str(e->body->velocity()) + "; game " +
                           Str({Bits(ss[1]), Bits(ss[2])}) + " body " + Str({Bits(ss[3]), Bits(ss[4])}) + " v " + Str({Bits(ss[5]), Bits(ss[6])}));
             }
+            ColliderReplay::StepStart(t, st, enemyById, fn, k);
             portDamage.clear();
+            colliderRows.portTypes.clear();
             physics.Step(fixedDt);
             if (const char* cf = std::getenv(data.contactsEnv.c_str()); cf && std::atoll(cf) == fn)
                 for (ReplayEnemy& s : enemies) {
@@ -694,7 +711,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                     hero.position = V2(ev["hero"]);
                     t.Add("health before a weapon hit", Same(e->enemyStats.CurrentHealth(), Bits(ev["hp0"])),
                           "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt()));
-                    e->DealDamageToEnemy(Bits(ev["str"]), static_cast<game::EnemyDamageReceivedType>(ev["type"].AsInt()));
+                    ColliderReplay::DealDamage(*e, ev); // (through the hurtbox it names, if any)
                     t.Add("health after a weapon hit", Same(e->enemyStats.CurrentHealth(), Bits(ev["hp1"])),
                           "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt()) + ": " +
                               std::to_string(e->enemyStats.CurrentHealth()) + " vs " + std::to_string(Bits(ev["hp1"])));
@@ -704,6 +721,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                     e->PushBackwards(V2(ev["hero"]), Bits(ev["force"]));
                 }
             }
+            colliderRows.StepTypes(t, events, k, fn);
             calls.UpdateFixed(fixedClock);
             calls.inFixedStep = false;
             // Which enemies hit him, how hard; then in which order. Two triggers that start in the
@@ -751,6 +769,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                   "frame " + std::to_string(fn) + " enemy " + std::to_string(u["s"].AsInt()));
             unity::Random::SetState(State(u["rng1"]));
         }
+        ColliderReplay::FrameEvents(t, events, enemyById, fn);
         calls.Update(time);
         nav.ResumeCoroutines();
         portAnim.clear();
@@ -847,6 +866,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             if (const Value* locked = be.Find("locked"))
                 if (const auto* soldier = dynamic_cast<const game::GolemSoldierBehaviour*>(&b))
                     t.Add("look locked (iDirectionLocked)", soldier->iDirectionLocked == locked->b, at);
+            ColliderReplay::End(t, *e, v, at);
             bool color = Same(e->flashAmount, Bits(v["flash"]));
             for (int k = 0; k < 4; k++) color = color && Same(e->color[k], Bits(v["color"][static_cast<size_t>(k)]));
             const std::string colours = at + ": port flash " + std::to_string(e->flashAmount) + " colour " + Str({e->color[0], e->color[1]}) +

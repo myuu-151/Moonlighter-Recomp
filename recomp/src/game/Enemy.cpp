@@ -155,6 +155,7 @@ void Enemy::ResetAnimator()
                           attackSize.x,           attackSize.y,           attackPosition.x, attackPosition.y};
     for (int i = 0; i < 8; i++)
         if (attackProps_[i] >= 0) a.SetDefault(kAttackPath, kAttackAttributes[i], now[i]);
+    BindRootBox(); // (the root box's: game/EnemyColliders.cpp)
     // Clip events: SendMessage to the object's scripts (the behaviour).
     a.onEvent = [this](const unity::AnimationEvent& e) {
         if (scene.onAnimationEvent) scene.onAnimationEvent(*this, e, false);
@@ -192,6 +193,7 @@ void Enemy::UpdateAnimator(float deltaTime)
         // Unity remakes the box's shapes as the Animator writes it.
         if (physics) physics->SyncAttackCollider(*this);
     }
+    ApplyRootBox(); // (a root box the clips drive: game/EnemyColliders.cpp)
     if (const std::string* s = enemyAnimator->Sprite()) sprite = *s;
 }
 
@@ -674,6 +676,7 @@ void EnemyPhysics::Add(Enemy& e)
     enemies_.push_back(&e);
     if (!e.hasRigidbody) return;
     e.body = &world_.AddBody(e.rigidbody, e.position(), e.layer, e.colliderOffset, e.colliderSize);
+    AddChildColliders(e); // (a trigger root, the hurtboxes: game/EnemyColliders.cpp)
     SyncAttackCollider(e);
     if (!e.active || e.destroyed) e.body->Body()->SetActive(false);
     e.synced_ = e.position();
@@ -691,6 +694,10 @@ void EnemyPhysics::SyncAttackCollider(Enemy& e)
                                          size.x == e.attackBuiltSize_.x && size.y == e.attackBuiltSize_.y)))
         return;
     b2Body* b = e.body->Body();
+    // Box2D's DestroyFixture recomputes the mass from the densities (the root box's area, or 1
+    // with none): Unity keeps the mass set by hand (useAutoMass off), so it goes back after.
+    b2MassData mass;
+    b->GetMassData(&mass);
     if (e.attackFixture) {
         // Remade while on: what it touched doesn't enter again (nor what an earlier remake
         // since the last step carried).
@@ -708,6 +715,7 @@ void EnemyPhysics::SyncAttackCollider(Enemy& e)
             }
         b->DestroyFixture(e.attackFixture);
         e.attackFixture = nullptr;
+        if (b->GetType() == b2_dynamicBody) b->SetMassData(&mass);
     }
     e.attackBuilt_ = on;
     e.attackBuiltCenter_ = center;
@@ -755,6 +763,7 @@ void EnemyPhysics::Sync()
     for (Enemy* e : enemies_) {
         if (!e->body || e->destroyed || !e->active) continue;
         SyncAttackCollider(*e);
+        SyncRootCollider(*e);
         const Vector2 p = e->position();
         if (p.x != e->synced_.x || p.y != e->synced_.y || e->transformDirty_) {
             world_.SyncTransform(*e->body, p);

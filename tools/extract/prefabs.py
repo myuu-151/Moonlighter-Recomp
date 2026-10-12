@@ -58,6 +58,10 @@ FIELDS = {
     'BabySlimeBehaviour': ENEMY_BEHAVIOUR,  # an EnemyBehaviour
     'GolemSoldierBehaviour': ENEMY_BEHAVIOUR + ('iDirectionLocked',),  # an EnemyBehaviour
     'TangleBehaviour': ENEMY_BEHAVIOUR + ('tangleCulture',),  # an EnemyBehaviour (tangleCulture: CommonEnemyCulture)
+    # an EnemyBehaviour (attackParticles: whether it has its ParticleSystem)
+    'HermitSlimeBehaviourNEW': ENEMY_BEHAVIOUR + ('iDirectionLocked', 'attackParticles'),
+    # A child hurtbox (the HermitSlime's "Collidere"): the behaviour it passes the weapon's hits to.
+    'EnemyDamageReceiver': ('gameObjectToAdvise',),
     'PolyNavAgent': ('maxSpeed', 'mass', 'stoppingDistance', 'slowingDistance', 'accelerationRate', 'decelerationRate',
                      'avoidRadius', 'lookAheadDistance', 'repath', 'restrict', 'closerPointOnInvalid', 'roundCorners',
                      'rotateTransform'),
@@ -75,8 +79,8 @@ def item_drops(value, go_path, sprite):
 
 
 def object_path(value, go_path, sprite):
-    """A GameObject reference as its path below the prefab's root ('' the root), null if
-    unset or outside the prefab."""
+    """A GameObject (or component) reference as its object's path below the prefab's root
+    ('' the root), null if unset or outside the prefab."""
     return go_path.get(value['m_PathID']) if value['m_FileID'] == 0 else None
 
 
@@ -92,6 +96,7 @@ STRUCTURED = {
     ('BreakableBoxBehaviour', 'skins'): breakable_skins,
     ('Enemy', 'itemDrops'): item_drops,
     ('EnemyAttackCollisionDetection', 'gameObjectToAdvise'): object_path,
+    ('EnemyDamageReceiver', 'gameObjectToAdvise'): object_path,  # (a component: its object's path)
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 
@@ -236,6 +241,10 @@ def main():
             def paths(transform_id, path):
                 tr = tree(transform_id)
                 go_path[tr['m_GameObject']['m_PathID']] = path
+                # Its components too (a reference to one names its object: path ids are unique).
+                for c in tree(tr['m_GameObject']['m_PathID'])['m_Component']:
+                    if c['component']['m_FileID'] == 0:
+                        go_path.setdefault(c['component']['m_PathID'], path)
                 for child in tr['m_Children']:
                     ctr = tree(child['m_PathID'])
                     if ctr is not None:
