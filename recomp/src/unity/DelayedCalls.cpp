@@ -4,41 +4,60 @@
 
 namespace unity {
 
-void DelayedCalls::Invoke(const void* owner, const std::string& name, float delay, std::function<void()> fn, float repeatRate)
+namespace {
+// A call is due at `time` from a hair before: the engine's fixed clock reaches a delay that's a
+// whole number of fixed steps in sums that can round a last bit under it (slime.jsonl: a 0.02 s
+// Invoke made in a step runs in the step two later).
+constexpr double kDueSlack = 1e-9;
+} // namespace
+
+void DelayedCalls::Add(const void* owner, const std::string& name, Kind kind, double base, float delay, std::function<void()> fn, float repeat)
 {
     Call c;
-    c.time = now + static_cast<double>(delay);
+    c.time = base + static_cast<double>(delay);
     c.seq = seq_++;
     c.owner = owner;
     c.name = name;
+    c.kind = kind;
     c.fn = std::move(fn);
-    c.repeat = repeatRate;
+    c.repeat = repeat;
     c.pass = inPass_ ? pass_ : -1;
+    c.fixedPass = inFixedStep && kind != Kind::Coroutine;
     calls_.push_back(std::move(c));
+}
+
+void DelayedCalls::Invoke(const void* owner, const std::string& name, float delay, std::function<void()> fn, float repeatRate)
+{
+    Add(owner, name, Kind::Invoke, inFixedStep ? fixedNow : now, delay, std::move(fn), repeatRate);
+}
+
+void DelayedCalls::Wait(const void* owner, float seconds, std::function<void()> resume)
+{
+    Add(owner, "", Kind::Coroutine, now, seconds, std::move(resume), 0.0f);
+}
+
+void DelayedCalls::Destroy(const void* owner, float seconds, std::function<void()> destroy)
+{
+    Add(owner, "", Kind::Destroy, inFixedStep ? fixedNow : now, seconds, std::move(destroy), 0.0f);
 }
 
 void DelayedCalls::CancelInvoke(const void* owner, const std::string& name)
 {
     for (Call& c : calls_)
-        if (c.owner == owner && !c.name.empty() && (name.empty() || c.name == name)) c.cancelled = true;
+        if (c.owner == owner && c.kind == Kind::Invoke && (name.empty() || c.name == name)) c.cancelled = true;
 }
 
 bool DelayedCalls::IsInvoking(const void* owner, const std::string& name) const
 {
     for (const Call& c : calls_)
-        if (!c.cancelled && c.owner == owner && !c.name.empty() && (name.empty() || c.name == name)) return true;
+        if (!c.cancelled && c.owner == owner && c.kind == Kind::Invoke && (name.empty() || c.name == name)) return true;
     return false;
-}
-
-void DelayedCalls::Wait(const void* owner, float seconds, std::function<void()> resume)
-{
-    Invoke(owner, "", seconds, std::move(resume));
 }
 
 void DelayedCalls::StopCoroutines(const void* owner)
 {
     for (Call& c : calls_)
-        if (c.owner == owner && c.name.empty()) c.cancelled = true;
+        if (c.owner == owner && c.kind == Kind::Coroutine) c.cancelled = true;
 }
 
 void DelayedCalls::Forget(const void* owner)
@@ -47,17 +66,24 @@ void DelayedCalls::Forget(const void* owner)
         if (c.owner == owner) c.cancelled = true;
 }
 
+void DelayedCalls::UpdateFixed(double fixedTime) { Pass(fixedTime, true); }
+
 void DelayedCalls::Update(double time)
+{
+    now = time;
+    Pass(time, false);
+}
+
+void DelayedCalls::Pass(double time, bool fixedPass)
 {
     pass_++;
     inPass_ = true;
-    now = time;
     for (;;) {
         // The earliest due call not made in this pass.
         int best = -1;
         for (size_t i = 0; i < calls_.size(); i++) {
             const Call& c = calls_[i];
-            if (c.cancelled || c.pass == pass_ || c.time > time) continue;
+            if (c.cancelled || c.pass == pass_ || c.time > time + kDueSlack || (fixedPass && !c.fixedPass)) continue;
             if (best < 0 || c.time < calls_[static_cast<size_t>(best)].time ||
                 (c.time == calls_[static_cast<size_t>(best)].time && c.seq < calls_[static_cast<size_t>(best)].seq))
                 best = static_cast<int>(i);

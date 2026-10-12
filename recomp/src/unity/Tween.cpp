@@ -55,10 +55,12 @@ void Tweens::Kill(int id)
     killedPending_.push_back(id); // (it may be completing this update: its callback won't run)
 }
 
-void Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay)
+void Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
+                  bool ignoreTimeScale)
 {
     Tween t;
     t.id = nextId_++;
+    t.unscaled = ignoreTimeScale;
     t.get = std::move(get);
     t.set = std::move(set);
     t.end = end;

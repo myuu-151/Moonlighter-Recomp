@@ -1,9 +1,12 @@
 #pragma once
 // UnityEngine.Mathf and the Vector2/Vector3 members the ported code uses, as Unity 2019.2's
-// managed code computes them (float operations in the C# order; magnitude's Math.Sqrt in
-// double of a float sum is the correctly rounded float square root, so std::sqrt(float)).
-// Vector3 versions of 2D values carry z = 0 and keep its terms where they can change a
-// result's sign of zero.
+// managed code computes them under the game's Mono: float operations in the C# order, but an
+// expression's intermediate results are kept in doubles and rounded to a float only where
+// they're stored (a field, a local, an argument, a return value). So a + (b - a) * t or
+// x * x + y * y round once, at the end (data/oracle/slime.jsonl: the enemies' agents, in the
+// last bit). Each operator call (Vector2 + Vector2, ...) returns a stored Vector2: one rounding
+// per operation there. Vector3 versions of 2D values carry z = 0 and keep its terms where they
+// can change a result's sign of zero.
 
 #include <cmath>
 
@@ -31,7 +34,11 @@ inline float Clamp01(float value)
     if (value > 1.0f) return 1.0f;
     return value;
 }
-inline float Lerp(float a, float b, float t) { return a + (b - a) * Clamp01(t); }
+inline float Lerp(float a, float b, float t)
+{
+    const double da = static_cast<double>(a);
+    return static_cast<float>(da + (static_cast<double>(b) - da) * static_cast<double>(Clamp01(t)));
+}
 // Mathf.Pow: Math.Pow in doubles.
 inline float Pow(float f, float p) { return static_cast<float>(std::pow(static_cast<double>(f), static_cast<double>(p))); }
 // Mathf.RoundToInt: Math.Round in doubles, halves to even (the default rounding mode's nearbyint).
@@ -62,13 +69,20 @@ inline float MoveTowardsAngle(float current, float target, float maxDelta)
 
 // Vector2 members.
 inline Vector2 Div(Vector2 a, float d) { return {a.x / d, a.y / d}; } // operator /
-inline float SqrMagnitude(Vector2 v) { return v.x * v.x + v.y * v.y; }
-inline float Magnitude(Vector2 v) { return std::sqrt(v.x * v.x + v.y * v.y); }
-inline float Distance(Vector2 a, Vector2 b)
+inline float SqrMagnitude(Vector2 v)
 {
-    float dx = a.x - b.x, dy = a.y - b.y;
-    return std::sqrt(dx * dx + dy * dy);
+    const double x = static_cast<double>(v.x), y = static_cast<double>(v.y);
+    return static_cast<float>(x * x + y * y);
 }
+// Vector2.magnitude: (float)Math.Sqrt(x * x + y * y): the sum in doubles (the squares exact),
+// its root there, rounded to a float once.
+inline float MagnitudeOf(float x, float y)
+{
+    const double dx = static_cast<double>(x), dy = static_cast<double>(y);
+    return static_cast<float>(std::sqrt(dx * dx + dy * dy));
+}
+inline float Magnitude(Vector2 v) { return MagnitudeOf(v.x, v.y); }
+inline float Distance(Vector2 a, Vector2 b) { return MagnitudeOf(a.x - b.x, a.y - b.y); }
 // Vector2.normalized / Normalize(): divided by the magnitude above kEpsilon (1e-5), else zero.
 inline Vector2 Normalized(Vector2 v)
 {
@@ -79,17 +93,19 @@ inline Vector2 Normalized(Vector2 v)
 // Vector2.Lerp (t clamped).
 inline Vector2 Lerp(Vector2 a, Vector2 b, float t)
 {
-    t = Mathf::Clamp01(t);
-    return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
+    const double d = static_cast<double>(Mathf::Clamp01(t));
+    const double ax = static_cast<double>(a.x), ay = static_cast<double>(a.y);
+    return {static_cast<float>(ax + (static_cast<double>(b.x) - ax) * d), static_cast<float>(ay + (static_cast<double>(b.y) - ay) * d)};
 }
 // Vector3.Lerp of two z = 0 vectors, back to a Vector2.
 inline Vector2 Lerp3(Vector2 a, Vector2 b, float t) { return Lerp(a, b, t); }
 // (Vector2)Vector3.Project(vector, onNormal) of z = 0 vectors.
 inline Vector2 Project3(Vector2 vector, Vector2 onNormal)
 {
-    float sqrMag = onNormal.x * onNormal.x + onNormal.y * onNormal.y + 0.0f * 0.0f;
+    const double nx = static_cast<double>(onNormal.x), ny = static_cast<double>(onNormal.y);
+    const float sqrMag = static_cast<float>(nx * nx + ny * ny + 0.0 * 0.0);
     if (sqrMag < Mathf::Epsilon) return Vector2::zero();
-    float dot = vector.x * onNormal.x + vector.y * onNormal.y + 0.0f * 0.0f;
+    const float dot = static_cast<float>(static_cast<double>(vector.x) * nx + static_cast<double>(vector.y) * ny + 0.0 * 0.0);
     return {onNormal.x * dot / sqrMag, onNormal.y * dot / sqrMag};
 }
 

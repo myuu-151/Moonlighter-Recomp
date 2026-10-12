@@ -83,6 +83,38 @@ namespace MoonlighterOracle
         private static readonly List<List<float[]>> stepSlimes = new List<List<float[]>>();
         private static readonly List<float> stepTime = new List<float>();
         private static uint[] frameStartRng;
+
+        // DOTween's own unscaled clock: what its DOTweenComponent.Update measured this frame
+        // (realtimeSinceStartup since its last update), which time-scale independent tweens
+        // advance by (the enemies' death fade: it runs through the hit-stop). -1: not read.
+        private static float dotweenUdt = -1f;
+        private static System.Reflection.FieldInfo dotweenUdtField;
+
+        private static void DOTweenUpdatePostfix(object __instance)
+        {
+            if (dotweenUdtField != null) dotweenUdt = (float)dotweenUdtField.GetValue(__instance);
+        }
+
+        /// The DOTween clock hook (by name: DOTween's internals differ between versions).
+        private static void HookDOTween()
+        {
+            try
+            {
+                var type = AccessTools.TypeByName("DG.Tweening.Core.DOTweenComponent");
+                var update = type != null ? AccessTools.Method(type, "Update") : null;
+                dotweenUdtField = type != null ? AccessTools.Field(type, "_unscaledDeltaTime") : null;
+                if (update == null || dotweenUdtField == null)
+                {
+                    OraclePlugin.Log.LogWarning("slime: no DOTweenComponent.Update / _unscaledDeltaTime: DOTween's clock not recorded");
+                    return;
+                }
+                new Harmony("moonlighter.oracle.slime").Patch(update, postfix: new HarmonyMethod(typeof(SlimeOracle), nameof(DOTweenUpdatePostfix)));
+            }
+            catch (Exception e)
+            {
+                OraclePlugin.Log.LogWarning("slime: DOTween hook failed: " + e.Message);
+            }
+        }
         private static Vector2 lastStick;
 
         // ---- The hero's script --------------------------------------------------------------
@@ -524,6 +556,10 @@ namespace MoonlighterOracle
             j.Key("targetDelay").Bits(Traverse.Create(room).Field("enemyTimeToStartTargetingPlayer").GetValue<float>());
             j.Key("fixedDeltaTime").Bits(Time.fixedDeltaTime).Key("time").Bits(Time.time);
             j.Prop("dotweenEase", DG.Tweening.DOTween.defaultEaseType.ToString());
+            // Whether tweens that don't say SetUpdate ignore the time scale (the death fade does).
+            var independent = AccessTools.Field(typeof(DG.Tweening.DOTween), "defaultTimeScaleIndependent");
+            if (independent != null) j.Prop("dotweenIndependent", (bool)independent.GetValue(null));
+            j.Key("dotweenTimeScale").Bits(DG.Tweening.DOTween.timeScale);
             Emit(j);
         }
 
@@ -559,6 +595,8 @@ namespace MoonlighterOracle
             var rb = hero.GetComponent<Rigidbody2D>();
             var j = new Json().Obj().Prop("ev", "frame").Prop("f", f).Prop("fc", Time.frameCount);
             j.Key("dt").Bits(Time.deltaTime).Key("time").Bits(Time.time).Key("ts").Bits(Time.timeScale).Key("udt").Bits(Time.unscaledDeltaTime);
+            if (dotweenUdt >= 0f) j.Key("dotweenUdt").Bits(dotweenUdt);
+            dotweenUdt = -1f;
             Rng.WriteState(j.Key("rng"), frameStartRng);
             Current(out Segment seg, out bool first);
             j.Key("in").Arr().Bits(lastStick.x).Bits(lastStick.y).Val(first && seg.kind == Kind.Attack ? 1 : 0).EndArr();
@@ -746,6 +784,7 @@ namespace MoonlighterOracle
             yield return null;
             yield return null;
 
+            HookDOTween();
             var rec = new GameObject("OracleSlimeRecorder").AddComponent<Recorder>();
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, "slime.jsonl"), append: false) { AutoFlush = false };
             // The start, at a frame's end.

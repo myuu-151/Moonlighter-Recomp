@@ -172,6 +172,10 @@ void Enemy::ReparentToContainer()
     const Vector2 world = position();
     navAgent.parents.erase(navAgent.parents.begin());
     setPosition(world);
+    // The physics takes the transform as it now reads (through the new parents), not the body's
+    // own position (slime.jsonl: a slime killed in a step starts the next one where its
+    // transform is, 1.4e-6 off where its body was).
+    transformDirty_ = true;
 }
 
 // ---- EnemyBehaviour ---------------------------------------------------------------------
@@ -221,6 +225,7 @@ void EnemyBehaviour::EnemyRoom_OnRoomEnter()
 {
     if (!subscribedToRoomEnter) return;
     enemy.navAgent.localPosition = Vector2::zero();
+    enemy.transformDirty_ = true;
     enemy.enemyStats.SetCurrentHealth(enemy.enemyStats.maxHealth());
 }
 
@@ -253,12 +258,13 @@ void EnemyBehaviour::Update(float deltaTime)
             const float num2 = 0.8f;
             if (unity::Tweens* tw = enemy.scene.tweens) {
                 Enemy* e = &enemy;
-                // transform.DOScale(0, 0.4).SetEase(InCirc); the sprite's DORotate(0, 0, +-180) over
-                // 0.8, FastBeyond360 (the angle as given, not wrapped), the default ease.
+                // transform.DOScale(0, 0.4).SetEase(InCirc).SetUpdate(false); the sprite's DORotate(0,
+                // 0, +-180) over 0.8, FastBeyond360 (the angle as given, not wrapped), the default
+                // ease and update (unscaled: see OnDeath).
                 tw->Move([e] { return Vector2{e->scale, 0.0f}; }, [e](Vector2 v) { e->scale = v.x; }, Vector2{0.0f, 0.0f}, num2 * 0.5f,
                          unity::Ease::InCirc);
                 tw->Move([e] { return Vector2{e->spriteRotation, 0.0f}; }, [e](Vector2 v) { e->spriteRotation = v.x; },
-                         Vector2{num < 0.0f ? -180.0f : 180.0f, 0.0f}, num2, unity::Ease::OutQuad);
+                         Vector2{num < 0.0f ? -180.0f : 180.0f, 0.0f}, num2, unity::Ease::OutQuad, 0.0f, true);
             }
         }
     }
@@ -489,28 +495,33 @@ void EnemyBehaviour::OnDeath()
     enemy.layer = kLayerTransparentFX;
     if (enemy.physics) enemy.physics->SetLayer(enemy, kLayerTransparentFX);
     // The sprite fades to grey and to the flash colour over 0.6 s (DOTween, the default ease),
-    // from what the material has when the tweens start.
+    // from what the material has when the tweens start. Those tweens don't say SetUpdate, and
+    // the project's default is time-scale independent: they run through the weapon's hit-stop
+    // (slime.jsonl: the colour moves on in frames whose deltaTime is 0), on DOTween's own
+    // unscaled clock (realtimeSinceStartup between its updates).
     if (unity::Tweens* tw = enemy.scene.tweens) {
         Enemy* e = &enemy;
-        tw->Move([e] { return Vector2{e->flashAmount, 0.0f}; }, [e](Vector2 v) { e->flashAmount = v.x; }, Vector2{1.0f, 0.0f}, num);
+        const unity::Ease ease = unity::Ease::OutQuad;
+        tw->Move([e] { return Vector2{e->flashAmount, 0.0f}; }, [e](Vector2 v) { e->flashAmount = v.x; }, Vector2{1.0f, 0.0f}, num, ease, 0.0f,
+                 true);
         // material.DOColor(0.6 grey): the colour's components as two pairs (the same per-component formula).
         tw->Move([e] { return Vector2{e->color[0], e->color[1]}; },
                  [e](Vector2 v) {
                      e->color[0] = v.x;
                      e->color[1] = v.y;
                  },
-                 Vector2{0.6f, 0.6f}, num);
+                 Vector2{0.6f, 0.6f}, num, ease, 0.0f, true);
         tw->Move([e] { return Vector2{e->color[2], e->color[3]}; },
                  [e](Vector2 v) {
                      e->color[2] = v.x;
                      e->color[3] = v.y;
                  },
-                 Vector2{0.6f, 1.0f}, num);
+                 Vector2{0.6f, 1.0f}, num, ease, 0.0f, true);
     }
     unity::DelayedCalls& calls = Calls();
     calls.Invoke(this, "SpawnDeathParticles", num * 0.8f, [this] { SpawnDeathParticles(); });
     Enemy* e = &enemy;
-    calls.Wait(e, num, [e] { e->Destroy(); }); // Object.Destroy(gameObject, 0.6)
+    calls.Destroy(e, num, [e] { e->Destroy(); }); // Object.Destroy(gameObject, 0.6)
     if (enemy.enemyAnimator) {
         enemy.enemyAnimator->speed = 0.0f;
         enemy.animatorEnabled = false;
@@ -611,9 +622,10 @@ void EnemyPhysics::Sync()
     for (Enemy* e : enemies_) {
         if (!e->body || e->destroyed || !e->active) continue;
         const Vector2 p = e->position();
-        if (p.x != e->synced_.x || p.y != e->synced_.y) {
+        if (p.x != e->synced_.x || p.y != e->synced_.y || e->transformDirty_) {
             world_.SyncTransform(*e->body, p);
             e->synced_ = p;
+            e->transformDirty_ = false;
         }
     }
 }
@@ -642,6 +654,11 @@ void EnemyPhysics::Step(float dt)
     Sync();
     hits_.clear();
     world_.Step(dt);
+    // Unity's trigger pass after the solve: a trigger paired at the step's end (FindNewContacts,
+    // after the solve) reports in this step, not the next (slime.jsonl: the hero back on Default
+    // inside a slime's trigger is hit in the first step, while his body only meets theirs in
+    // the second, where he's intangible again).
+    world_.UpdateContacts();
     WriteBack();
     ReportTriggers();
 }

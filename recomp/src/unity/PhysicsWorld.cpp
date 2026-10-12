@@ -222,6 +222,14 @@ void PhysicsWorld::SetLayer(Rigidbody2D& body, int layer)
     for (b2Fixture* f = body.body_->GetFixtureList(); f; f = f->GetNext()) f->Refilter();
 }
 
+void PhysicsWorld::FixtureMadeElsewhere() { newContacts_ = true; }
+
+void PhysicsWorld::UpdateContacts()
+{
+    // (b2ContactManager::Collide is public; the world only hands the manager out const.)
+    const_cast<b2ContactManager&>(world_->GetContactManager()).Collide();
+}
+
 void PhysicsWorld::IgnoreLayerCollision(int a, int b, bool ignore)
 {
     const uint32_t before = settings_.layerCollisionMatrix[a];
@@ -263,7 +271,18 @@ void PhysicsWorld::SyncTransform(Rigidbody2D& body, Vector2 position)
     const b2Vec2 at = b->GetPosition();
     if (at.x == position.x && at.y == position.y) return; // not moved since the write-back
     b->SetTransform(B2(position), b->GetAngle());
-    if (options_.wakeOnSync) b->SetAwake(true);
+    if (options_.wakeOnSync) {
+        // Unity's sync starts the body's rest over: awake, and its time at rest (towards
+        // sleeping) back to zero even if it was already awake (slime.jsonl: an enemy its
+        // PolyNavAgent moves by transform never falls asleep). Box2D's SetAwake(true) only resets
+        // a sleeping body's, so: asleep, then awake, keeping the velocities.
+        const b2Vec2 v = b->GetLinearVelocity();
+        const float32 w = b->GetAngularVelocity();
+        b->SetAwake(false);
+        b->SetAwake(true);
+        b->SetLinearVelocity(v);
+        b->SetAngularVelocity(w);
+    }
     // (b2ContactManager::FindNewContacts is public; the world only hands it out const.)
     if (options_.contactsOnSync) const_cast<b2ContactManager&>(world_->GetContactManager()).FindNewContacts();
 }
@@ -271,6 +290,11 @@ void PhysicsWorld::SyncTransform(Rigidbody2D& body, Vector2 position)
 void PhysicsWorld::Step(float dt)
 {
     SyncColliders();
+    if (newContacts_) {
+        // b2World::Step's e_newFixture: the moved proxies are paired before this step's collide.
+        const_cast<b2ContactManager&>(world_->GetContactManager()).FindNewContacts();
+        newContacts_ = false;
+    }
     world_->Step(dt, settings_.velocityIterations, settings_.positionIterations);
 }
 
