@@ -9,6 +9,8 @@ git ignores), for the port and its tests.
 2. Extracts from it (tools/extract/), into data/extracted/:
    - constants.json, rooms.json, specialRooms.json: the text assets the game loads from
      Resources (the Constants table, the room designs, the special rooms);
+   - items.json: the item masters (Resources "items" and "ngpitems", the Wanderer DLC's
+     if installed) and a new game's starting items (GameManager's initial save lists);
    - roomdb_asset.json: the room database as the generator sees it;
    - generation_data_counts.json: each dungeon's background, light, shadow and hole lists;
    - bundle_assets.json: every asset bundle's asset paths (the prefab lookups);
@@ -129,6 +131,7 @@ def main():
         sys.exit('UnityPy is needed to read the game\'s asset bundles: py -m pip install UnityPy')
     OUT.mkdir(parents=True, exist_ok=True)
     step("the Resources texts", [EXTRACT / 'resources_text.py', '--game', game, '--out', OUT])
+    step('the items', [EXTRACT / 'items.py', '--game', game, '--out', OUT])
     step('the room database', [EXTRACT / 'room_database.py', '--game', game, '--out', OUT])
     step("the dungeons' generation data", [EXTRACT / 'generation_data.py', '--game', game, '--out', OUT])
     step('indexing the asset bundles', [EXTRACT / 'bundle_index.py', '--game', game, '--out', OUT])
