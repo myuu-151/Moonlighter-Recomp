@@ -18,13 +18,16 @@ git ignores), for the port and its tests.
    - details.json: the dungeons' details registers (prefab names, sprite sizes,
      probability images);
    - wanderer_specialRooms.json: the Wanderer DLC's rooms, if the DLC is installed;
-   - prefabs.json: the dungeon and enemy prefabs, flattened (objects, sprites, sorting);
+   - prefabs.json: the dungeon and enemy prefabs and the weapons, flattened (objects,
+     sprites, sorting, colliders);
    - packs/<dungeon>/: the room database and prefabs split by dungeon (what one floor loads);
    - tiles/: the textures the game paints rooms' runtime textures from (exact);
    - sprites/<dungeon>/: every sprite a dungeon shows, as a GameCube texture;
    - physics2d.json: the 2D physics settings (the layer collision matrix, the layers' names);
    - animators/hero_merchant.json, sprites/hero/: the hero's Animator controller, clips and sprites;
-     animators/BabySlime.json, sprites/enemies/BabySlime/: the same for the enemies the port has.
+     animators/BabySlime.json, sprites/enemies/BabySlime/: the same for the enemies the port has;
+     animators/broom_spear.json, sprites/weapons/broom_spear/: the hero's starting weapon's
+     (with its curves exact: the attack colliders' sizes, offsets and activity).
 
 Nothing from the game is stored in this repository. Needs Python 3 with UnityPy
 (py -m pip install UnityPy).
@@ -47,6 +50,7 @@ KNOWN_FILES = {
     'Moonlighter_Data/globalgamemanagers': 'f208aa6933e1a86d5fa866e9635446ce2dd288eb6b03d2a3303b8ed42eaf5351',
     'Moonlighter_Data/StreamingAssets/AssetBundles/dungeon_golem': 'b644016bc1f5b2d8df808846c2965d9afa180bf878640369a504d8ca865cf40b',
     'Moonlighter_Data/StreamingAssets/AssetBundles/enemies_golem': '9af599416a04454c444abd1e81e2a5222f839265adb84dc174c8c40a4f6a8e81',
+    'Moonlighter_Data/StreamingAssets/AssetBundles/items': '75d23d2ddd28b0b53c8c35e8443825fea6ac4aac5da2139afd1d3dbc64361e25',
 }
 # Checked too when it's there (the DLC is optional).
 KNOWN_DLC = {'dlc/wanderer_dlc': '62655a42d79fbd12c80bc955314335be6a3329adc39a3ba4973f6e390d0eaf00'}
@@ -145,7 +149,7 @@ def main():
     step('the per-dungeon packs', [EXTRACT / 'packs.py', '--out', OUT])
     step("the painted textures' tiles", [EXTRACT / 'tiles.py', '--game', game, '--out', OUT])
     step('the sprites', [EXTRACT / 'sprites.py', '--game', game, '--out', OUT])
-    step("the hero's and enemies' animators and sprites", [EXTRACT / 'animators.py', '--game', game, '--out', OUT])
+    step("the hero's, enemies' and weapons' animators and sprites", [EXTRACT / 'animators.py', '--game', game, '--out', OUT])
     print(f'-- done: {OUT}', flush=True)
 
 
