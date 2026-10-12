@@ -87,21 +87,15 @@ inline float SqrMagnitude(Vector2 v)
     using mono::F;
     return F(D(v.x) * D(v.x) + D(v.y) * D(v.y));
 }
-// (float)Math.Sqrt(x * x + y * y)
-inline float Magnitude(Vector2 v)
+// Vector2.magnitude: (float)Math.Sqrt(x * x + y * y): the sum in doubles (the squares exact),
+// its root there, rounded to a float once.
+inline float MagnitudeOf(float x, float y)
 {
-    using mono::D;
-    using mono::F;
-    return F(std::sqrt(D(v.x) * D(v.x) + D(v.y) * D(v.y)));
+    const double dx = static_cast<double>(x), dy = static_cast<double>(y);
+    return static_cast<float>(std::sqrt(dx * dx + dy * dy));
 }
-// float diff_x = a.x - b.x, diff_y = ...; (float)Math.Sqrt(diff_x * diff_x + diff_y * diff_y)
-inline float Distance(Vector2 a, Vector2 b)
-{
-    using mono::D;
-    using mono::F;
-    float dx = a.x - b.x, dy = a.y - b.y;
-    return F(std::sqrt(D(dx) * D(dx) + D(dy) * D(dy)));
-}
+inline float Magnitude(Vector2 v) { return MagnitudeOf(v.x, v.y); }
+inline float Distance(Vector2 a, Vector2 b) { return MagnitudeOf(a.x - b.x, a.y - b.y); }
 // Vector2.normalized / Normalize(): divided by the magnitude above kEpsilon (1e-5), else zero.
 inline Vector2 Normalized(Vector2 v)
 {

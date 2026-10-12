@@ -20,8 +20,10 @@
 //     coroutines (PolyNav2D::ResumeCoroutines: paths arrive);
 //   - each Animator's Update (Enemy::UpdateAnimator);
 //   - PolyNav2D::LateUpdate and each agent's LateUpdate (the move).
-// Time.time / Time.fixedTime: scene.calls->now, which the driver keeps on the clock of the
-// phase it's in (Invoke made inside a fixed step counts from the fixed clock).
+// The clocks: scene.calls (the frame's Time.time, the fixed step's, and which one an Invoke made
+// now counts from: unity/DelayedCalls.h); the driver also runs its pass after each fixed step.
+// DOTween: scene.tweens, updated with deltaTime and DOTween's own unscaled delta (the death's
+// fade ignores the time scale).
 
 #include <functional>
 #include <memory>
@@ -169,6 +171,10 @@ private:
     friend class EnemyPhysics;
     const unity::AnimatorController* controller_ = nullptr;
     unity::Vector2 synced_; // the transform as the body last had it (what the physics wrote or took)
+    // The transform was set by something that dirties it for the physics even where its world
+    // position reads the same (SetParent, localPosition): synced to the body at the next step.
+    bool transformDirty_ = false;
+    friend class EnemyBehaviour;
 };
 
 class EnemyBehaviour {
@@ -291,10 +297,12 @@ public:
     // The hero's body: what touches an attack trigger from it is "the Player".
     void SetHero(const unity::Rigidbody2D* hero) { hero_ = hero; }
 
-    // One fixed step (`dt`: Time.fixedDeltaTime). The hero's body is the caller's to sync first.
+    // One fixed step (`dt`: Time.fixedDeltaTime): sync, the world's step, Unity's trigger pass
+    // (PhysicsWorld::UpdateContacts: a trigger paired at the step's end starts in this step),
+    // write-back, OnTriggerEnter2D. The hero's body is the caller's to sync first.
     void Step(float dt);
     // The step in parts, for a driver that steps the world itself: Sync before b2World::Step,
-    // the rest after.
+    // the rest after (UpdateContacts first).
     void Sync();
     void WriteBack();
     void ReportTriggers();

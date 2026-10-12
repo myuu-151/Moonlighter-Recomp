@@ -96,7 +96,7 @@ private:
 class PhysicsWorld {
 public:
     struct Options {
-        bool wakeOnSync = true;         // a transform that moved wakes its body (else a sleeping one stays put)
+        bool wakeOnSync = true;         // a transform that moved wakes its body and restarts its time at rest (else a sleeping one stays put)
         bool contactsOnSync = false;    // find the moved bodies' new contacts right after the sync (stock: end of Solve)
         bool groundBody = true;         // colliders without a Rigidbody2D: one static body at the origin, world vertices
         bool polygonSet = true;         // boxes through b2PolygonShape::Set (else SetAsBox)
@@ -125,6 +125,14 @@ public:
 
     // gameObject.layer = layer (Unity refilters its fixtures).
     void SetLayer(Rigidbody2D& body, int layer);
+    // A collider was made in Unity's world that this one doesn't hold (the hero's weapon
+    // hitbox): Box2D's e_newFixture, so the next step pairs every moved proxy before it
+    // collides (b2World::Step), not after it solves.
+    void FixtureMadeElsewhere();
+    // b2ContactManager::Collide outside a step: contacts made at the step's end are tested now
+    // (BeginContact for the ones touching). Unity's triggers (its own pass after the solve)
+    // start in the step whose end pairs them; EnemyPhysics runs this after each step for that.
+    void UpdateContacts();
     // Physics2D.IgnoreLayerCollision (both rows), refiltering those layers' fixtures.
     void IgnoreLayerCollision(int a, int b, bool ignore = true);
     bool GetIgnoreLayerCollision(int a, int b) const { return !settings_.Collide(a, b); }
@@ -160,6 +168,7 @@ private:
     Options options_;
     b2World* world_ = nullptr;
     Filter* filter_ = nullptr;
+    bool newContacts_ = false; // FixtureMadeElsewhere: pair the moved proxies before the next step
     b2Body* ground_ = nullptr;
     std::deque<ColliderEntry> colliders_; // stable addresses (fixture userData)
     std::deque<Rigidbody2D> bodies_;

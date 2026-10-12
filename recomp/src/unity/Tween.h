@@ -28,9 +28,11 @@ public:
     bool IsPlaying(int id) const;
     void Complete(int id);
     void Kill(int id);
-    // transform.DOMove(end, duration): from the position when it starts.
+    // transform.DOMove(end, duration): from the position when it starts. (Any tween of one or
+    // two floats: DOTween.To, DOColor as two pairs.) ignoreTimeScale: SetUpdate(true), or the
+    // project's default for tweens that don't say (see EnemyBehaviour.OnDeath's).
     void Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease = Ease::OutQuad,
-              float delay = 0.0f);
+              float delay = 0.0f, bool ignoreTimeScale = false);
     // A tween we only need the end of (OnComplete after `delay` + `duration`).
     int Timer(float duration, float delay, std::function<void()> onComplete);
 
