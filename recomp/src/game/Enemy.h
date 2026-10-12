@@ -276,7 +276,10 @@ public:
         bool writeBackUnmoved = true;
     };
 
-    explicit EnemyPhysics(unity::PhysicsWorld& world, const Options& options = Options());
+    // (Two constructors, not a defaulted Options argument: GCC wants Options' member
+    // initializers parsed first.)
+    explicit EnemyPhysics(unity::PhysicsWorld& world) : EnemyPhysics(world, Options{}) {}
+    EnemyPhysics(unity::PhysicsWorld& world, const Options& options);
     ~EnemyPhysics();
     EnemyPhysics(const EnemyPhysics&) = delete;
     EnemyPhysics& operator=(const EnemyPhysics&) = delete;
