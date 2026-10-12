@@ -94,6 +94,10 @@ add_executable(physics_test tests/physics_test.cpp)
 target_link_libraries(physics_test PRIVATE mlcore)
 add_test(NAME physics COMMAND physics_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
+add_executable(animator_curves_test tests/animator_curves_test.cpp)
+target_link_libraries(animator_curves_test PRIVATE mlcore)
+add_test(NAME animator_curves COMMAND animator_curves_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
 add_executable(player_walk_test tests/player_walk_test.cpp)
 target_link_libraries(player_walk_test PRIVATE mlcore)
 add_test(NAME player_walk
