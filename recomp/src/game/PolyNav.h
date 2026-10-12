@@ -25,14 +25,21 @@
 namespace game {
 
 // Transform.TransformPoint for 2D objects: the point through each transform from the
-// object's own up to its root, as Unity walks them: scale, rotate by the local rotation
-// (a rotation about z: quaternion (0, 0, qz, qw), Quaternion * Vector3's formula), then the
-// local position.
+// object's own up to its root, each level as Unity computes it (checked bit for bit against
+// the game on every obstacle of the recorded rooms, the turned and scaled doors included):
+// the point rotated by the local rotation (a rotation about z: quaternion (0, 0, qz, qw), with
+// Quaternion * Vector3's formula, in float), then fma(rotated, local scale, local position)
+// per axis, one rounding (as a fused multiply-add: scaling first, or rounding the product,
+// is off by an ulp on LevelDoorLeft's 1.0000005 scale).
 struct NavTransformLevel {
     unity::Vector2 position;
     float qz = 0.0f, qw = 1.0f;
     unity::Vector2 scale{1.0f, 1.0f};
-    // A local transform from a rotation about z in degrees (Quaternion.Euler(0, 0, degrees)).
+    // A local transform with its stored quaternion.
+    static NavTransformLevel FromQuaternion(float x, float y, float sx, float sy, float qz, float qw);
+    // ... with only the rotation in degrees (2 atan2(z, w), as tools/extract/prefabs.py writes
+    // it): the quaternion back from it; quarter turns get the exact values the prefabs store
+    // (0.70710683 = 0x3F3504F4 for sqrt(1/2), 0 and 1), others the nearest float.
     static NavTransformLevel From(float x, float y, float sx, float sy, float degrees);
 };
 

@@ -7,6 +7,8 @@
 namespace game {
 
 using unity::Vector2;
+using unity::mono::D; // (Mono's float arithmetic: unity/Mathf.h)
+using unity::mono::F;
 namespace Mathf = unity::Mathf;
 
 namespace {
@@ -23,6 +25,14 @@ std::vector<const PolyNavAgent*>& Alive()
 {
     static std::vector<const PolyNavAgent*> alive;
     return alive;
+}
+
+// Vector2's operator == (2019.2): float diff_x = lhs.x - rhs.x, diff_y = ...;
+// return diff_x * diff_x + diff_y * diff_y < kEpsilon * kEpsilon; (in double, unity/Mathf.h).
+bool VectorEquals(Vector2 lhs, Vector2 rhs)
+{
+    float diffX = lhs.x - rhs.x, diffY = lhs.y - rhs.y;
+    return D(diffX) * D(diffX) + D(diffY) * D(diffY) < D(1e-05f) * D(1e-05f);
 }
 
 bool IsAlive(const PolyNavAgent* a) { return std::find(Alive().begin(), Alive().end(), a) != Alive().end(); }
@@ -162,7 +172,7 @@ void PolyNavAgent::LateUpdate(float deltaTime)
         velocity = velocity + unity::Div(Arrive(nextPoint()), mass);
     } else {
         velocity = velocity + unity::Div(Seek(nextPoint()), mass);
-        accelerationValue_ += accelerationRate * deltaTime;
+        accelerationValue_ = F(D(accelerationValue_) + D(accelerationRate) * D(deltaTime));
         accelerationValue_ = Mathf::Clamp01(accelerationValue_);
         velocity = velocity * accelerationValue_;
     }
@@ -173,7 +183,7 @@ void PolyNavAgent::LateUpdate(float deltaTime)
     Restrict();
     if (rotateTransform) {
         Vector2 md = movingDirection();
-        float target = (0.0f - Mathf::Atan2(md.x, md.y)) * 180.0f / 3.14159274f;
+        float target = F((0.0 - D(Mathf::Atan2(md.x, md.y))) * 180.0 / D(3.14159274f));
         rotationZ = Mathf::MoveTowardsAngle(rotationZ, target, rotateSpeed * deltaTime);
     }
     if (repath) {
@@ -183,7 +193,7 @@ void PolyNavAgent::LateUpdate(float deltaTime)
             return;
         }
     }
-    float num = (activePath_[activePath_.size() - 1] == nextPoint()) ? stoppingDistance : 0.05f;
+    float num = VectorEquals(activePath_[activePath_.size() - 1], nextPoint()) ? stoppingDistance : 0.05f;
     if (unity::SqrMagnitude(position() - nextPoint()) <= num) {
         activePath_.erase(activePath_.begin());
         if (!hasPath()) {
@@ -232,7 +242,7 @@ Vector2 PolyNavAgent::Arrive(Vector2 pos) const
     Vector2 vector = pos - position();
     float magnitude = unity::Magnitude(vector);
     if (magnitude > 0.0f) {
-        float a = magnitude / (decelerationRate * 0.3f);
+        float a = F(D(magnitude) / (D(decelerationRate) * D(0.3f)));
         a = Mathf::Min(a, maxSpeed);
         vector = vector * (a / magnitude);
     }

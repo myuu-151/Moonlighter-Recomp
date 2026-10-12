@@ -48,6 +48,11 @@ void PrefabLibrary::Load(const json::Value& extracted)
                     for (int c = 0; c < 4; c++) n.color[c] = F(r[11][static_cast<size_t>(c)]);
                 n.rendererEnabled = r[12].b;
                 if (r.size() > 13) n.rotation = F(r[13]);
+                if (r.size() > 17 && r[17].IsArray() && r[17].size() == 2) {
+                    n.hasQuaternion = true;
+                    n.qz = F(r[17][0]);
+                    n.qw = F(r[17][1]);
+                }
                 if (r.size() > 14)
                     for (const json::Value& b : r[14].arr) {
                         Behaviour beh;

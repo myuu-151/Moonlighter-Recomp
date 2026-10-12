@@ -19,7 +19,8 @@ Needs UnityPy.
             rigidbody: {bodyType (0 dynamic, 1 kinematic, 2 static), simulated, mass, linearDrag,
             angularDrag, gravityScale, constraints (bits: 1 freeze x, 2 y, 4 rotation),
             collisionDetection (0 discrete, 1 continuous), interpolation (0 none, 1 interpolate,
-            2 extrapolate), sleepingMode (0 never, 1 start awake, 2 start asleep)} or null]
+            2 extrapolate), sleepingMode (0 never, 1 start awake, 2 start asleep)} or null,
+            [local rotation quaternion z, w]]
        (fields only for the classes in FIELDS; a LayerMask as its bits, a reference as whether
        it's set, a list as its length, but for the STRUCTURED fields; a collider ends with
        size x, size y for a box, the radius for a circle, the paths for a polygon)
@@ -268,6 +269,9 @@ def main():
                 row.append([go['m_Layer'], tag_name(manager, go['m_Tag']), colliders])
                 bodies = [rigidbody_row(tree(comp.path_id)) for comp in components(go) if comp.type.name == 'Rigidbody2D']
                 row.append(bodies[0] if bodies else None)
+                # The local rotation's quaternion z and w as stored (Transform.TransformPoint rotates
+                # by it; the degrees above don't give its exact bits back).
+                row.append([q['z'], q['w']])
                 rows.append(row)
                 for child in tr['m_Children']:
                     ctr = tree(child['m_PathID'])
