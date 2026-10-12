@@ -133,9 +133,21 @@ GameCube: the same sources compile with devkitPPC (`-mogc -mcpu=750 -meabi -mhar
 - [x] Scene check (`floor_sync_test`, `game/RoomScene`): what generation places in each room
       (enemy spawns and enemies, chests and mimics, rocks, wall details, breakables, creatures,
       particles, and the floor/walls/light/shadow sprites) against the game's end-of-floor
-      snapshot: 14,589 objects, same names and float-exact positions, 370/370 rooms. Missing
-      enemy prefabs are skipped like the game does (`PrefabCatalog`).
+      snapshot: 554/554 rooms in every category. Missing enemy prefabs are skipped like the
+      game does (`PrefabCatalog`).
+- [x] Whole rooms from the prefabs (`game/Prefabs`, `RoomSceneTree`): every object of the
+      room's hierarchy, doors and special doors included, against the game's snapshot. 95.2% of
+      the objects with a sprite match on path, active flag, local position and sprite; 82.1%
+      of all objects. The rest are changed at runtime by code that isn't ported yet
+- [x] Boss rooms' `Start()` draws ported (`game/BossRoomStart`), replacing the measured counts:
+      36/36 floors in sync from layout to last room, boss rooms included
+- [x] Runtime textures bit-exact (`game/Composite`, CRC against the game's): holes 86/86,
+      LowerDetail 181, BaseDetail 109, MiddleDetail 89, slime 8, acid 6, lava 4, electric 9.
+      Needs Unity's DXT decode (565 by bit replication, floor interpolation, three-colour blocks
+      in DXT5 too)
 - [x] All game data made from the Steam copy (`tools/make_data.py`), none from oracle dumps
-- [ ] Boss scripts' `Start()` draws: still the measured counts (Golem 132, Forest 72)
+- [x] Rooms drawn (`render/`): sprites, sorting layers and the painted textures, the same on the
+      PC (`recomp/tools/preview`) and the GameCube
 - [ ] `GenerateSounds` and the other frame-timed waits (draws there depend on frame timing;
       not generation)
+- [ ] The rest of the game: player, enemies' AI, combat, town and shop, UI, saves, audio
