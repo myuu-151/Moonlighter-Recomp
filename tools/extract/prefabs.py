@@ -25,7 +25,7 @@ from pathlib import Path
 
 import UnityPy
 
-BUNDLE_PREFIXES = ('dungeon_', 'enemies_')
+BUNDLE_PREFIXES = ('dungeon_', 'enemies_', 'hero_merchant')
 # PrefabRegister's prefabs the dungeon spawns by name (SpawnChest), from the player's files.
 PLAYER_FILE = 'sharedassets0.assets'
 # MonoBehaviours whose Start() draws from Random when a room comes to life, and the fields
@@ -38,6 +38,9 @@ FIELDS = {
     'CarnivorousMutaeBossRoots': (),
     # Not a draw: sets its renderer's sortingOrder from the world y in Start (what the scene draws in front).
     'SpriteDepthOrderRender': ('offset', 'forceOrderValue', 'forcedOrderValue', 'over', 'overOffset'),
+    # The hero's movement settings (layer masks as their bits).
+    'HeroMerchantController': ('collisionDetectionLayers', 'slideCollisionDetectionLayers', 'godModeCollisionDetectionLayers',
+                               'holesMask', 'items', 'speedFactor', 'itemAttrackRadius'),
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 
@@ -142,6 +145,8 @@ def main():
             return class_names[key]
 
         def field(value):
+            if isinstance(value, dict) and 'm_Bits' in value:  # LayerMask
+                return value['m_Bits']
             if isinstance(value, dict) and 'm_PathID' in value:
                 return value['m_PathID'] != 0
             if isinstance(value, list):

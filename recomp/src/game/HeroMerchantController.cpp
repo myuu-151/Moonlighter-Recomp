@@ -2,6 +2,9 @@
 
 #include <cmath>
 
+#include "game/Constants.h"
+#include "game/Prefabs.h"
+
 namespace game {
 
 using unity::Collider2D;
@@ -32,6 +35,36 @@ Vector2 ClampMagnitude(Vector2 v, float max)
 
 } // namespace
 
+HeroMerchantController::Settings HeroMerchantController::SettingsFrom(const Prefab& hero)
+{
+    Settings s;
+    s.lowerDeadZone = Constants::GetFloat("lowerDeadZone");
+    s.merchantColliderXOffset = Constants::GetFloat("merchantColliderXOffset");
+    s.merchantColliderYOffset = Constants::GetFloat("merchantColliderYOffset");
+    s.tileSize = Constants::GetFloat("tileSize");
+    const PrefabNode& root = hero.nodes[0];
+    for (const ColliderDef& c : root.colliders)
+        if (c.type == "BoxCollider2D") {
+            s.colliderSize = {c.sx, c.sy};
+            s.colliderOffset = {c.ox, c.oy};
+        }
+    for (const Behaviour& b : root.behaviours)
+        if (b.cls == "HeroMerchantController") {
+            s.collisionLayers = static_cast<int>(b.Field("collisionDetectionLayers"));
+            s.slideLayers = static_cast<int>(b.Field("slideCollisionDetectionLayers"));
+        }
+    return s;
+}
+
+float HeroMerchantController::DepthOffset(const Prefab& hero)
+{
+    for (const PrefabNode& n : hero.nodes)
+        if (n.path == "HeroMerchantArt/Will")
+            for (const Behaviour& b : n.behaviours)
+                if (b.cls == "SpriteDepthOrderRender") return static_cast<float>(b.Field("offset"));
+    return 0.0f;
+}
+
 HeroMerchantController::HeroMerchantController(const unity::AnimatorController& controller, const Settings& settings,
                                                const unity::Physics2D& physics)
     : animator(controller), s_(settings), physics_(physics)
@@ -60,14 +93,16 @@ void HeroMerchantController::Update(float deltaTime, Vector2 stick)
          IsTag("GlovesSecondaryAttack") || IsTag("SpearSecondaryAttack") || IsTag("BowSecondaryAttack") || IsTag("Ability") ||
          IsTag("WalkGrass")) &&
         !animator.IsInTransition())
-        UpdateMoveAnimations(stick);
+        UpdateMoveAnimations(stick, deltaTime);
 
     animator.Update(deltaTime);
 }
 
-void HeroMerchantController::UpdateMoveAnimations(Vector2 stick)
+void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime)
 {
+    doorEntered = nullptr;
     if (canMove) {
+        const Collider2D* door = nullptr;
         if (isMoveInputEnabled) {
             if (isHorizontalMoveInputEnabled) velX = stick.x;
             if (isVerticalMoveInputEnabled) velY = stick.y;
@@ -96,6 +131,7 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick)
                 if (!c2 && (!c3 || !c4)) velY += 0.5f;
             }
             velX = 0.0f;
+            if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
         }
         hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{0.0f, velY}, 4.0f, s_.collisionLayers);
         if (hit && Sign((hit.point - position).y) == Sign(velY)) {
@@ -110,6 +146,12 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick)
                 if (!c5 && (!c7 || !c8)) velX += -0.5f;
             }
             velY = 0.0f;
+            if (hit.collider->tag == "DungeonLevelDoor") door = hit.collider;
+        }
+        timePushingDoors = door ? timePushingDoors + deltaTime : 0.0f;
+        if (timePushingDoors > maxTimePushingDoors && door) {
+            doorEntered = door;
+            timePushingDoors = 0.0f;
         }
     }
     if (IsTag("Ability") || IsTag("SwordAndShieldMainAttack") || IsTag("BigSwordMainAttack") || IsTag("BigSwordSecondaryAttack") ||

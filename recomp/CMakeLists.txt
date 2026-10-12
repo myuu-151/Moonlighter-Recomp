@@ -83,3 +83,7 @@ add_test(NAME player_walk
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
 add_executable(preview tools/preview.cpp)
 target_link_libraries(preview PRIVATE mlcore)
+
+# Will walking a generated floor on the PC (what the GameCube build runs), for checking moves.
+add_executable(walk_sim tools/walk_sim.cpp)
+target_link_libraries(walk_sim PRIVATE mlcore)

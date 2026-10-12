@@ -5,8 +5,11 @@
 // the corner slide), and sets the Animator's Walk and direction bools; the Animator runs
 // after the scripts, as Unity's does.
 //
-// Not yet: attacks, rolls, abilities, holes and falling, doors, the dynamic body's
-// contacts (rocks), knockback.
+// Pushing into a door for maxTimePushingDoors enters it (doorEntered, for one frame: the
+// game's DungeonDoor.OnPlayerEnter is the caller's).
+//
+// Not yet: attacks, rolls, abilities, holes and falling, the dynamic body's contacts
+// (rocks), knockback.
 
 #include <string>
 
@@ -15,6 +18,8 @@
 #include "unity/Vector2.h"
 
 namespace game {
+
+struct Prefab;
 
 class HeroMerchantController {
 public:
@@ -27,6 +32,12 @@ public:
         int collisionLayers = 0, slideLayers = 0;
     };
 
+    // From his prefab (hero_merchant's HeroMerchant: its collider and the controller's layer
+    // masks) and the constants table.
+    static Settings SettingsFrom(const Prefab& hero);
+    // His SpriteDepthOrderRender's offset (HeroMerchantArt/Will).
+    static float DepthOffset(const Prefab& hero);
+
     HeroMerchantController(const unity::AnimatorController& controller, const Settings& settings, const unity::Physics2D& physics);
 
     // One frame: the stick as InControl reports it (LeftStick.X, .Y), then the Animator.
@@ -37,12 +48,14 @@ public:
     float currentPlayerMoveSpeed = 185.0f, speedFactor = 1.0f;
     bool canMove = true, isMoveInputEnabled = true, isHorizontalMoveInputEnabled = true, isVerticalMoveInputEnabled = true;
     Direction heroDirection = Front;
+    float timePushingDoors = 0.0f, maxTimePushingDoors = 0.15f;
+    const unity::Collider2D* doorEntered = nullptr; // this frame's
     unity::Animator animator;
 
     void SetDirection(Direction direction);
 
 private:
-    void UpdateMoveAnimations(unity::Vector2 stick);
+    void UpdateMoveAnimations(unity::Vector2 stick, float deltaTime);
     Direction ParseInputToDirection(unity::Vector2 stick, float x, float y) const;
     void UpdateDirection(float x, float y);
     bool IsTag(const char* tag) const;

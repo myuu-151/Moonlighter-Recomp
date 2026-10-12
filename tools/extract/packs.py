@@ -39,6 +39,9 @@ def main():
         for bundle in (f'dungeon_{suffix}', f'enemies_{suffix}', 'sharedassets0.assets'):
             bundles[bundle] = prefabs['bundles'].get(bundle, {})
         bundles['dungeon_common'] = {n: rows for n, rows in prefabs['bundles']['dungeon_common'].items() if n in COMMON or n in room_props}
+        hero = prefabs['bundles'].get('hero_merchant', {}).get('HeroMerchant')
+        if hero:
+            bundles['hero_merchant'] = {'HeroMerchant': hero}
         (folder / 'prefabs.json').write_text(json.dumps({'sortingLayers': prefabs['sortingLayers'], 'bundles': bundles},
                                                         separators=(',', ':')), encoding='utf-8')
         print(f"   {culture}: {len(database['rooms'])} rooms, {sum(len(b) for b in bundles.values())} prefabs", flush=True)
