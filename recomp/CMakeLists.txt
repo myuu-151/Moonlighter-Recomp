@@ -39,6 +39,9 @@ add_library(mlcore STATIC
     src/render/DrawList.cpp
     src/render/RoomDraw.cpp
     src/game/DungeonFloor.cpp
+    src/unity/Animator.cpp
+    src/unity/Physics2D.cpp
+    src/game/HeroMerchantController.cpp
 )
 target_include_directories(mlcore PUBLIC src)
 
@@ -68,6 +71,12 @@ add_executable(floor_sync_test tests/floor_sync_test.cpp)
 target_link_libraries(floor_sync_test PRIVATE mlcore)
 add_test(NAME floor_sync
          COMMAND floor_sync_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/generation_data_counts.json)
+
+add_executable(player_walk_test tests/player_walk_test.cpp)
+target_link_libraries(player_walk_test PRIVATE mlcore)
+add_test(NAME player_walk
+         COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
 add_executable(preview tools/preview.cpp)

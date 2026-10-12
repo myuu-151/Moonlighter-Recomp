@@ -18,7 +18,8 @@ git ignores), for the port and its tests.
    - prefabs.json: the dungeon and enemy prefabs, flattened (objects, sprites, sorting);
    - packs/<dungeon>/: the room database and prefabs split by dungeon (what one floor loads);
    - tiles/: the textures the game paints rooms' runtime textures from (exact);
-   - sprites/<dungeon>/: every sprite a dungeon shows, as a GameCube texture.
+   - sprites/<dungeon>/: every sprite a dungeon shows, as a GameCube texture;
+   - animators/hero_merchant.json, sprites/hero/: the hero's Animator controller, clips and sprites.
 
 Nothing from the game is stored in this repository. Needs Python 3 with UnityPy
 (py -m pip install UnityPy).
@@ -137,6 +138,7 @@ def main():
     step('the per-dungeon packs', [EXTRACT / 'packs.py', '--out', OUT])
     step("the painted textures' tiles", [EXTRACT / 'tiles.py', '--game', game, '--out', OUT])
     step('the sprites', [EXTRACT / 'sprites.py', '--game', game, '--out', OUT])
+    step("the hero's animator and sprites", [EXTRACT / 'animators.py', '--game', game, '--out', OUT])
     print(f'-- done: {OUT}', flush=True)
 
 

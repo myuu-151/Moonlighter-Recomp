@@ -97,7 +97,11 @@ namespace MoonlighterOracle
             return false;
         }
 
-        public static IEnumerator Run(MonoBehaviour host, int runs, bool quit)
+        public static GameSlot Slot;
+
+        /// The main menu's Continue on the first used slot, then waits for the town to settle.
+        /// Slot stays null if there's none.
+        public static IEnumerator LoadSlot()
         {
             var log = OraclePlugin.Log;
 
@@ -112,6 +116,7 @@ namespace MoonlighterOracle
 
             // 1. Main menu: wait for the save data, then continue the first used slot.
             float t0 = Time.realtimeSinceStartup;
+            Slot = null;
             GameSlot slot = null;
             while (slot == null)
             {
@@ -151,10 +156,20 @@ namespace MoonlighterOracle
             GameManager.Instance.currentGameSlot = slot;
             GUIManager.Instance.GoToDungeonLoadingPanel();
             GameManager.Instance.LoadSlot(slot);
+            Slot = slot;
 
             // 2. Wait for the hero to exist and the town to settle.
             while (HeroMerchant.Instance == null) yield return null;
             yield return new WaitForSecondsRealtime(15f);
+        }
+
+        public static IEnumerator Run(MonoBehaviour host, int runs, bool quit)
+        {
+            var log = OraclePlugin.Log;
+
+            yield return LoadSlot();
+            var slot = Slot;
+            if (slot == null) yield break;
 
             // 3. Generate floors through the game's own transition (GameManager.LoadDungeonScene),
             //    as the dungeon gate and next-floor doors do: it loads DLC dungeon bundles, the
