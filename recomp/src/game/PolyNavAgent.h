@@ -72,6 +72,17 @@ public:
     float remainingDistance() const;
     unity::Vector2 movingDirection() const;
     float currentSpeed() const;
+    // The private state, for a replay that starts from a recorded agent (its fields as the
+    // game's agent has them) and compares them.
+    float accelerationValue() const { return accelerationValue_; }
+    int requests() const { return requests_; }
+    void RestoreState(unity::Vector2 primeGoal, float accelerationValue, int requests, const std::vector<unity::Vector2>& activePath)
+    {
+        primeGoal_ = primeGoal;
+        accelerationValue_ = accelerationValue;
+        requests_ = requests;
+        activePath_ = activePath;
+    }
 
 private:
     PolyNav2D* polyNav() const { return PolyNav2D::current; }

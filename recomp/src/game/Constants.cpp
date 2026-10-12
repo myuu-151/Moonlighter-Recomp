@@ -77,5 +77,22 @@ std::vector<std::string> GetStringArray(const std::string& key)
     return out;
 }
 
+std::vector<std::vector<float>> GetFloat2DArray(const std::string& key)
+{
+    std::vector<std::vector<float>> out;
+    const json::Value* v = gValues.Find(key);
+    if (!v || !v->IsArray()) return out;
+    for (const json::Value& row : v->arr) {
+        if (!row.IsArray()) return {};
+        for (const json::Value& x : row.arr)
+            if (!x.IsDouble()) return {};
+    }
+    for (const json::Value& row : v->arr) {
+        out.emplace_back();
+        for (const json::Value& x : row.arr) out.back().push_back(static_cast<float>(x.d));
+    }
+    return out;
+}
+
 } // namespace Constants
 } // namespace game

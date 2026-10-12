@@ -62,6 +62,10 @@ add_library(mlcore STATIC
     src/game/PolyNavAgent.cpp
     src/game/HoleOutlines.cpp
     src/game/RoomPolyNav.cpp
+    src/unity/DelayedCalls.cpp
+    src/game/EnemyStats.cpp
+    src/game/Enemy.cpp
+    src/game/BabySlime.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -129,6 +133,14 @@ add_executable(polynav_test tests/polynav_test.cpp)
 target_link_libraries(polynav_test PRIVATE mlcore)
 add_test(NAME polynav
          COMMAND polynav_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/polynav.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The BabySlime against the game (data/oracle/slime.jsonl, `-oracle-slime`; skipped if there's
+# none), and its self-checks (Random, the delayed calls, the stats, a hit and a death).
+add_executable(slime_test tests/slime_test.cpp)
+target_link_libraries(slime_test PRIVATE mlcore)
+add_test(NAME slime
+         COMMAND slime_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.

@@ -32,6 +32,10 @@ inline float Clamp01(float value)
     return value;
 }
 inline float Lerp(float a, float b, float t) { return a + (b - a) * Clamp01(t); }
+// Mathf.Pow: Math.Pow in doubles.
+inline float Pow(float f, float p) { return static_cast<float>(std::pow(static_cast<double>(f), static_cast<double>(p))); }
+// Mathf.RoundToInt: Math.Round in doubles, halves to even (the default rounding mode's nearbyint).
+inline int RoundToInt(float f) { return static_cast<int>(std::nearbyint(static_cast<double>(f))); }
 inline float Floor(float f) { return static_cast<float>(std::floor(static_cast<double>(f))); }
 inline float Atan2(float y, float x) { return static_cast<float>(std::atan2(static_cast<double>(y), static_cast<double>(x))); }
 inline float Repeat(float t, float length) { return Clamp(t - Floor(t / length) * length, 0.0f, length); }
