@@ -160,6 +160,9 @@ public:
     unity::Rigidbody2D* Body() const { return body_; }
 
     void SetDirection(Direction direction);
+    // DungeonLoadingPanel.Disable on a new floor: his input direction set, then UseAbility (he
+    // rolls out of the door he came in by).
+    void RollInto(Direction direction);
     // HeroMerchant.DealDamageToPlayer (no shield, absorption or amulets yet).
     void DealDamageToPlayer(float attackStrength, const char* damageSource, DamageType type = DamageType::Normal);
     void TeleportTo(unity::Vector2 to);

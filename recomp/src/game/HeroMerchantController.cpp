@@ -429,6 +429,14 @@ void HeroMerchantController::SetDirection(Direction direction)
 }
 
 // UseAbility with the Dash ability (Ability.UseAbility's cooldown, Dash.UseAbility).
+void HeroMerchantController::RollInto(Direction direction)
+{
+    static const Vector2 kStick[4] = {{-1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}, {0.0f, -1.0f}}; // Left, Right, Back, Front
+    inputDirection = direction;
+    stick_ = kStick[direction];
+    UseAbility(stick_);
+}
+
 void HeroMerchantController::UseAbility(Vector2 stick)
 {
     // A roll ends the damaged effect (and with it the hit's intangibility).
