@@ -359,7 +359,9 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
         timePushingHoles = canMove && hole ? timePushingHoles + deltaTime : 0.0f;
         if (timePushingHoles > maxTimePushingHoles || (isHolesIntangible && hole)) PlayFallAnimation();
         timePushingDoors = door ? timePushingDoors + deltaTime : 0.0f;
-        if (timePushingDoors > maxTimePushingDoors && door) {
+        // Only an open door takes him (and resets the timer): pushing a closed one keeps it
+        // running, so he goes through the frame it opens.
+        if (timePushingDoors > maxTimePushingDoors && door && (!isDoorOpened || isDoorOpened(*door))) {
             doorEntered = door;
             timePushingDoors = 0.0f;
         }

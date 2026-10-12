@@ -51,6 +51,7 @@
 // OnWillDeathAnimationEnded, ends it: deathAnimationEnded). Not yet: dropping the bag's items,
 // the return to town.
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -141,6 +142,9 @@ public:
     int comboCounter = 0, maxComboCounter = 3;
     bool canAttack = true, attackInputEnabled = true;
     const unity::Collider2D* doorEntered = nullptr; // this frame's
+    // DungeonDoor.isOpened for a door's collider (the room's door state is the caller's);
+    // none: every door is open.
+    std::function<bool(const unity::Collider2D&)> isDoorOpened;
     HeroMerchantStats stats;   // HeroMerchant's heroMerchantStats (Init'd from the constants)
     bool artVisible = true;    // heroMerchantArt.activeSelf (the invincibility blink)
     float flashAmount = 0.0f;  // the art's _FlashAmount (the damaged effect)
