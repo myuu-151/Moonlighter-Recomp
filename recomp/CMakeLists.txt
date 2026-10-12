@@ -77,6 +77,8 @@ add_library(mlcore STATIC
     src/game/PoolManager.cpp
     src/game/EnemyProjectile.cpp
     src/game/BrokenGolemTurret.cpp
+    # The GolemButler and its shot (game/GolemButler.h).
+    src/game/GolemButler.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -186,6 +188,13 @@ add_test(NAME enemy_hermit_slime
 # (`-oracle-enemy=BrokenGolemTurret`; skipped if there's none).
 add_test(NAME enemy_broken_turret
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_BrokenGolemTurret.jsonl BrokenGolemTurret
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The GolemButler and its shots (game/GolemButler.h): butlers in a box (the look, the field of
+# vision and the back, the shots at range and their pool, the wait up close), and against the game
+# (`-oracle-enemy=GolemButler`; skipped if there's none).
+add_test(NAME enemy_golembutler
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemButler.jsonl GolemButler
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The Tangle against the game (data/oracle/tangle.jsonl, `-oracle-tangle`; skipped if there's

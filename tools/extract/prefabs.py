@@ -73,6 +73,11 @@ FIELDS = {
     # starts with (HeroMerchantController.Direction); the crash's wait, the art the shot turns.
     'BrokenGolemTurretBehaviour': ENEMY_BEHAVIOUR + ('projectilePrefab', 'shootDelay', 'spawnProyectilePositions', 'enemyDirection'),
     'BrokenGolemTurretProjectile': ('timeToDestroyAfterCrash', 'projectileArt'),
+    # The Butler (an EnemyBehaviour) and its shot: the projectile prefab (its name), where shots
+    # start (EnemyBehaviour.spawnProyectilePositions); the crash's wait, the art and the
+    # PixelRotation the shot turns.
+    'GolemButlerBehaviour': ENEMY_BEHAVIOUR + ('projectilePrefab', 'spawnProyectilePositions'),
+    'GolemButlerProjectile': ('timeToDestroyAfterCrash', 'projectileArt', 'rotation'),
     # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
     'WeaponCollisionDetection': ('weaponAttackType',),
 }
@@ -114,6 +119,10 @@ STRUCTURED = {
     ('BrokenGolemTurretBehaviour', 'projectilePrefab'): object_name,
     ('BrokenGolemTurretBehaviour', 'spawnProyectilePositions'): vector2_list,
     ('BrokenGolemTurretProjectile', 'projectileArt'): object_path,
+    ('GolemButlerBehaviour', 'projectilePrefab'): object_name,
+    ('GolemButlerBehaviour', 'spawnProyectilePositions'): vector2_list,
+    ('GolemButlerProjectile', 'projectileArt'): object_path,
+    ('GolemButlerProjectile', 'rotation'): object_path,  # (a PixelRotation: its object's path)
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 

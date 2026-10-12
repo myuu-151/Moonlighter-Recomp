@@ -5,6 +5,7 @@
 #include <Box2D/Box2D.h>
 
 #include "game/BrokenGolemTurret.h"
+#include "game/GolemButler.h"
 
 namespace game {
 
@@ -253,8 +254,10 @@ void EnemyProjectiles::Report()
 
 std::unique_ptr<EnemyProjectile> MakeProjectile(EnemyProjectiles& system, const Prefab& prefab, const unity::AnimatorController* controller)
 {
-    for (const Behaviour& b : prefab.nodes.at(0).behaviours)
+    for (const Behaviour& b : prefab.nodes.at(0).behaviours) {
         if (b.cls == "BrokenGolemTurretProjectile") return MakeBrokenGolemTurretProjectile(system, prefab, controller, b);
+        if (b.cls == "GolemButlerProjectile") return MakeGolemButlerProjectile(system, prefab, controller, b);
+    }
     return std::make_unique<EnemyProjectile>(system, prefab, controller);
 }
 

@@ -608,6 +608,7 @@ namespace MoonlighterOracle
             j.Key("playerOffset"); V2(j, tr.Field("playerOffset").GetValue<Vector3>());
             j.EndObj();
             TurretOracle.WriteEnemy(j, b);
+            ButlerOracle.WriteEnemy(j, b);
             var mat = sr != null ? sr.material : null;
             j.Key("flash").Bits(mat != null && mat.HasProperty("_FlashAmount") ? mat.GetFloat("_FlashAmount") : 0f);
             Color col = mat != null && mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
@@ -685,6 +686,7 @@ namespace MoonlighterOracle
             if (independent != null) j.Prop("dotweenIndependent", (bool)independent.GetValue(null));
             j.Key("dotweenTimeScale").Bits(DG.Tweening.DOTween.timeScale);
             TurretOracle.WriteStart(j, room);
+            ButlerOracle.WriteStart(j, room);
             Emit(j);
         }
 
@@ -714,6 +716,7 @@ namespace MoonlighterOracle
             stepTime.Clear();
             stepBoxes.Clear();
             TurretOracle.Clear();
+            ButlerOracle.Clear();
         }
 
         private static void WriteFrame(int f)
@@ -805,6 +808,7 @@ namespace MoonlighterOracle
             }
             j.EndArr();
             TurretOracle.WriteFrame(j);
+            ButlerOracle.WriteFrame(j);
             Emit(j);
         }
 
@@ -834,6 +838,7 @@ namespace MoonlighterOracle
                 stepSlimes.Add(list);
                 StepBoxes();
                 TurretOracle.OnStep();
+                ButlerOracle.OnStep();
             }
         }
 
@@ -952,6 +957,7 @@ namespace MoonlighterOracle
             HookDOTween();
             HookAnimationEvents();
             TurretOracle.Begin(prefab);
+            ButlerOracle.Begin(prefab);
             var rec = new GameObject("OracleEnemyRecorder").AddComponent<Recorder>();
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
             // The start, at a frame's end.
@@ -985,6 +991,7 @@ namespace MoonlighterOracle
             recording = false;
             Active = false;
             TurretOracle.End();
+            ButlerOracle.End();
             UnityEngine.Object.Destroy(rec.gameObject);
             writer.Flush();
             writer.Close();

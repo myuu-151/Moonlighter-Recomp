@@ -27,7 +27,10 @@ the port uses (TARGETS):
       sprites/enemies/BrokenGolemTurret/ (its looks and shots; the bank also holds the
       GolemTurret prefab's renderers, which play the same base controller)
   enemies_golem / GolemTurretProjectile (controller), exact    -> animators/GolemTurretProjectile.json,
-      sprites/enemies/GolemTurretProjectile/ (the turrets' shot: its flight and its crash)
+      sprites/enemies/GolemTurretProjectile/ (the turrets' shot: its flight and its crash; the
+      GolemButlerProjectile prefab plays it too)
+  enemies_golem / GolemButler (controller), exact              -> animators/GolemButler.json,
+      sprites/enemies/GolemButler/ (its walks, its shield and its shot, its dead sprite)
 
   animators/<name>.json:
     controller, override (the override's name, null for a plain controller)
@@ -102,6 +105,7 @@ TARGETS = (
     ('enemies_golem', 'HermitSlime', 'controller', 'HermitSlime', 'enemies/HermitSlime', 'prefab', True),
     ('enemies_golem', 'BrokenGolemTurret', 'override', 'BrokenGolemTurret', 'enemies/BrokenGolemTurret', 'prefab', True),
     ('enemies_golem', 'GolemTurretProjectile', 'controller', 'GolemTurretProjectile', 'enemies/GolemTurretProjectile', 'prefab', True),
+    ('enemies_golem', 'GolemButler', 'controller', 'GolemButler', 'enemies/GolemButler', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).

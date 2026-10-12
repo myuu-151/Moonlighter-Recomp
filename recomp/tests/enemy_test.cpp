@@ -34,7 +34,12 @@
 //       - rocks on all four sides: canShoot off, the clip's ShootProjectile takes nothing;
 //  2. the replay (tests/turret_replay.h): the common one plus the shots, the looks and the pool.
 //
-// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime, BrokenGolemTurret)]
+// For the GolemButler (enemy_GolemButler.jsonl, prefab GolemButler), its shots too (the turret's
+// machinery; its shot plays GolemTurretProjectile's controller): tests/enemy_butler_checks.h (a
+// butler in a walled box: shooting from afar, waiting and turning up close) and
+// tests/butler_replay.h (the replay's looks, checks, shots and pool).
+//
+// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime, BrokenGolemTurret, GolemButler)]
 //        (ML_HERMIT_BOX=1: the hermit's root box in its attack frames)
 //        (ML_ENEMY_DEBUG=1: every mismatch; ML_ENEMY_CONTACTS=<frame>: the enemies' Box2D
 //        contacts after each of that frame's steps; ML_ENEMY_BOX=1: the soldier in a box's
@@ -44,6 +49,8 @@
 #include "enemy_replay.h"
 #include "enemy_hermit_checks.h" // (the HermitSlime's self-checks)
 #include "turret_replay.h"
+#include "butler_replay.h"        // (the GolemButler's replay hooks)
+#include "enemy_butler_checks.h"  // (the GolemButler's self-checks)
 
 namespace {
 
@@ -53,7 +60,7 @@ struct Data {
     std::unique_ptr<unity::AnimatorController> controller;
     const game::Prefab* prefab = nullptr;
     bool ok = false;
-    // The turret's shot (BrokenGolemTurret only): its prefab and its Animator's controller.
+    // The shot (BrokenGolemTurret, GolemButler): its prefab and its Animator's controller.
     std::unique_ptr<unity::AnimatorController> projectileController;
     const game::Prefab* projectilePrefab = nullptr;
 };
@@ -75,11 +82,11 @@ Data LoadData(const std::string& name)
     d.prefab = game::PrefabLibrary::Find(name, "enemies_golem");
     d.controller = std::make_unique<unity::AnimatorController>(unity::AnimatorController::FromJson(json::Parse(anim)));
     d.ok = d.prefab != nullptr;
-    if (name == "BrokenGolemTurret") {
+    if (name == "BrokenGolemTurret" || name == "GolemButler") {
         const std::string shot = ReadFile(d.dir + "/animators/GolemTurretProjectile.json");
         if (!shot.empty())
             d.projectileController = std::make_unique<unity::AnimatorController>(unity::AnimatorController::FromJson(json::Parse(shot)));
-        d.projectilePrefab = game::PrefabLibrary::Find("BrokenGolemTurretProjectile", "enemies_golem");
+        d.projectilePrefab = game::PrefabLibrary::Find(name == "GolemButler" ? "GolemButlerProjectile" : "BrokenGolemTurretProjectile", "enemies_golem");
     }
     return d;
 }
@@ -557,6 +564,17 @@ int main(int argc, char** argv)
             else
                 std::printf("(no BrokenGolemTurretProjectile prefab or animators/GolemTurretProjectile.json: the turret in a box skipped)\n");
         }
+        if (name == "GolemButler") {
+            ButlerData butler;
+            butler.prefab = data.prefab;
+            butler.controller = data.controller.get();
+            butler.projectilePrefab = data.projectilePrefab;
+            butler.projectileController = data.projectileController.get();
+            butler.enemyStats = data.enemyStats;
+            butler.physics2d = data.physics2d;
+            butler.soundGroups = data.soundGroups;
+            CheckGolemButler(butler);
+        }
     } else {
         std::printf("(no %s data in %s (ML_DATA; animators/%s.json from tools/extract/animators.py): skipping the soldier in a box)\n",
                     name.c_str(), data.dir.c_str(), name.c_str());
@@ -577,7 +595,14 @@ int main(int argc, char** argv)
         turret.projectileController = data.projectileController.get();
         replay.hooks = &turret;
     }
+    ButlerReplay butlerReplay;
+    if (name == "GolemButler") {
+        butlerReplay.projectilePrefab = data.projectilePrefab;
+        butlerReplay.projectileController = data.projectileController.get();
+        replay.hooks = &butlerReplay;
+    }
     const int replayed = ReplayRecording(file, replay);
     turret.Summary();
+    butlerReplay.Summary();
     return gFailed || replayed ? 1 : 0;
 }
