@@ -24,6 +24,8 @@ RoomFill* PlaceRoom(DungeonRoomInfo* info, int slicesX, int slicesY, Culture roo
 
     // InitializeRoom(roomInfo) -> LoadGridFromInfo.
     fill->LoadGridFromInfo();
+    // ... its doors, then AddSingleDungeonRoom's DisableAllDoors and RoomPlaced's door layers.
+    fill->doors.Place(*info);
 
     // RoomPlaced: SpawnEnemies (champion roll, then each enemy's Init).
     (void)fill->ChooseChampion(false);
@@ -50,6 +52,11 @@ RoomFill* PlaceRoom(DungeonRoomInfo* info, int slicesX, int slicesY, Culture roo
             continue;
         }
         AwakeChest(engine);
+    }
+    for (const auto& chest : fill->chests) {
+        bool mimic = chest.second.find("Mimic") != std::string::npos;
+        fill->doors.roomChests += !mimic;
+        fill->doors.containsMimics |= mimic;
     }
 
     if (!fill->obstaclesGrid.empty()) {

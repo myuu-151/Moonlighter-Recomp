@@ -11,6 +11,7 @@
 //                        <bundle_assets.json>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -29,6 +30,7 @@
 #include "game/DungeonFloor.h"
 #include "game/PrefabCatalog.h"
 #include "game/Prefabs.h"
+#include "game/RoomDoors.h"
 #include "game/RoomScene.h"
 #include "unity/Random.h"
 #include "util/Json.h"
@@ -689,6 +691,9 @@ int main(int argc, char** argv)
     std::map<std::string, int> sceneObjects;            // objects the game had, per category
     long deepMatched = 0, deepTotal = 0;                // every object of every room
     long spriteMatched = 0, spriteTotal = 0;            // those with a sprite
+    // The rooms' doors (RoomDoors): which are there, and where each one's arrival point is
+    // (connected doors' are moved into the other room; Unity's transform rounding aside).
+    int doorsMatch = 0, doorsDiffer = 0;
     std::map<std::string, long> spriteMissing, spriteExtra;
     std::map<std::string, long> deepMissing, deepExtra; // by path pattern
     int sceneRoomsMissing = 0;
@@ -939,8 +944,23 @@ int main(int argc, char** argv)
                     if (r.name == name && r.x == at.x && r.y == at.y) sr = &r;
                 if (!sr) return;
                 std::map<std::string, int> want, got;
+                const std::vector<SceneRow> tree = RoomSceneTree(*room, at);
                 for (const SceneRow& r : sr->rows) want[RowKey(r)]++;
-                for (const SceneRow& r : RoomSceneTree(*room, at)) got[RowKey(r)]++;
+                for (const SceneRow& r : tree) got[RowKey(r)]++;
+                for (const char* door : kDoorPaths) {
+                    const std::string point = std::string(door) + "/PlayerEnterDestinyRoomPoint";
+                    const SceneRow *g = nullptr, *p = nullptr;
+                    for (const SceneRow& r : sr->rows)
+                        if (r.path == point) g = &r;
+                    for (const SceneRow& r : tree)
+                        if (r.path == point) p = &r;
+                    if (!g && !p) continue;
+                    bool same = g && p && std::fabs(g->x - p->x) < 1e-3f && std::fabs(g->y - p->y) < 1e-3f;
+                    (same ? doorsMatch : doorsDiffer)++;
+                    if (!same && notes.size() < 8)
+                        notes.push_back("door " + std::string(door) + " in " + name + ": " + (g ? "game (" + std::to_string(g->x) + ", " + std::to_string(g->y) + ")" : "game none") +
+                                        ", " + (p ? "port (" + std::to_string(p->x) + ", " + std::to_string(p->y) + ")" : "port none"));
+                }
                 // (sprites: objects that draw something, what a renderer needs right)
                 auto drawn = [](const std::string& k) { return k.back() != '|'; };
                 for (const auto& [k, n] : want) {
@@ -995,7 +1015,8 @@ int main(int argc, char** argv)
     std::printf("Wanderer DLC host room (shuffle)       %4d match  %4d differ   (%d pinned to a unique start)\n", wndPinned + wndAmbiguous, wndNoSolution, wndPinned);
     std::printf("Wanderer intermediate room + advisor   %4d match  %4d differ\n", wndRoomOk, wndRoomDiffer);
     std::printf("Holes texture (RasterizeHolesImage, CRC)  %4d match  %4d differ\n", holesMatch, holesDiffer);
-    int sceneDiffers = sceneRoomsMissing + holesDiffer;
+    std::printf("Doors (there; arrival points)          %4d match  %4d differ\n", doorsMatch, doorsDiffer);
+    int sceneDiffers = sceneRoomsMissing + holesDiffer + doorsDiffer;
     for (const auto& [object, tally] : paintChecks) {
         std::printf("Texture %-28s (CRC)  %4d match  %4d differ\n", object.c_str(), tally.first, tally.second);
         sceneDiffers += tally.second;

@@ -5,6 +5,7 @@
 
 #include <vector>
 
+#include "game/RoomDoors.h"
 #include "game/RoomScene.h"
 #include "unity/Physics2D.h"
 
@@ -14,5 +15,9 @@ namespace game {
 // names: "Dungeon/<room>/...").
 int AddRoomColliders(const std::vector<SceneRow>& rows, unity::Vector2 roomPosition, unity::Physics2D& physics,
                      const std::string& pathPrefix = "");
+
+// The doors' state changed (RoomDoors' runtime calls): their colliders and the boundaries in
+// their openings, already added, follow it (enabled; layer and tag).
+void UpdateDoorColliders(const RoomDoors& doors, unity::Physics2D& physics, const std::string& pathPrefix = "");
 
 } // namespace game

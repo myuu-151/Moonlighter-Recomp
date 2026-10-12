@@ -76,8 +76,11 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
             // if this culture's boss is already defeated, noBossEnemyController.InitEnemies()
             // picks the post-boss enemy set (a weighted pick: one roll) and spawns it.
             for (PlacedCell& c : cells)
-                if (bossEnterRoom && c.cave == bossEnterRoom)
+                if (bossEnterRoom && c.cave == bossEnterRoom) {
                     c.room->specialDoors.push_back({0, "EnterBossDoor", std::string("dungeon_") + CultureBundle(culture_)});
+                    c.room->doors.ReplaceSpecialDoor(0, false);
+                    c.room->doors.isEnd = true;
+                }
             engine.BossRoomPlaced();
             bool defeated = engine.BossDefeated();
             if (defeated) (void)Random::Range(0.0f, 1.0f);
@@ -136,9 +139,18 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
         if (corrupted && std::find(floor.enemyBundles.begin(), floor.enemyBundles.end(), info->culture) == floor.enemyBundles.end())
             floor.enemyBundles.push_back(info->culture);
         cell.room = PlaceRoom(info, 20, 11, info->culture, floor, engine);
+        // ConnectRoomsByDirection with the neighbours already placed: east, west, south, north.
+        for (auto [to, side] : {std::pair<CaveRoom*, int>{u->connectedEast, 3}, {u->connectedWest, 2}, {u->connectedSouth, 1}, {u->connectedNorth, 0}}) {
+            if (!to) continue;
+            for (PlacedCell& n : cells)
+                if (n.cave == to) RoomDoors::Connect(cell.room->doors, RoomPosition(x, y), side, n.room->doors, RoomPosition(n.x, n.y));
+        }
         const std::string floorBundle = std::string("dungeon_") + CultureBundle(culture_);
-        if (caveRoom == L.initCaveRoom)
+        if (caveRoom == L.initCaveRoom) {
             cell.room->specialDoors.push_back({L.lastDoorDirectionIndex, level_ == 0 ? "FirstLevelDoor" : "LastLevelDoor", floorBundle});
+            cell.room->doors.isInit = true;
+            cell.room->doors.AddSpecialInitDoor(L.lastDoorDirectionIndex);
+        }
         auto* placed = cs::gcnew<PlacedRoom>();
         placed->x = x;
         placed->y = y;
@@ -156,6 +168,8 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
             nextLevelDoor = pick >= 0 ? (*dirs)[pick] : 0; // GetRandom on an empty list gives default(int)
             fi.lastDoorDirectionIndex = nextLevelDoor;
             cell.room->specialDoors.push_back({nextLevelDoor, "NextLevelDoor", floorBundle});
+            cell.room->doors.isEnd = true;
+            cell.room->doors.ReplaceSpecialDoor(nextLevelDoor, true);
         }
         if (secretHost) {
             DungeonRoomInfo* secretInfo = db_->sendToHomeRoomInfo;

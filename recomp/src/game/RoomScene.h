@@ -50,8 +50,9 @@ struct SceneRow {
     std::vector<ColliderDef> colliders;
 };
 
-// The whole room: the DungeonRoom prefab (as RoomPlaced leaves it) and everything
-// generation put in it, prefabs expanded (PrefabLibrary). Rows in no particular order.
+// The whole room: the DungeonRoom prefab (as RoomPlaced leaves it, its doors as the floor
+// left them: room.doors) and everything generation put in it, prefabs expanded
+// (PrefabLibrary). Rows in no particular order.
 std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPosition = {});
 
 // The suffix of a culture's dungeon and enemy bundles ("golem", ..., "tesla").

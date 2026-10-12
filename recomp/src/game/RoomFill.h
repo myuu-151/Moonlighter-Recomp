@@ -13,6 +13,7 @@
 
 #include "game/RoomDatabase.h"
 #include "game/RoomDetails.h"
+#include "game/RoomDoors.h"
 #include "game/RoomGenerator.h"
 
 namespace game {
@@ -47,6 +48,8 @@ public:
         std::string prefab, bundle;
     };
     std::vector<SpecialDoor> specialDoors;
+    // The doors' state (RoomDoors): set up by PlaceRoom and the floor's connections.
+    RoomDoors doors;
     // AddSecretRoom: the advisor this (host) room shows on one of its hole tiles, and the rope
     // in this (secret) room.
     std::string advisorPrefab, advisorBundle, ropeBundle;

@@ -48,6 +48,7 @@ public:
     Collider2D& Add(const Collider2D& c);
     void Clear() { colliders_.clear(); }
     const std::deque<Collider2D>& Colliders() const { return colliders_; }
+    std::deque<Collider2D>& Colliders() { return colliders_; }
 
     // A box (angle 0) swept from `origin` along `direction` up to `distance`: the nearest hit.
     RaycastHit2D BoxCast(Vector2 origin, Vector2 size, float angle, Vector2 direction, float distance, int layerMask) const;

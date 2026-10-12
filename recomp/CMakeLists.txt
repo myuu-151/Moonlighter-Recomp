@@ -46,6 +46,7 @@ add_library(mlcore STATIC
     src/game/RoomPhysics.cpp
     src/game/HoleColliders.cpp
     src/game/Items.cpp
+    src/game/RoomDoors.cpp
 )
 target_include_directories(mlcore PUBLIC src)
 
@@ -75,6 +76,10 @@ add_executable(floor_sync_test tests/floor_sync_test.cpp)
 target_link_libraries(floor_sync_test PRIVATE mlcore)
 add_test(NAME floor_sync
          COMMAND floor_sync_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/generation_data_counts.json)
+
+add_executable(room_doors_test tests/room_doors_test.cpp)
+target_link_libraries(room_doors_test PRIVATE mlcore)
+add_test(NAME room_doors COMMAND room_doors_test)
 
 add_executable(player_walk_test tests/player_walk_test.cpp)
 target_link_libraries(player_walk_test PRIVATE mlcore)

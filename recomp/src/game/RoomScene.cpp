@@ -2,6 +2,7 @@
 
 #include "game/Constants.h"
 #include "game/Prefabs.h"
+#include "game/RoomDoors.h"
 
 #include <algorithm>
 
@@ -196,8 +197,6 @@ std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPos
         for (const PrefabNode& n : p->nodes)
             if (!n.path.empty()) out.push_back(RowFrom(n, n.path));
 
-    static const char* const kDoors[4] = {"DungeonLevelDoors/LevelDoorUp", "DungeonLevelDoors/LevelDoorDown",
-                                          "DungeonLevelDoors/LevelDoorLeft", "DungeonLevelDoors/LevelDoorRight"};
     auto removeDoor = [&](const std::string& door) {
         out.erase(std::remove_if(out.begin(), out.end(), [&](const SceneRow& r) { return r.path == door || r.path.rfind(door + "/", 0) == 0; }),
                   out.end());
@@ -207,13 +206,13 @@ std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPos
     static const DungeonRoomInfo::Doors kSides[4] = {DungeonRoomInfo::Doors::North, DungeonRoomInfo::Doors::South,
                                                      DungeonRoomInfo::Doors::West, DungeonRoomInfo::Doors::East};
     for (int i = 0; i < 4; i++)
-        if (!info->availableDoors || info->availableDoors->IndexOf(kSides[i]) == -1) removeDoor(kDoors[i]);
+        if (!info->availableDoors || info->availableDoors->IndexOf(kSides[i]) == -1) removeDoor(kDoorPaths[i]);
 
     // Special doors: the door's objects go, the special door takes its place and rotation
     // (ReplaceSpecialDoor / AddSpecialInitDoor).
     for (const RoomFill::SpecialDoor& sd : room.specialDoors) {
         if (sd.index < 0 || sd.index > 3) continue;
-        const std::string door = kDoors[sd.index];
+        const std::string door = kDoorPaths[sd.index];
         SceneRow* d = FindRow(out, door);
         if (!d) continue;
         float x = d->x, y = d->y, rotation = d->rotation;
@@ -221,6 +220,9 @@ std::vector<SceneRow> RoomSceneTree(const RoomFill& room, unity::Vector2 roomPos
         size_t first = out.size();
         if (Instantiate(out, "DungeonLevelDoors", sd.prefab, sd.bundle, x, y)) out[first].rotation = rotation;
     }
+
+    // The doors' state: disabled or connected doors, arrival points, the boundaries' layers.
+    ApplyDoors(out, room.doors, roomPosition);
 
     // AddSecretRoom: the advisor (host room) and the rope (secret room).
     if (!room.advisorPrefab.empty() && room.advisorTile >= 0) {

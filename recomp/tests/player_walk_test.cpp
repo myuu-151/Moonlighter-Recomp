@@ -6,10 +6,13 @@
 // normalized time and the sprite shown.
 //
 // The room's colliders come from the DungeonRoom prefab (prefabs.json) placed where the
-// game's room is, each checked against the game's own (the recording's first lines); doors
-// the floor removed are the ones missing there. ML_WALK_DUMPED=1 uses the game's instead.
+// game's room is, its doors in the state generation left them (game/RoomDoors, rebuilt
+// from the session's generation trace: the floor's rooms, their connections and special
+// doors), each checked against the game's own (the recording's first lines), both ways.
+// ML_WALK_DUMPED=1 uses the game's instead.
 //
-// Usage: player_walk_test [walk.jsonl] [hero_merchant.json]   (ML_WALK_DEBUG=1: every frame)
+// Usage: player_walk_test [walk.jsonl] [hero_merchant.json] [trace.jsonl]
+//        (ML_WALK_DEBUG=1: every frame; the trace defaults to the one next to walk.jsonl)
 
 #include <cmath>
 #include <cstdio>
@@ -22,8 +25,11 @@
 
 #include "game/HeroMerchantController.h"
 #include "game/Prefabs.h"
+#include "game/RoomDatabase.h"
+#include "game/RoomDoors.h"
 #include "game/RoomPhysics.h"
 #include "game/SceneTransform.h"
+#include "game/Session.h"
 #include "unity/Animator.h"
 #include "unity/Physics2D.h"
 #include "util/Json.h"
@@ -51,6 +57,109 @@ float Bits(const Value& v)
 
 Vector2 V2(const Value& v) { return {Bits(v[0]), Bits(v[1])}; }
 
+// One room of the recorded floor and its doors.
+struct FloorRoom {
+    std::string name;
+    Vector2 position;
+    game::RoomDoors doors;
+};
+
+// The floor's doors as generation left them, from the session's generation trace: every
+// room of the floor (its floorEnd snapshot) placed with its design's doors, then in the
+// trace's order the connections ConnectRoomsByDirection made (rooms by name, neighbours by
+// position), the init room's door and the special doors. Returns "" or what's missing.
+std::string FloorDoors(const std::string& tracePath, const Value& walkStart, const std::string& data, std::vector<FloorRoom>& rooms)
+{
+    std::ifstream in(tracePath);
+    if (!in) return "no " + tracePath;
+    const std::string key = "{\"session\":\"" + walkStart["session"].s + "\",\"floor\":" + std::to_string(walkStart["floor"].AsInt()) + ",";
+    std::vector<Value> recs;
+    for (std::string line; std::getline(in, line);)
+        if (line.rfind(key, 0) == 0) recs.push_back(json::Parse(line));
+    const Value* begin = nullptr;
+    const Value* end = nullptr;
+    for (const Value& r : recs) {
+        if (r["ev"].s == "floorBegin") begin = &r;
+        if (r["ev"].s == "floorEnd") end = &r;
+    }
+    if (!begin || !end) return "the trace has no floor " + walkStart["session"].s + " #" + std::to_string(walkStart["floor"].AsInt());
+
+    const auto culture = static_cast<game::Culture>((*begin)["culture"].AsInt());
+    Value roomsJson = json::Parse(ReadFile(data + "/packs/" + game::Session::PackName(culture) + "/rooms.json"));
+    auto* db = cs::gcnew<game::DungeonRoomDatabase>();
+    db->LoadSpecialRooms(roomsJson);
+    db->LoadFromJSON(roomsJson["database"]);
+    auto info = [&](std::string name) -> game::DungeonRoomInfo* {
+        if (name.size() > 7 && name.compare(name.size() - 7, 7, "_Shrine") == 0) name.resize(name.size() - 7);
+        for (game::DungeonRoomInfo* i : {db->initRoomInfo, db->campRoomInfo, db->healingRoomInfo, db->waveRoomInfo, db->sendToHomeRoomInfo,
+                                         db->wandererNestRoomInfo, db->abandonedItemsRoomInfo, db->specialForestRoomInfo})
+            if (i && i->name == name) return i;
+        for (game::DungeonRoomInfo* i : *db->database.rooms)
+            if (i->name == name) return i;
+        return nullptr;
+    };
+    for (const Value& o : (*end)["objects"].arr) {
+        if (o[0].s.find('/') != std::string::npos) continue;
+        game::DungeonRoomInfo* i = info(o[0].s);
+        if (!i) continue; // (the boss room)
+        FloorRoom room;
+        room.name = o[0].s;
+        room.position = {Bits(o[2]), Bits(o[3])};
+        room.doors.Place(*i);
+        rooms.push_back(room);
+    }
+    // A room by name; with a position, the one there.
+    auto find = [&](const std::string& name, const Vector2* at) -> FloorRoom* {
+        for (FloorRoom& r : rooms)
+            if (r.name == name && (!at || (r.position.x == at->x && r.position.y == at->y))) return &r;
+        return nullptr;
+    };
+    std::string special; // the room the next ReplaceSpecialDoor is for
+    Vector2 specialAt;
+    bool specialPlaced = false;
+    for (const Value& r : recs) {
+        if (r["ev"].s != "stage" || r["phase"].s != "pre") continue;
+        const std::string& stage = r["name"].s;
+        const Value* args = r.Find("args");
+        if (!args) continue;
+        if (stage == "DungeonGenerator.ConnectRoomsByDirection") {
+            // The new room and a neighbour already placed: the pair of those names side by side.
+            for (FloorRoom& a : rooms)
+                for (FloorRoom& b : rooms) {
+                    if (a.name != (*args)[0].s || b.name != (*args)[1].s) continue;
+                    float dx = b.position.x - a.position.x, dy = b.position.y - a.position.y;
+                    int side = dx == game::kRoomSizeX && dy == 0.0f    ? 3
+                               : dx == -game::kRoomSizeX && dy == 0.0f ? 2
+                               : dx == 0.0f && dy == game::kRoomSizeY  ? 0
+                               : dx == 0.0f && dy == -game::kRoomSizeY ? 1
+                                                                       : -1;
+                    if (side >= 0) game::RoomDoors::Connect(a.doors, a.position, side, b.doors, b.position);
+                }
+        } else if (stage == "DungeonRoom.AddSpecialInitDoor") {
+            if (FloorRoom* init = find("Init", nullptr)) {
+                init->doors.isInit = true;
+                init->doors.AddSpecialInitDoor(static_cast<int>((*args)[1].AsInt()));
+            }
+        } else if (stage == "DungeonGenerator.AddNextLevelDoor") {
+            special = (*args)[1].s;
+            specialPlaced = false;
+        } else if (stage == "DungeonGenerator.AddBossRoom") { // (enter room, ..., the boss room's cell)
+            special = (*args)[0].s;
+            specialAt = game::RoomPosition(static_cast<int>((*args)[3].AsInt()), static_cast<int>((*args)[4].AsInt()) - 1);
+            specialPlaced = true;
+        } else if (stage == "DungeonRoom.ReplaceSpecialDoor") {
+            int side = -1;
+            for (int i = 0; i < 4; i++)
+                if ("DungeonLevelDoors/" + (*args)[1].s == game::kDoorPaths[i]) side = i;
+            if (FloorRoom* room = find(special, specialPlaced ? &specialAt : nullptr)) {
+                room->doors.isEnd = true;
+                room->doors.ReplaceSpecialDoor(side, (*args)[0].s.rfind("NextLevelDoor", 0) == 0);
+            }
+        }
+    }
+    return "";
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -58,6 +167,7 @@ int main(int argc, char** argv)
     std::string walkPath = argc > 1 ? argv[1] : "data/oracle/walk.jsonl";
     std::string data = std::getenv("ML_DATA") ? std::getenv("ML_DATA") : "data/extracted";
     std::string animPath = argc > 2 ? argv[2] : data + "/animators/hero_merchant.json";
+    std::string tracePath = argc > 3 ? argv[3] : walkPath.substr(0, walkPath.find_last_of("/\\") + 1) + "trace.jsonl";
     bool debug = std::getenv("ML_WALK_DEBUG") != nullptr;
 
     std::ifstream in(walkPath);
@@ -85,6 +195,11 @@ int main(int argc, char** argv)
             c.scale = V2(v["scale"]);
             c.offset = V2(v["offset"]);
             c.size = V2(v["size"]);
+            // Collider2D.bounds: the box through its object's rotation (the side doors are turned);
+            // a disabled collider's are empty, at its object.
+            c.hasWorldBox = c.enabled;
+            c.worldMin = V2(v["min"]);
+            c.worldMax = V2(v["max"]);
             if (c.path.rfind("HeroMerchant", 0) == 0) continue; // his own
             dumped.Add(c);
         }
@@ -137,33 +252,48 @@ int main(int argc, char** argv)
         std::printf("the recording has no room boundaries\n");
         return 1;
     }
-    // Objects with colliders the game's room no longer has (doors the floor removed): gone.
-    for (game::SceneRow& r : rows) {
-        if (r.colliders.empty()) continue;
-        bool there = false;
-        for (const unity::Collider2D& c : dumped.Colliders()) there |= c.path == prefix + r.path;
-        if (!there) r.active = false;
+    // Its doors as the floor left them.
+    std::vector<FloorRoom> floorRooms;
+    std::string missing = FloorDoors(tracePath, start, data, floorRooms);
+    if (!missing.empty()) {
+        std::printf("%s: can't tell the room's doors\n", missing.c_str());
+        return 1;
     }
+    const FloorRoom* room = nullptr;
+    for (const FloorRoom& r : floorRooms)
+        if (r.position.x == roomPos.x && r.position.y == roomPos.y && prefix == "Dungeon/" + r.name + "/") room = &r;
+    if (!room) {
+        std::printf("the trace's floor has no room %s at %g, %g\n", prefix.c_str(), roomPos.x, roomPos.y);
+        return 1;
+    }
+    game::ApplyDoors(rows, room->doors, roomPos);
     int built = game::AddRoomColliders(rows, roomPos, physics, prefix);
-    // Doors and the boundaries in their openings change at runtime (DungeonRoom opens and
-    // closes them with the room's enemies; the doors' Animators size their colliders): not
-    // ported yet, so counted apart.
-    int same = 0, differ = 0, doorState = 0;
+    int same = 0, differ = 0, doors = 0;
     for (const unity::Collider2D& c : physics.Colliders()) {
-        if (c.path.find("/DungeonLevelDoors/") != std::string::npos || c.path.find("/DoorBoundary") != std::string::npos) {
-            doorState++;
-            continue;
-        }
+        doors += c.path.find("/DungeonLevelDoors/") != std::string::npos || c.path.find("/DoorBoundary") != std::string::npos;
         const unity::Collider2D* g = nullptr;
         for (const unity::Collider2D& d : dumped.Colliders())
             if (d.path == c.path) g = &d;
-        bool ok = g && g->layer == c.layer && g->tag == c.tag && g->enabled == c.enabled && g->trigger == c.trigger &&
-                  g->Min().x == c.Min().x && g->Min().y == c.Min().y && g->Max().x == c.Max().x && g->Max().y == c.Max().y;
+        // (a disabled one: where its object is, its offset and size)
+        bool box = g && (g->enabled ? g->Min().x == c.Min().x && g->Min().y == c.Min().y && g->Max().x == c.Max().x && g->Max().y == c.Max().y
+                                    : g->position.x == c.position.x && g->position.y == c.position.y && g->offset.x == c.offset.x &&
+                                          g->offset.y == c.offset.y && g->size.x == c.size.x && g->size.y == c.size.y);
+        bool ok = g && g->layer == c.layer && g->tag == c.tag && g->enabled == c.enabled && g->trigger == c.trigger && box;
         if (ok) same++;
         else {
             differ++;
             std::printf("collider %s: port [%g %g]-[%g %g] layer %d %s; game %s\n", c.path.c_str(), c.Min().x, c.Min().y, c.Max().x, c.Max().y,
                         c.layer, c.tag.c_str(), g ? (std::to_string(g->Min().x) + " " + std::to_string(g->Min().y) + " - " + std::to_string(g->Max().x) + " " + std::to_string(g->Max().y) + " layer " + std::to_string(g->layer) + " " + g->tag).c_str() : "none");
+        }
+    }
+    // The game's doors and boundaries the port doesn't have.
+    for (const unity::Collider2D& d : dumped.Colliders()) {
+        if (d.path.rfind(prefix + "DungeonLevelDoors/", 0) != 0 && d.path.rfind(prefix + "DungeonLevelBoundaries/", 0) != 0) continue;
+        bool there = false;
+        for (const unity::Collider2D& c : physics.Colliders()) there |= c.path == d.path;
+        if (!there) {
+            differ++;
+            std::printf("collider %s: the game has it, the port doesn't\n", d.path.c_str());
         }
     }
     if (std::getenv("ML_WALK_DUMPED")) {
@@ -255,8 +385,8 @@ int main(int argc, char** argv)
                         hero.heroDirection, sprite ? sprite->c_str() : "-");
         }
     }
-    std::printf("\nroom colliders from the prefab %5d match %5d differ   (room at %g, %g; %d door colliders: door state not ported)\n",
-                same, differ, roomPos.x, roomPos.y, doorState);
+    std::printf("\nroom colliders from the prefab %5d match %5d differ   (room %s at %g, %g; %d of doors and their openings)\n", same,
+                differ, room->name.c_str(), roomPos.x, roomPos.y, doors);
     std::printf("frames replayed                %5d\n", checked);
     std::printf("position (bit-exact)           %5d match %5d differ\n", checked - posBad, posBad);
     std::printf("velocity                       %5d match %5d differ\n", checked - velBad, velBad);

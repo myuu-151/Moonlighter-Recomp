@@ -42,4 +42,16 @@ int AddRoomColliders(const std::vector<SceneRow>& rows, unity::Vector2 roomPosit
     return added;
 }
 
+void UpdateDoorColliders(const RoomDoors& doors, unity::Physics2D& physics, const std::string& pathPrefix)
+{
+    for (unity::Collider2D& c : physics.Colliders())
+        for (int i = 0; i < 4; i++) {
+            if (c.path == pathPrefix + kDoorPaths[i]) c.enabled = doors.doors[i].colliderEnabled;
+            if (c.path == pathPrefix + kDoorBoundaryPaths[i]) {
+                c.layer = doors.boundaryLayer[i];
+                c.tag = doors.boundaryTag[i];
+            }
+        }
+}
+
 } // namespace game
