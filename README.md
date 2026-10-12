@@ -4,11 +4,8 @@ Native C++ reimplementation of Moonlighter (Steam, v1.15.8, Unity 2019.2.7f2 / M
 aimed at a GameCube build on Octave-libogc. Game logic is translated from the decompiled
 C# and checked against the real game by an injected oracle, rather than by eye.
 
-Two repositories, like Castle Crashers (Castle-Crashers-Recomp and Castle-Crashers-GC):
-this one, the native reimplementation (Moonlighter-Recomp), and **MLGC**, the GameCube
-port, which compiles this one's sources and builds the disc with CCGC's builder
-(`Build MLGC.bat`). Neither stores anything from the game: the data is made from your
-own Steam copy.
+It also builds for the GameCube:
+[Moonlighter GC](https://github.com/myuu-151/Moonlighter-GC) compiles this code for the console.
 
 ## Layout
 
