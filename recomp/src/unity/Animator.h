@@ -189,7 +189,9 @@ private:
     float Length(int state) const;
     bool Conditions(const AnimatorTransition& t) const;
     const AnimatorTransition* Find(const std::vector<AnimatorTransition>& list, int from, float prevNorm, float norm) const;
-    void Take(const AnimatorTransition& t, float overshoot);
+    // `overshoot`: the destination's time carried over (seconds at its speed); `elapsed`: the
+    // seconds of the frame past an exit time, already into the crossfade.
+    void Take(const AnimatorTransition& t, float overshoot, float elapsed = 0.0f);
     // Fires the state's clip events in (from, to] (or (from, to) without `includeEnd`).
     void Advance(int state, float from, float to, bool includeEnd);
     void FireAt(int state, float time); // the events at exactly `time`

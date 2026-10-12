@@ -75,8 +75,16 @@ public:
     // origin (its edges included, b2PolygonShape::TestPoint) is hit at fraction 0: point the
     // origin, normal -direction (Unity's documented normal there).
     RaycastHit2D Raycast(Vector2 origin, Vector2 direction, float distance, int layerMask) const;
-    // A collider overlapping the box (the one overlapping it most), or nullptr.
+    // A collider overlapping the box, or nullptr. When several do, Unity returns the first its
+    // query meets: Box2D's broad-phase tree order (sorted by z, all 0 here), which depends on
+    // every proxy the world has made and moved (his, his familiar's, the critters') and isn't
+    // modelled: the one overlapping the box the most stands in for it (OverlapBoxAll's first).
+    // walk.jsonl shows the order isn't geometric: at a corner the game takes one boundary with
+    // him at x 2152.58 and 2150.90 (the other overlapping more at 2150.90) and the other from
+    // 2149.26 on, standing still.
     const Collider2D* OverlapBox(Vector2 point, Vector2 size, float angle, int layerMask) const;
+    // Every collider overlapping the box, OverlapBox's first.
+    std::vector<const Collider2D*> OverlapBoxAll(Vector2 point, Vector2 size, float angle, int layerMask) const;
     // Whether two colliders touch (Collider2D.IsTouching: within the skins).
     static bool IsTouching(const Collider2D& a, const Collider2D& b);
 

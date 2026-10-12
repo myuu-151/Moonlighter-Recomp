@@ -288,8 +288,12 @@ void HeroMerchantController::Update(float deltaTime, const Input& input)
     restoreAtFrameEnd_.clear();
     // The weapon's Animator (a child's) runs before his: what his state callbacks set on it
     // takes effect the next frame.
-    if (weapon) weapon->Update(input.unscaledDeltaTime < 0.0f ? deltaTime : input.unscaledDeltaTime);
-    animator.Update(deltaTime);
+    // His Animator runs on unscaled time too (it plays his death with the game paused): a frame
+    // past Time.maximumDeltaTime (1/3 s) advances it by the whole of it (walk_attack.jsonl's
+    // frame 253: 0.528 s).
+    const float unscaled = input.unscaledDeltaTime < 0.0f ? deltaTime : input.unscaledDeltaTime;
+    if (weapon) weapon->Update(unscaled);
+    animator.Update(unscaled);
 }
 
 void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime)
@@ -304,7 +308,30 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
         }
         const float xo = s_.merchantColliderXOffset, yo = s_.merchantColliderYOffset, tile = s_.tileSize;
         const Vector2 size = s_.colliderSize;
-        auto overlap = [&](Vector2 at, Vector2 box) { return physics_.OverlapBox(position + at, box, 0.0f, s_.slideLayers); };
+        // The probes' Physics2D.OverlapBox: every collider each meets, its return value first
+        // (see slideTie).
+        using Hits = std::vector<const Collider2D*>;
+        auto overlap = [&](Vector2 at, Vector2 box) {
+            Hits all = physics_.OverlapBoxAll(position + at, box, 0.0f, s_.slideLayers);
+            if (all.empty()) all.push_back(nullptr);
+            return all;
+        };
+        // The nudge from four probes: OverlapBox's own picks, unless a tie the hook settles.
+        auto slide = [&](int axis, const Hits& a, const Hits& b, const Hits& c, const Hits& d, auto&& nudge) {
+            const float first = nudge(a[0], b[0], c[0], d[0]);
+            if (!slideTie || (a.size() == 1 && b.size() == 1 && c.size() == 1 && d.size() == 1)) return first;
+            std::vector<float> outcomes{first};
+            for (const Collider2D* ca : a)
+                for (const Collider2D* cb : b)
+                    for (const Collider2D* cc : c)
+                        for (const Collider2D* cd : d) {
+                            const float v = nudge(ca, cb, cc, cd);
+                            if (std::find(outcomes.begin(), outcomes.end(), v) == outcomes.end()) outcomes.push_back(v);
+                        }
+            if (outcomes.size() == 1) return first;
+            const size_t pick = slideTie(axis, outcomes);
+            return pick < outcomes.size() ? outcomes[pick] : first;
+        };
         // Of two separate colliders far apart, keep the nearer.
         auto nearer = [&](const Collider2D*& a, const Collider2D*& b, bool touchCheck) {
             if (a && b && a != b && (!touchCheck || !unity::Physics2D::IsTouching(*b, *a)) && unity::Distance(a->position, b->position) >= tile * 2.5f) {
@@ -318,14 +345,18 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
             unity::RaycastHit2D hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{velX, 0.0f}, 4.0f, s_.collisionLayers);
             if (hit && Sign((hit.point - position).x) == Sign(velX)) {
                 if (velY == 0.0f && std::fabs(velX) > 0.5f && hit.collider->tag != "DungeonLevelDoor") {
-                    const Collider2D* c1 = overlap(Vector2{xo + velX * 14.0f, yo + (0.0f - tile) / 2.0f}, Vector2{size.x, size.y / 2.0f});
-                    const Collider2D* c2 = overlap(Vector2{xo + velX * 14.0f, yo + tile / 2.0f}, Vector2{size.x, size.y / 2.0f});
-                    nearer(c1, c2, true);
-                    const Collider2D* c3 = overlap(Vector2{xo + (0.0f - tile) / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
-                    const Collider2D* c4 = overlap(Vector2{xo + tile / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
-                    nearer(c3, c4, true);
-                    if (!c1 && (!c3 || !c4)) velY += -0.5f;
-                    if (!c2 && (!c3 || !c4)) velY += 0.5f;
+                    const Hits h1 = overlap(Vector2{xo + velX * 14.0f, yo + (0.0f - tile) / 2.0f}, Vector2{size.x, size.y / 2.0f});
+                    const Hits h2 = overlap(Vector2{xo + velX * 14.0f, yo + tile / 2.0f}, Vector2{size.x, size.y / 2.0f});
+                    const Hits h3 = overlap(Vector2{xo + (0.0f - tile) / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
+                    const Hits h4 = overlap(Vector2{xo + tile / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
+                    velY = slide(1, h1, h2, h3, h4, [&](const Collider2D* c1, const Collider2D* c2, const Collider2D* c3, const Collider2D* c4) {
+                        nearer(c1, c2, true);
+                        nearer(c3, c4, true);
+                        float v = velY;
+                        if (!c1 && (!c3 || !c4)) v += -0.5f;
+                        if (!c2 && (!c3 || !c4)) v += 0.5f;
+                        return v;
+                    });
                 }
                 velX = 0.0f;
                 if (hit.collider->tag == "Hole" || hit.collider->tag == "NextLevelPortal") hole = true;
@@ -334,14 +365,18 @@ void HeroMerchantController::UpdateMoveAnimations(Vector2 stick, float deltaTime
             hit = physics_.BoxCast(s_.colliderOffset + position, size, 0.0f, Vector2{0.0f, velY}, 4.0f, s_.collisionLayers);
             if (hit && Sign((hit.point - position).y) == Sign(velY)) {
                 if (velX == 0.0f && std::fabs(velY) > 0.5f && hit.collider->tag != "DungeonLevelDoor") {
-                    const Collider2D* c5 = overlap(Vector2{xo + (0.0f - tile) / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
-                    const Collider2D* c6 = overlap(Vector2{xo + tile / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
-                    nearer(c5, c6, false);
-                    const Collider2D* c7 = overlap(Vector2{xo + velX * 14.0f, yo + (0.0f - tile) / 2.0f}, Vector2{size.x, size.y / 2.0f});
-                    const Collider2D* c8 = overlap(Vector2{xo + velX * 14.0f, yo + tile / 2.0f}, Vector2{size.x, size.y / 2.0f});
-                    nearer(c7, c8, false);
-                    if (!c6 && (!c7 || !c8)) velX += 0.5f;
-                    if (!c5 && (!c7 || !c8)) velX += -0.5f;
+                    const Hits h5 = overlap(Vector2{xo + (0.0f - tile) / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
+                    const Hits h6 = overlap(Vector2{xo + tile / 2.0f, yo + velY * 14.0f}, Vector2{size.x / 2.0f, size.y});
+                    const Hits h7 = overlap(Vector2{xo + velX * 14.0f, yo + (0.0f - tile) / 2.0f}, Vector2{size.x, size.y / 2.0f});
+                    const Hits h8 = overlap(Vector2{xo + velX * 14.0f, yo + tile / 2.0f}, Vector2{size.x, size.y / 2.0f});
+                    velX = slide(0, h5, h6, h7, h8, [&](const Collider2D* c5, const Collider2D* c6, const Collider2D* c7, const Collider2D* c8) {
+                        nearer(c5, c6, false);
+                        nearer(c7, c8, false);
+                        float v = velX;
+                        if (!c6 && (!c7 || !c8)) v += 0.5f;
+                        if (!c5 && (!c7 || !c8)) v += -0.5f;
+                        return v;
+                    });
                 }
                 velY = 0.0f;
                 if (hit.collider->tag == "Hole" || hit.collider->tag == "NextLevelPortal") hole = true;
@@ -698,6 +733,7 @@ void HeroMerchantController::SetDefaultMode()
 void HeroMerchantController::DealDamageToPlayer(float attackStrength, const char* damageSource, DamageType type)
 {
     (void)damageSource;
+    if (townSceneLoaded) attackStrength = 0.0f;
     if (stats.isDead) return;
     const float totalDamage = type != DamageType::Self ? CalcHitDamage(attackStrength, stats.defense.value) : attackStrength;
     const float num2 = stats.currentHealth.value + stats.absorption.value;
@@ -710,7 +746,7 @@ void HeroMerchantController::DealDamageToPlayer(float attackStrength, const char
         SetIntangibleMode();
     };
     // A shield takes the whole hit; absorption takes what it can; the health the rest.
-    if (stats.shield.value > 0.0f) {
+    if (stats.shield.value > 0.0f && !townSceneLoaded) {
         stats.shield.Set(stats.shield.value - 1.0f);
         num3 = 0.0f;
         hit();

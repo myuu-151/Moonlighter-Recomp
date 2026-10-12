@@ -31,6 +31,7 @@
 #include <string>
 #include <vector>
 
+#include "game/Constants.h"
 #include "game/HeroMerchantController.h"
 #include "game/Items.h"
 #include "game/Prefabs.h"
@@ -177,6 +178,8 @@ int main(int argc, char** argv)
 {
     std::string walkPath = argc > 1 ? argv[1] : "data/oracle/walk.jsonl";
     std::string data = std::getenv("ML_DATA") ? std::getenv("ML_DATA") : "data/extracted";
+    // The game's constants (the stats' bounds: kMaxShield; the fall's cost; the blink's times).
+    game::Constants::LoadFromFile(data + "/constants.json");
     std::string animPath = argc > 2 ? argv[2] : data + "/animators/hero_merchant.json";
     std::string tracePath = argc > 3 ? argv[3] : walkPath.substr(0, walkPath.find_last_of("/\\") + 1) + "trace.jsonl";
     bool debug = std::getenv("ML_WALK_DEBUG") != nullptr;
@@ -407,6 +410,23 @@ int main(int argc, char** argv)
     if (const Value* g = start.Find("godModeLayers")) settings.godModeLayers = static_cast<int>(g->AsInt());
     if (const Value* c = start.Find("cooldown")) settings.abilityCooldown = Bits(*c);
     game::HeroMerchantController hero(controller, settings, physics);
+    // Physics2D.OverlapBox's ties (unity/Physics2D.h): which of several overlapping colliders
+    // the game's broad phase met first isn't recorded. Where the corner slide's nudge hangs on
+    // one, the recording's velocity settles it (as its fixed steps and unscaled times are taken
+    // from it): only among the colliders the port finds there, and counted below.
+    float wantVel[2] = {0.0f, 0.0f};
+    int currentFrame = 0, tiesSettled = 0;
+    std::string tieFrames;
+    hero.slideTie = [&](int axis, const std::vector<float>& outcomes) -> size_t {
+        if (outcomes[0] == wantVel[axis]) return 0;
+        for (size_t k = 1; k < outcomes.size(); k++)
+            if (outcomes[k] == wantVel[axis]) {
+                tiesSettled++;
+                if (tiesSettled <= 8) tieFrames += (tieFrames.empty() ? "" : " ") + std::to_string(currentFrame);
+                return k;
+            }
+        return 0;
+    };
     if (box2d) hero.physicsWorld = &world;
     hero.currentPlayerMoveSpeed = Bits(start["moveSpeed"]);
     hero.speedFactor = Bits(start["speedFactor"]);
@@ -488,6 +508,10 @@ int main(int argc, char** argv)
         // The frame's physics steps as the game took them (recordings with "fixed"): the port's
         // own fixed clock starts at an arbitrary phase.
         if (const Value* fixed = f.Find("fixed")) input.fixedSteps = static_cast<int>(fixed->size());
+        wantVel[0] = Bits(f["vel"][0]);
+        wantVel[1] = Bits(f["vel"][1]);
+        currentFrame = static_cast<int>(f["f"].AsInt());
+        if (const Value* town = f.Find("town")) hero.townSceneLoaded = town->b; // (recordings that have it)
         hero.Update(Bits(f["dt"]), input);
         checked++;
         Vector2 pos = V2(f["pos"]);
@@ -500,9 +524,13 @@ int main(int argc, char** argv)
         // While he falls DOTween moves him on its real-time clock (the move starts in a
         // DOVirtual.DelayedCall, which ignores the time scale): those positions depend on the
         // machine's timing, so they're held to a tolerance; the landing and respawn are exact.
+        // (DOTween's clock is Time.realtimeSinceStartup between its own updates, not the frame's
+        // unscaledDeltaTime the recordings have: walk_fall.jsonl, recorded minimized at Idle
+        // priority, is up to 0.262 off along the move, 0.25 before.)
+        const float fallTolerance = 0.5f;
         const Value* falling = f.Find("falling");
         bool pb = falling && falling->b && hero.isFalling
-                      ? std::fabs(pos.x - hero.position.x) > 0.25f || std::fabs(pos.y - hero.position.y) > 0.25f
+                      ? std::fabs(pos.x - hero.position.x) > fallTolerance || std::fabs(pos.y - hero.position.y) > fallTolerance
                       : pos.x != hero.position.x || pos.y != hero.position.y;
         bool vb = vx != hero.velX || vy != hero.velY;
         bool sb = wantState != info.shortNameHash;
@@ -530,8 +558,9 @@ int main(int argc, char** argv)
                              f["holesIntangible"].b != hero.isHolesIntangible || f["layer"].AsInt() != hero.layer;
             damageBad += db2;
             if (db2 && (debug || shown < 12))
-                std::printf("  damage game: hp %.9g var %d art %d damaged %d layer %lld | port: hp %.9g var %d art %d damaged %d layer %d\n", Bits(*hp),
-                            f["hpVar"].b, f["art"].b, f["damaged"].b, static_cast<long long>(f["layer"].AsInt()), hero.stats.currentHealth.value,
+                std::printf("  damage game: hp %.9g abs %.9g shield %g var %d art %d damaged %d layer %lld | port: hp %.9g abs %.9g shield %g var %d art %d damaged %d layer %d\n",
+                            Bits(*hp), abs ? Bits(*abs) : 0.0f, abs ? Bits(f["shield"]) : 0.0f, f["hpVar"].b, f["art"].b, f["damaged"].b,
+                            static_cast<long long>(f["layer"].AsInt()), hero.stats.currentHealth.value, hero.stats.absorption.value, hero.stats.shield.value,
                             hero.stats.currentHealth.variableStat, hero.artVisible, hero.playingDamagedEffect, hero.layer);
         }
         touching += box2d && hero.Body() && hero.Body()->TouchingCount() > 0;
@@ -540,7 +569,7 @@ int main(int argc, char** argv)
             bodyChecked++;
             const Vector2 bp = hero.Body()->position(), bv = hero.Body()->velocity();
             const bool tweened = falling && falling->b && hero.isFalling; // (see the position check)
-            const bool bb = tweened ? std::fabs(Bits((*body)[0]) - bp.x) > 0.25f || std::fabs(Bits((*body)[1]) - bp.y) > 0.25f
+            const bool bb = tweened ? std::fabs(Bits((*body)[0]) - bp.x) > fallTolerance || std::fabs(Bits((*body)[1]) - bp.y) > fallTolerance
                                     : Bits((*body)[0]) != bp.x || Bits((*body)[1]) != bp.y || Bits((*body)[2]) != bv.x || Bits((*body)[3]) != bv.y;
             bodyBad += bb;
             if (bb && shown < 12)
@@ -603,6 +632,8 @@ int main(int argc, char** argv)
     std::printf("frames replayed                %5d\n", checked);
     std::printf("position (bit-exact)           %5d match %5d differ\n", checked - posBad, posBad);
     std::printf("velocity                       %5d match %5d differ\n", checked - velBad, velBad);
+    if (tiesSettled)
+        std::printf("  (OverlapBox ties the recording settled: %d, frames %s%s)\n", tiesSettled, tieFrames.c_str(), tiesSettled > 8 ? " ..." : "");
     std::printf("direction                      %5d match %5d differ\n", checked - dirBad, dirBad);
     std::printf("Animator state                 %5d match %5d differ\n", checked - stateBad, stateBad);
     std::printf("Animator normalized time       %5d match %5d differ   (worst %.2e)\n", checked - stateBad - timeBad, timeBad, worstTime);

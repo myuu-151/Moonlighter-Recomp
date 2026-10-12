@@ -1,5 +1,6 @@
 #include "unity/Physics2D.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -191,14 +192,12 @@ RaycastHit2D Physics2D::Raycast(Vector2 origin, Vector2 direction, float distanc
     return best;
 }
 
-const Collider2D* Physics2D::OverlapBox(Vector2 point, Vector2 size, float, int layerMask) const
+std::vector<const Collider2D*> Physics2D::OverlapBoxAll(Vector2 point, Vector2 size, float, int layerMask) const
 {
     Vector2 mn{point.x - std::fabs(size.x) / 2.0f, point.y - std::fabs(size.y) / 2.0f};
     Vector2 mx{point.x + std::fabs(size.x) / 2.0f, point.y + std::fabs(size.y) / 2.0f};
-    // Unity returns one of the overlapping colliders, whichever Box2D's tree visits first. The
-    // one overlapping the box the most is what the game's walks show (player_walk_test).
-    const Collider2D* best = nullptr;
-    float bestArea = -1.0f;
+    // (Unity's order is its broad phase's, see the header: the most overlap first stands in.)
+    std::vector<std::pair<float, const Collider2D*>> hits;
     for (const Collider2D& c : colliders_) {
         if (!InMask(c, layerMask)) continue;
         bool touches = false;
@@ -210,12 +209,19 @@ const Collider2D* Physics2D::OverlapBox(Vector2 point, Vector2 size, float, int 
             touches = true;
             area += OverlapArea(mn, mx, cmn, cmx);
         }
-        if (touches && area > bestArea) {
-            bestArea = area;
-            best = &c;
-        }
+        if (touches) hits.emplace_back(area, &c);
     }
-    return best;
+    std::stable_sort(hits.begin(), hits.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::vector<const Collider2D*> out;
+    out.reserve(hits.size());
+    for (const auto& h : hits) out.push_back(h.second);
+    return out;
+}
+
+const Collider2D* Physics2D::OverlapBox(Vector2 point, Vector2 size, float angle, int layerMask) const
+{
+    std::vector<const Collider2D*> all = OverlapBoxAll(point, size, angle, layerMask);
+    return all.empty() ? nullptr : all.front();
 }
 
 bool Physics2D::IsTouching(const Collider2D& a, const Collider2D& b)
