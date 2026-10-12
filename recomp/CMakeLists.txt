@@ -157,6 +157,10 @@ target_link_libraries(slime_test PRIVATE mlcore)
 add_test(NAME slime
          COMMAND slime_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# A second room (Golem_Enemies_15_Bis): the targeting's Invoke falling due in a fixed step.
+add_test(NAME slime_bis
+         COMMAND slime_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime_bis.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The Golem enemies past the BabySlime against the game (data/oracle/enemy_<prefab>.jsonl,
 # `-oracle-enemy=<prefab>`; skipped if there's none), and their self-checks (the screen shake's

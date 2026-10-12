@@ -1,9 +1,9 @@
 {
  "lines": 160682,
- "ported": 10802,
- "verified": 10321,
- "percent": 6.72,
- "verifiedPercent": 6.42,
+ "ported": 10839,
+ "verified": 10466,
+ "percent": 6.75,
+ "verifiedPercent": 6.51,
  "classes": 1173,
  "classesDone": 34,
  "categories": {
@@ -37,8 +37,8 @@
   },
   "Enemies": {
    "lines": 27342,
-   "ported": 2491.0,
-   "verified": 2383.0,
+   "ported": 2527.9,
+   "verified": 2527.9,
    "classes": 178,
    "done": 8
   },
