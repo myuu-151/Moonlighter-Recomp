@@ -589,16 +589,16 @@ void EnemyBehaviour::OnDeath()
     if (unity::Tweens* tw = enemy.scene.tweens) {
         Enemy* e = &enemy;
         const unity::Ease ease = unity::Ease::OutQuad;
-        tw->Move([e] { return Vector2{e->flashAmount, 0.0f}; }, [e](Vector2 v) { e->flashAmount = v.x; }, Vector2{1.0f, 0.0f}, num, ease, 0.0f,
+        tw->To([e] { return Vector2{e->flashAmount, 0.0f}; }, [e](Vector2 v) { e->flashAmount = v.x; }, Vector2{1.0f, 0.0f}, num, ease, 0.0f,
                  true);
         // material.DOColor(0.6 grey): the colour's components as two pairs (the same per-component formula).
-        tw->Move([e] { return Vector2{e->color[0], e->color[1]}; },
+        tw->To([e] { return Vector2{e->color[0], e->color[1]}; },
                  [e](Vector2 v) {
                      e->color[0] = v.x;
                      e->color[1] = v.y;
                  },
                  Vector2{0.6f, 0.6f}, num, ease, 0.0f, true);
-        tw->Move([e] { return Vector2{e->color[2], e->color[3]}; },
+        tw->To([e] { return Vector2{e->color[2], e->color[3]}; },
                  [e](Vector2 v) {
                      e->color[2] = v.x;
                      e->color[3] = v.y;

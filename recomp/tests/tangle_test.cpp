@@ -646,15 +646,37 @@ int ReplayRecording(const std::string& file, const Data& data)
             if (s.id == id) return &s;
         return nullptr;
     };
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull()) {
-        calls.now = static_cast<double>(Bits(*et));
-        for (TangleObj& s : tangles)
-            if (!s.enemy->enemyBehaviour->targetPlayer) s.enemy->enemyBehaviour->StartTargetingPlayerAfterTime(Bits(start["targetDelay"]));
-    }
     unity::Random::SetState(State(f0["rng"]));
 
     const float fixedDt = Bits(start["fixedDeltaTime"]);
     double fixedClock = 0.0;
+    // The targeting a second after EnableEnemies, if it hasn't come yet. EnableEnemies is an
+    // Invoke itself: if Time.time then was a fixed step's (it ran in the pass after that step),
+    // the targeting's Invoke was made on the fixed clock, which the replay's runs on from the
+    // first recorded step: that step's, fixedDeltaTime (a float, 0.0099999998) back per step.
+    // A second later is then two hundredths of a microsecond past the hundredth step after it,
+    // and the targeting starts in the frame's pass, not in that step (slime.jsonl); one made in a
+    // frame can start in a fixed step (tangle.jsonl, slime_bis.jsonl).
+    if (const Value* et = start.Find("enableTime"); et && !et->IsNull()) {
+        const double enabled = static_cast<double>(Bits(*et));
+        calls.now = enabled;
+        if (!f0["steps"].arr.empty()) {
+            const double first = static_cast<double>(Bits(f0["steps"][0]["ft"]));
+            for (int k = 1; k < 1000; k++) {
+                const double at = first - static_cast<double>(k) * static_cast<double>(fixedDt);
+                if (at < enabled - 0.005) break;
+                if (static_cast<float>(at) == Bits(*et)) {
+                    calls.inFixedStep = true;
+                    calls.fixedNow = at;
+                    std::printf("EnableEnemies ran in a fixed step's pass (%d steps before the first recorded)\n", k);
+                    break;
+                }
+            }
+        }
+        for (TangleObj& s : tangles)
+            if (!s.enemy->enemyBehaviour->targetPlayer) s.enemy->enemyBehaviour->StartTargetingPlayerAfterTime(Bits(start["targetDelay"]));
+        calls.inFixedStep = false;
+    }
     auto setHero = [&](const Value& hs) {
         world.SetLayer(heroBody, static_cast<int>(hs[6].AsInt()));
         world.SyncTransform(heroBody, {Bits(hs[0]), Bits(hs[1])});
@@ -841,9 +863,6 @@ int ReplayRecording(const std::string& file, const Data& data)
             }
             t.Add("Tangle LateUpdate: agent velocity after", Same(e->navAgent.velocity, V2(l["v1"])),
                   at + ": port " + Str(e->navAgent.velocity) + " game " + Str(V2(l["v1"])));
-            // On from the game's (a raycast's difference would otherwise carry on).
-            e->navAgent.velocity = V2(l["v1"]);
-            b.index = Bits(l["i1"]);
         }
         std::vector<Vector2> gameDead;
         for (const Value& ev : events.arr)

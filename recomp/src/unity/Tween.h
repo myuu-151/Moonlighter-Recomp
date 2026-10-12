@@ -4,7 +4,8 @@
 // spin ending a sequence). As DOTween runs them: each tween's time advances by the frame's
 // deltaTime, or its unscaled deltaTime for one that ignores the time scale (DOVirtual.DelayedCall
 // does by default), a delay is used up first and the rest of that frame carries into the tween,
-// the start value is read on its first update, and the eases are EaseManager's float formulas.
+// the start value is read on its first update, and the eases are EaseManager's formulas as the
+// game's Mono evaluates them (in doubles, rounded where stored).
 
 #include <functional>
 #include <vector>
@@ -41,6 +42,12 @@ public:
     // project's default for tweens that don't say (see EnemyBehaviour.OnDeath's).
     void Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease = Ease::OutQuad,
               float delay = 0.0f, bool ignoreTimeScale = false);
+    // DOTween.To of floats, material.DOFloat, material.DOColor (the colour as two pairs): Move,
+    // but each component is FloatPlugin's `startValue + changeValue * easeVal` (ColorPlugin's
+    // `startValue.r += changeValue.r * easeVal`): one expression on the game's Mono, in doubles,
+    // rounded once (DOMove's Vector2/Vector3 operators round the product first).
+    void To(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
+            bool ignoreTimeScale);
     // A tween we only need the end of (OnComplete after `delay` + `duration`).
     int Timer(float duration, float delay, std::function<void()> onComplete);
 
@@ -55,6 +62,7 @@ private:
         int id = 0;
         float delay = 0.0f, elapsedDelay = 0.0f, duration = 0.0f, position = 0.0f;
         bool delayComplete = false, started = false, unscaled = false;
+        bool fused = false; // To's: each component start + change * ease rounded once
         Ease ease = Ease::OutQuad;
         Vector2 start, change, end;
         std::function<Vector2()> get;
