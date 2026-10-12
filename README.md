@@ -34,7 +34,7 @@ total                    ██░░░░░░░░░░░░░░░░�
 | Wanderer DLC | 9,474 | 0.9% | 0.9% | `░░░░░░░░░░░░░░░░░░░░` |
 | Core & other | 44,306 | 1.0% | 0.8% | `░░░░░░░░░░░░░░░░░░░░` |
 
-_Updated by `tools/progress.py` on every commit._
+_Updated by `tools/progress.py` on every commit._ On Windows, `py tools/tray_progress_startup.py` puts the same numbers next to the taskbar clock (`tools/tray_progress.ps1`), starting with Windows.
 <!-- progress:end -->
 
 ## Layout

@@ -174,7 +174,7 @@ def report():
         p = c['ported'] / c['lines'] if c['lines'] else 0.0
         v = c['verified'] / c['lines'] if c['lines'] else 0.0
         lines.append(f'| {name} | {c["lines"]:,} | {100 * p:.1f}% | {100 * v:.1f}% | `{bar(p)}` |')
-    lines += ['', '_Updated by `tools/progress.py` on every commit._', '<!-- progress:end -->']
+    lines += ['', '_Updated by `tools/progress.py` on every commit._ On Windows, `py tools/tray_progress_startup.py` puts the same numbers next to the taskbar clock (`tools/tray_progress.ps1`), starting with Windows.', '<!-- progress:end -->']
     section = '\n'.join(lines)
 
     text = README.read_text(encoding='utf-8')
