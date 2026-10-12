@@ -316,8 +316,14 @@ int main(int argc, char** argv)
         return 1;
     }
     game::ApplyDoors(rows, room->doors, roomPos);
+    // A room whose doors the game shows closed (its boundaries on LevelBoundary: CloseAllDoors at
+    // runtime, after the oracle's teleport in) isn't the generated state this test builds: its
+    // doors and boundaries are reported, not compared.
+    bool closedDoors = false;
+    for (const unity::Collider2D& d : dumped.Colliders())
+        closedDoors |= d.path.rfind(prefix + "DungeonLevelBoundaries/DoorBoundary", 0) == 0 && d.layer == game::Layer::LevelBoundary;
     int built = game::AddRoomColliders(rows, roomPos, physics, prefix);
-    int same = 0, differ = 0, doors = 0, turned = 0;
+    int same = 0, differ = 0, doors = 0, turned = 0, closedSkipped = 0;
     for (const unity::Collider2D& c : physics.Colliders()) {
         doors += c.path.find("/DungeonLevelDoors/") != std::string::npos || c.path.find("/DoorBoundary") != std::string::npos;
         const unity::Collider2D* g = nullptr;
@@ -338,8 +344,12 @@ int main(int argc, char** argv)
             turned += box;
         }
         bool ok = g && g->layer == c.layer && g->tag == c.tag && g->enabled == c.enabled && g->trigger == c.trigger && box;
+        const bool door = c.path.find("/DungeonLevelDoors/") != std::string::npos || c.path.find("/DoorBoundary") != std::string::npos;
         if (ok) same++;
-        else {
+        else if (closedDoors && door) {
+            closedSkipped++;
+            std::printf("collider %s: the game's doors are closed (runtime), not compared\n", c.path.c_str());
+        } else {
             differ++;
             std::printf("collider %s: port [%g %g]-[%g %g] layer %d %s; game %s\n", c.path.c_str(), c.Min().x, c.Min().y, c.Max().x, c.Max().y,
                         c.layer, c.tag.c_str(), g ? (std::to_string(g->Min().x) + " " + std::to_string(g->Min().y) + " - " + std::to_string(g->Max().x) + " " + std::to_string(g->Max().y) + " layer " + std::to_string(g->layer) + " " + g->tag).c_str() : "none");
@@ -359,9 +369,12 @@ int main(int argc, char** argv)
         physics.Clear();
         for (const unity::Collider2D& c : dumped.Colliders()) physics.Add(c);
     } else {
-        // The oracle's rock (not the room's).
+        // The oracle's rock, and the room's rocks and chests (what the room fill spawns, checked by
+        // its own tests): the solid RisenObstacles.
         for (const unity::Collider2D& c : dumped.Colliders())
-            if (c.path.find("OracleRock") != std::string::npos) physics.Add(c);
+            if (c.path.find("OracleRock") != std::string::npos ||
+                (c.path.rfind(prefix, 0) == 0 && c.layer == unity::kLayerRisenObstacle && c.enabled && !c.trigger))
+                physics.Add(c);
     }
     for (const unity::Collider2D& h : holes) physics.Add(h);
 
@@ -554,8 +567,8 @@ int main(int argc, char** argv)
                         hero.heroDirection, sprite ? sprite->c_str() : "-");
         }
     }
-    std::printf("\nroom colliders from the prefab %5d match %5d differ   (room %s at %g, %g; %d of doors and their openings; %d turned, within 2e-5)\n",
-                same, differ, room->name.c_str(), roomPos.x, roomPos.y, doors, turned);
+    std::printf("\nroom colliders from the prefab %5d match %5d differ   (room %s at %g, %g; %d of doors and their openings; %d turned, within 2e-5; %d closed, not compared)\n",
+                same, differ, room->name.c_str(), roomPos.x, roomPos.y, doors, turned, closedSkipped);
     std::printf("frames replayed                %5d\n", checked);
     std::printf("position (bit-exact)           %5d match %5d differ\n", checked - posBad, posBad);
     std::printf("velocity                       %5d match %5d differ\n", checked - velBad, velBad);

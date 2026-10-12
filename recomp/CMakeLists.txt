@@ -114,6 +114,10 @@ add_test(NAME player_roll
 add_test(NAME player_diagonals
          COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_diag.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# Falling into a hole and back at the door (the oracle's -oracle-walk=fall).
+add_test(NAME player_fall
+         COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_fall.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 # The main attack: the recording's save slot equips Forest Spirit Gloves (recordings since name it).
 add_test(NAME player_attack
          COMMAND player_walk_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/walk_attack.jsonl
