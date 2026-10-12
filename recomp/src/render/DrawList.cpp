@@ -142,12 +142,17 @@ std::vector<DrawQuad> BuildDrawList(const std::vector<game::SceneRow>& rows, uni
         q.path = r.path;
         out.push_back(q);
     }
-    std::stable_sort(out.begin(), out.end(), [](const DrawQuad& a, const DrawQuad& b) {
+    SortDrawList(out);
+    return out;
+}
+
+void SortDrawList(std::vector<DrawQuad>& quads)
+{
+    std::stable_sort(quads.begin(), quads.end(), [](const DrawQuad& a, const DrawQuad& b) {
         if (a.layer != b.layer) return a.layer < b.layer;
         if (a.order != b.order) return a.order < b.order;
         return a.sortY > b.sortY;
     });
-    return out;
 }
 
 } // namespace render

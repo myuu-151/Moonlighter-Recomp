@@ -44,10 +44,17 @@ void Rgb5a3(uint16_t v, uint8_t* out)
 
 } // namespace
 
-void SpriteBank::Load(game::DataSource& data, const std::string& folder)
+void SpriteBank::Load(game::DataSource& data, const std::string& folder, const std::vector<std::string>& others)
 {
     folder_ = folder;
     byName_.clear();
+    LoadIndex(data, folder);
+    for (const std::string& other : others)
+        if (other != folder) LoadIndex(data, other);
+}
+
+void SpriteBank::LoadIndex(game::DataSource& data, const std::string& folder)
+{
     std::string b = data.Read(folder + "index.bin");
     Reader r{b};
     if (b.compare(0, 4, "MLSI") != 0) throw std::runtime_error("sprite index: not MLSI");
@@ -58,6 +65,7 @@ void SpriteBank::Load(game::DataSource& data, const std::string& folder)
         Sprite s;
         uint32_t len = r.U(2);
         s.name = b.substr(r.p, len);
+        s.folder = folder;
         r.p += len;
         s.index = static_cast<int>(i);
         s.width = static_cast<int>(r.U(2));
@@ -66,7 +74,7 @@ void SpriteBank::Load(game::DataSource& data, const std::string& folder)
         s.bottom = r.F();
         s.unitsPerPixel = r.F();
         s.format = static_cast<TexFormat>(r.U(1));
-        byName_[s.name] = s;
+        byName_.emplace(s.name, s);
     }
 }
 

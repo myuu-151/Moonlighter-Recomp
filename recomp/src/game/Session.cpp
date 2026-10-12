@@ -67,6 +67,14 @@ const char* Session::PackName(Culture c)
     }
 }
 
+void Session::LoadTiles(DataSource& data, Culture c, int level, TileTextures& out)
+{
+    const std::string folder = std::string("tiles/") + PackName(c) + "/";
+    out.Clear();
+    out.Load(data.Read(folder + "holes.bin"));
+    out.Load(data.Read(folder + "details" + std::to_string(level) + ".bin"));
+}
+
 void Session::Load()
 {
     Constants::LoadFromText(data_.Read("constants.json"));

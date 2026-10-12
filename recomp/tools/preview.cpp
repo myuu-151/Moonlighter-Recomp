@@ -19,6 +19,7 @@
 #include "game/RoomScene.h"
 #include "game/Session.h"
 #include "render/DrawList.h"
+#include "render/RoomDraw.h"
 #include "render/SpriteBank.h"
 
 using namespace game;
@@ -114,7 +115,7 @@ std::map<std::string, std::vector<uint8_t>> gDecoded;
 
 const std::vector<uint8_t>& Texels(DataSource& data, const SpriteBank& bank, const Sprite& s)
 {
-    std::string key = bank.Folder() + s.name;
+    std::string key = s.folder + s.name;
     auto it = gDecoded.find(key);
     if (it != gDecoded.end()) return it->second;
     return gDecoded[key] = SpriteBank::DecodeRGBA(s, data.Read(bank.TexelsPath(s)));
@@ -122,8 +123,20 @@ const std::vector<uint8_t>& Texels(DataSource& data, const SpriteBank& bank, con
 
 void Draw(Canvas& cv, DataSource& data, const SpriteBank& bank, const DrawQuad& q)
 {
-    const Sprite& s = *q.sprite;
-    const std::vector<uint8_t>& tex = Texels(data, bank, s);
+    // A sprite's texels (rows from the top), or a painted texture's (rows from the bottom).
+    int width, height;
+    const uint8_t* texels;
+    bool bottomUp = false;
+    if (q.sprite) {
+        width = q.sprite->width;
+        height = q.sprite->height;
+        texels = Texels(data, bank, *q.sprite).data();
+    } else {
+        width = q.texture->width;
+        height = q.texture->height;
+        texels = q.texture->rgba.data();
+        bottomUp = true;
+    }
     // Pixel -> (u, v) on the quad: inverse of the parallelogram (corner 0, edges 0->1, 0->3).
     float ex = q.x[1] - q.x[0], ey = q.y[1] - q.y[0], fx = q.x[3] - q.x[0], fy = q.y[3] - q.y[0];
     float det = ex * fy - ey * fx;
@@ -140,8 +153,9 @@ void Draw(Canvas& cv, DataSource& data, const SpriteBank& bank, const DrawQuad& 
             float wy = cv.top - (static_cast<float>(py) + 0.5f) / cv.scale - q.y[0];
             float u = (wx * fy - wy * fx) / det, v = (ex * wy - ey * wx) / det;
             if (u < 0 || u >= 1 || v < 0 || v >= 1) continue;
-            int tx = static_cast<int>(u * static_cast<float>(s.width)), ty = s.height - 1 - static_cast<int>(v * static_cast<float>(s.height));
-            const uint8_t* t = &tex[(static_cast<size_t>(ty) * static_cast<size_t>(s.width) + static_cast<size_t>(tx)) * 4];
+            int tx = static_cast<int>(u * static_cast<float>(width)), ty = static_cast<int>(v * static_cast<float>(height));
+            if (!bottomUp) ty = height - 1 - ty;
+            const uint8_t* t = &texels[(static_cast<size_t>(ty) * static_cast<size_t>(width) + static_cast<size_t>(tx)) * 4];
             float a = static_cast<float>(t[3]) / 255.0f * q.color[3];
             if (a <= 0) continue;
             uint8_t* d = &cv.px[(static_cast<size_t>(py) * static_cast<size_t>(cv.w) + static_cast<size_t>(pxx)) * 4];
@@ -167,7 +181,11 @@ int main(int argc, char** argv)
         std::unique_ptr<Floor> floor;
         for (int l = 0; l <= level; l++) floor = session.Generate(culture, l, bossDefeated);
         SpriteBank bank;
-        bank.Load(data, std::string("sprites/") + Session::PackName(culture) + "/");
+        bank.Load(data, std::string("sprites/") + Session::PackName(culture) + "/",
+                  {"sprites/golem/", "sprites/forest/", "sprites/desert/", "sprites/tech/"});
+        std::map<Culture, TileTextures> tiles;
+        TileTextures common;
+        common.Load(data.Read("tiles/common.bin"));
 
         std::vector<std::string> missing;
         int minX = 1 << 30, minY = 1 << 30, maxX = -(1 << 30), maxY = -(1 << 30);
@@ -183,9 +201,11 @@ int main(int argc, char** argv)
         int n = 0;
         for (const PlacedCell& c : floor->dungeon->cells) {
             unity::Vector2 at = RoomPosition(c.x, c.y);
-            std::vector<DrawQuad> quads = BuildDrawList(RoomSceneTree(*c.room, at), at, bank, &missing);
+            Culture rc = c.room->roomInfo->culture;
+            if (!tiles.count(rc)) Session::LoadTiles(data, rc, level, tiles[rc]);
+            RoomDraw draw = BuildRoomDraw(*c.room, at, level, bank, tiles[rc], common, &missing);
             Canvas room(640, 360, at.x - 320, at.y + 180, 1.0f);
-            for (const DrawQuad& q : quads) {
+            for (const DrawQuad& q : draw.quads) {
                 Draw(room, data, bank, q);
                 Draw(map, data, bank, q);
             }

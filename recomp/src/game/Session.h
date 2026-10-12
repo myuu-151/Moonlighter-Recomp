@@ -13,6 +13,7 @@
 #include <string>
 
 #include "cs/Object.h"
+#include "game/Composite.h"
 #include "game/DungeonFloor.h"
 #include "game/RoomDetails.h"
 
@@ -73,6 +74,9 @@ public:
     std::unique_ptr<Floor> Generate(Culture culture, int level, bool bossDefeated = false);
 
     static const char* PackName(Culture c); // "golem", "forest", "desert", "tech"
+    // The tiles a room of `c` paints with on a floor of `level`: its holes and that floor's
+    // details (tiles/<c>/holes.bin, details<level>.bin), into `out` (cleared first).
+    static void LoadTiles(DataSource& data, Culture c, int level, TileTextures& out);
 
 private:
     DataSource& data_;

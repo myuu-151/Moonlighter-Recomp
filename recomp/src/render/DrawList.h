@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "game/Composite.h"
 #include "game/RoomScene.h"
 #include "render/SpriteBank.h"
 
@@ -15,6 +16,7 @@ namespace render {
 
 struct DrawQuad {
     const Sprite* sprite = nullptr;
+    const game::RoomTexture* texture = nullptr; // a texture painted at runtime (no sprite then)
     // Corners in world units: the image's lower-left, lower-right, upper-right, upper-left.
     float x[4] = {}, y[4] = {};
     float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -23,6 +25,9 @@ struct DrawQuad {
     int sequence = 0;   // its place in the tree (ties)
     std::string path;   // for diagnostics
 };
+
+// Unity's draw order: sorting layer, sortingOrder, then the farther-up object first.
+void SortDrawList(std::vector<DrawQuad>& quads);
 
 // The room's quads, sorted. `missing` (optional) collects sprite names the bank lacks.
 std::vector<DrawQuad> BuildDrawList(const std::vector<game::SceneRow>& rows, unity::Vector2 roomPosition, const SpriteBank& bank,

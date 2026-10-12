@@ -55,7 +55,7 @@ def main():
     parser.add_argument('--out', required=True)
     args = parser.parse_args()
     layers = sorting_layers(args.game)
-    layer_name = {uid: name for name, uid in layers}
+    layer_name = {uid & 0xFFFFFFFF: name for name, uid in layers}
     bundles_dir = Path(args.game) / 'Moonlighter_Data' / 'StreamingAssets' / 'AssetBundles'
     out = {'sortingLayers': [name for name, _ in layers], 'bundles': {}}
     total = 0
@@ -128,7 +128,8 @@ def main():
                     if comp.type.name == 'SpriteRenderer':
                         sr = tree(comp.path_id)
                         col = sr.get('m_Color', {'r': 1, 'g': 1, 'b': 1, 'a': 1})
-                        row[6:] = [sprite_name(sr['m_Sprite']), layer_name.get(sr.get('m_SortingLayerID', 0), 'Default'),
+                        # (the layer's ID is signed in the renderer, unsigned in the TagManager)
+                        row[6:] = [sprite_name(sr['m_Sprite']), layer_name.get(sr.get('m_SortingLayerID', 0) & 0xFFFFFFFF, 'Default'),
                                    sr.get('m_SortingOrder', 0), bool(sr.get('m_FlipX', 0)), bool(sr.get('m_FlipY', 0)),
                                    [col['r'], col['g'], col['b'], col['a']], bool(sr.get('m_Enabled', 1))]
                 q = tr['m_LocalRotation']

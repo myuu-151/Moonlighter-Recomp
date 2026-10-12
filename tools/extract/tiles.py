@@ -4,12 +4,15 @@ texture with GetPixels32, so these are the textures' RGBA as Unity reads them (r
 the bottom; checked equal to the game's own GetPixels32 for every readable texture the
 oracle recorded).
 
-  tiles/<culture>.bin and tiles/common.bin (big-endian):
-    "MLTX", u32 version (1), u32 count, then per texture:
-      u16 key length, key, u16 width, u16 height, then width * height * 4 bytes RGBA
-  keys: "<generation data field>#<index>" (holeBorderVerticalSprite#0, the holes), in the
-  culture's file with "details<level>.<lower|lower2|middle>#<index>" (its details registers'
-  layer sprites); in common.bin "<slimeSprites|acidSprites|lavaSprites|electricSprites>#<index>"
+  tiles/<culture>/holes.bin, tiles/<culture>/details<level>.bin, tiles/common.bin (big-endian;
+  split so a floor loads only its own):
+    "MLTX", u32 version (2), u32 texture count, then per texture:
+      u16 width, u16 height, then width * height * 4 bytes RGBA;
+    u32 key count, then per key: u16 length, key, u32 its texture (sprites sharing a
+    texture, an atlas the game copies whole, share one copy)
+  keys: in holes.bin "<generation data field>#<index>" (holeBorderVerticalSprite#0); in
+  details<level>.bin "details<level>.<lower|lower2|middle>#<index>" (that floor's details
+  register's layer sprites); in common.bin "<slimeSprites|acidSprites|...>#<index>"
   (DungeonRoomGenerator's, from dungeon_unknown, the one bundle that serializes it)
 
 Needs UnityPy.
@@ -19,6 +22,7 @@ Needs UnityPy.
 """
 import argparse
 import json
+import shutil
 import struct
 from pathlib import Path
 
@@ -89,12 +93,18 @@ def texture_rgba(tex):
 
 def texture_entry(key, sprite):
     w, h, rgba = texture_rgba(sprite.m_RD.texture.read())
-    key = key.encode()
-    return struct.pack('>H', len(key)) + key + struct.pack('>HH', w, h) + rgba
+    return key, struct.pack('>HH', w, h) + rgba
 
 
 def write(path, entries):
-    path.write_bytes(b'MLTX' + struct.pack('>II', 1, len(entries)) + b''.join(entries))
+    textures, index, keys = [], {}, bytearray()
+    for key, texture in entries:
+        if texture not in index:
+            index[texture] = len(textures)
+            textures.append(texture)
+        k = key.encode()
+        keys += struct.pack('>H', len(k)) + k + struct.pack('>I', index[texture])
+    path.write_bytes(b'MLTX' + struct.pack('>II', 2, len(textures)) + b''.join(textures) + struct.pack('>I', len(entries)) + bytes(keys))
 
 
 def main():
@@ -107,6 +117,8 @@ def main():
     culture_ids = {'Golem': 1, 'Forest': 2, 'Desert': 3, 'Tech': 4}
     bundles = Path(args.game) / 'Moonlighter_Data' / 'StreamingAssets' / 'AssetBundles'
     out_dir = Path(args.out) / 'tiles'
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for culture, suffix in CULTURES.items():
         sprites = {}
@@ -114,6 +126,8 @@ def main():
             for obj in UnityPy.load(str(bundles / name)).objects:
                 if obj.type.name == 'Sprite':
                     sprites.setdefault(obj.read().m_Name, obj)
+        folder = out_dir / culture.lower()
+        folder.mkdir(parents=True, exist_ok=True)
         entries = []
         lists = generation[culture]['sprites']
         for field in HOLE_FIELDS:
@@ -121,16 +135,20 @@ def main():
                 obj = sprites.get(name) if name else None
                 if obj is not None:
                     entries.append(texture_entry(f'{field}#{i}', obj.read()))
+        write(folder / 'holes.bin', entries)
+        count = len(entries)
         for reg in details:
             if reg['culture'] != culture_ids[culture]:
                 continue
+            entries = []
             for layer in ('lower', 'lower2', 'middle'):
                 for i, s in enumerate(reg[layer]):
                     obj = sprites.get(s['name']) if s else None
                     if obj is not None:
                         entries.append(texture_entry(f"details{reg['level']}.{layer}#{i}", obj.read()))
-        write(out_dir / f'{culture.lower()}.bin', entries)
-        print(f'   {culture}: {len(entries)} tile textures', flush=True)
+            write(folder / f"details{reg['level']}.bin", entries)
+            count += len(entries)
+        print(f'   {culture}: {count} tile textures', flush=True)
 
     # The slime family's tiles: DungeonRoomGenerator's lists.
     entries = []

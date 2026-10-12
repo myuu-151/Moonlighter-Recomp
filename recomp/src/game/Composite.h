@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -22,11 +23,15 @@ struct TileTexture {
 
 class TileTextures {
 public:
-    void Load(const std::string& bin); // a tiles/<culture>.bin's contents
+    // A tiles file's contents (tiles/<culture>/holes.bin, details<level>.bin, common.bin),
+    // added to what's loaded.
+    void Load(const std::string& bin);
+    void Clear();
     const TileTexture* Find(const std::string& key) const;
 
 private:
-    std::map<std::string, TileTexture> byKey_;
+    std::vector<std::unique_ptr<TileTexture>> textures_;
+    std::map<std::string, const TileTexture*> byKey_;
 };
 
 struct RoomTexture {

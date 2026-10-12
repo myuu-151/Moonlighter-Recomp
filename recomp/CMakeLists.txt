@@ -37,6 +37,7 @@ add_library(mlcore STATIC
     src/game/Composite.cpp
     src/render/SpriteBank.cpp
     src/render/DrawList.cpp
+    src/render/RoomDraw.cpp
     src/game/DungeonFloor.cpp
 )
 target_include_directories(mlcore PUBLIC src)

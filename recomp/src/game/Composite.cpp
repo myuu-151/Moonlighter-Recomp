@@ -53,7 +53,6 @@ bool Darker(const uint8_t* c, const uint8_t* c2)
 
 void TileTextures::Load(const std::string& b)
 {
-    byKey_.clear();
     size_t p = 0;
     auto u = [&](int n) {
         if (p + static_cast<size_t>(n) > b.size()) throw std::runtime_error("tile textures: truncated");
@@ -63,26 +62,39 @@ void TileTextures::Load(const std::string& b)
     };
     if (b.compare(0, 4, "MLTX") != 0) throw std::runtime_error("tile textures: not MLTX");
     p = 4;
-    if (u(4) != 1) throw std::runtime_error("tile textures: version");
-    uint32_t count = u(4);
-    for (uint32_t i = 0; i < count; i++) {
+    if (u(4) != 2) throw std::runtime_error("tile textures: version");
+    const size_t first = textures_.size();
+    for (uint32_t i = 0, count = u(4); i < count; i++) {
+        auto t = std::make_unique<TileTexture>();
+        t->width = static_cast<int>(u(2));
+        t->height = static_cast<int>(u(2));
+        size_t bytes = static_cast<size_t>(t->width) * static_cast<size_t>(t->height) * 4;
+        if (p + bytes > b.size()) throw std::runtime_error("tile textures: truncated");
+        t->rgba.assign(b.begin() + static_cast<long>(p), b.begin() + static_cast<long>(p + bytes));
+        p += bytes;
+        textures_.push_back(std::move(t));
+    }
+    for (uint32_t i = 0, count = u(4); i < count; i++) {
         uint32_t len = u(2);
+        if (p + len > b.size()) throw std::runtime_error("tile textures: truncated");
         std::string key = b.substr(p, len);
         p += len;
-        TileTexture& t = byKey_[key];
-        t.width = static_cast<int>(u(2));
-        t.height = static_cast<int>(u(2));
-        size_t bytes = static_cast<size_t>(t.width) * static_cast<size_t>(t.height) * 4;
-        if (p + bytes > b.size()) throw std::runtime_error("tile textures: truncated");
-        t.rgba.assign(b.begin() + static_cast<long>(p), b.begin() + static_cast<long>(p + bytes));
-        p += bytes;
+        size_t texture = first + u(4);
+        if (texture >= textures_.size()) throw std::runtime_error("tile textures: bad index");
+        byKey_[key] = textures_[texture].get();
     }
+}
+
+void TileTextures::Clear()
+{
+    byKey_.clear();
+    textures_.clear();
 }
 
 const TileTexture* TileTextures::Find(const std::string& key) const
 {
     auto it = byKey_.find(key);
-    return it == byKey_.end() ? nullptr : &it->second;
+    return it == byKey_.end() ? nullptr : it->second;
 }
 
 uint32_t RoomTexture::Crc() const

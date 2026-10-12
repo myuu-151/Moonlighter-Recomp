@@ -640,7 +640,8 @@ int main(int argc, char** argv)
     PrefabLibrary::Load(json::Parse(ReadFile(data + "/prefabs.json")));
     std::map<int, TileTextures> tileTextures; // by culture
     for (auto [c, name] : {std::pair<int, const char*>{1, "golem"}, {2, "forest"}, {3, "desert"}, {4, "tech"}})
-        tileTextures[c].Load(ReadFile(data + "/tiles/" + name + ".bin"));
+        for (const char* file : {"holes", "details0", "details1", "details2"})
+            tileTextures[c].Load(ReadFile(data + "/tiles/" + name + "/" + file + ".bin"));
     int holesMatch = 0, holesDiffer = 0;
     TileTextures commonTiles;
     commonTiles.Load(ReadFile(data + "/tiles/common.bin"));

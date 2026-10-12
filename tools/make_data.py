@@ -15,7 +15,10 @@ git ignores), for the port and its tests.
    - details.json: the dungeons' details registers (prefab names, sprite sizes,
      probability images);
    - wanderer_specialRooms.json: the Wanderer DLC's rooms, if the DLC is installed;
-   - prefabs.json: the dungeon and enemy prefabs, flattened (objects, sprites, sorting).
+   - prefabs.json: the dungeon and enemy prefabs, flattened (objects, sprites, sorting);
+   - packs/<dungeon>/: the room database and prefabs split by dungeon (what one floor loads);
+   - tiles/: the textures the game paints rooms' runtime textures from (exact);
+   - sprites/<dungeon>/: every sprite a dungeon shows, as a GameCube texture.
 
 Nothing from the game is stored in this repository. Needs Python 3 with UnityPy
 (py -m pip install UnityPy).
@@ -131,6 +134,9 @@ def main():
     step("the dungeons' details", [EXTRACT / 'details.py', '--game', game, '--out', OUT])
     step("the Wanderer DLC's rooms", [EXTRACT / 'wanderer_rooms.py', '--game', game, '--out', OUT])
     step('the prefabs', [EXTRACT / 'prefabs.py', '--game', game, '--out', OUT])
+    step('the per-dungeon packs', [EXTRACT / 'packs.py', '--out', OUT])
+    step("the painted textures' tiles", [EXTRACT / 'tiles.py', '--game', game, '--out', OUT])
+    step('the sprites', [EXTRACT / 'sprites.py', '--game', game, '--out', OUT])
     print(f'-- done: {OUT}', flush=True)
 
 
