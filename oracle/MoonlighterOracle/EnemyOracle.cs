@@ -248,6 +248,12 @@ namespace MoonlighterOracle
 
         private static int Step => Time.inFixedTimeStep ? stepTime.Count - 1 : -1;
 
+        // For the enemies' own parts (TurretOracle.cs): recording now, the fixed step's index in
+        // the frame (-1: not in physics), an enemy's id (-1: not one recorded).
+        internal static bool Recording => recording;
+        internal static int StepIndex => Step;
+        internal static int IdOf(object o) => Id(o);
+
         private static Vector2 HeroPos => HeroMerchant.Instance != null ? (Vector2)HeroMerchant.Instance.transform.position : Vector2.zero;
 
         private static void Add(Ev e)
@@ -597,6 +603,7 @@ namespace MoonlighterOracle
             if (b is GolemSoldierBehaviour soldier) j.Prop("locked", soldier.iDirectionLocked);
             j.Key("playerOffset"); V2(j, tr.Field("playerOffset").GetValue<Vector3>());
             j.EndObj();
+            TurretOracle.WriteEnemy(j, b);
             var mat = sr != null ? sr.material : null;
             j.Key("flash").Bits(mat != null && mat.HasProperty("_FlashAmount") ? mat.GetFloat("_FlashAmount") : 0f);
             Color col = mat != null && mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
@@ -672,6 +679,7 @@ namespace MoonlighterOracle
             var independent = AccessTools.Field(typeof(DG.Tweening.DOTween), "defaultTimeScaleIndependent");
             if (independent != null) j.Prop("dotweenIndependent", (bool)independent.GetValue(null));
             j.Key("dotweenTimeScale").Bits(DG.Tweening.DOTween.timeScale);
+            TurretOracle.WriteStart(j, room);
             Emit(j);
         }
 
@@ -699,6 +707,7 @@ namespace MoonlighterOracle
             stepHero.Clear();
             stepSlimes.Clear();
             stepTime.Clear();
+            TurretOracle.Clear();
         }
 
         private static void WriteFrame(int f)
@@ -786,6 +795,7 @@ namespace MoonlighterOracle
                 j.EndObj();
             }
             j.EndArr();
+            TurretOracle.WriteFrame(j);
             Emit(j);
         }
 
@@ -813,6 +823,7 @@ namespace MoonlighterOracle
                     list.Add(row.ToArray());
                 }
                 stepSlimes.Add(list);
+                TurretOracle.OnStep();
             }
         }
 
@@ -919,6 +930,7 @@ namespace MoonlighterOracle
 
             HookDOTween();
             HookAnimationEvents();
+            TurretOracle.Begin(prefab);
             var rec = new GameObject("OracleEnemyRecorder").AddComponent<Recorder>();
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
             // The start, at a frame's end.
@@ -951,6 +963,7 @@ namespace MoonlighterOracle
             }
             recording = false;
             Active = false;
+            TurretOracle.End();
             UnityEngine.Object.Destroy(rec.gameObject);
             writer.Flush();
             writer.Close();

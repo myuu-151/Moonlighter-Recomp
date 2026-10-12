@@ -151,6 +151,10 @@ public:
     // and the transform it writes back.
     Vector2 Simulate(Rigidbody2D& body, Vector2 position, float dt);
 
+    // The room collider a fixture was made for (AddCollider's), nullptr if it isn't one (a body
+    // AddBody made, or another's): what a contact touched (its tag, as Collision2D.gameObject).
+    const Collider2D* ColliderOf(const b2Fixture* fixture) const;
+
     const Physics2DSettings& Settings() const { return settings_; }
     const Options& GetOptions() const { return options_; }
     b2World& World() { return *world_; }

@@ -95,8 +95,8 @@ void Tweens::Kill(int id)
     killedPending_.push_back(id); // (it may be completing this update: its callback won't run)
 }
 
-void Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
-                  bool ignoreTimeScale)
+int Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
+                 bool ignoreTimeScale)
 {
     Tween t;
     t.id = nextId_++;
@@ -108,13 +108,24 @@ void Tweens::Move(std::function<Vector2()> get, std::function<void(Vector2)> set
     t.ease = ease;
     t.delay = delay;
     tweens_.push_back(std::move(t));
+    return tweens_.back().id;
 }
 
-void Tweens::To(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
-                bool ignoreTimeScale)
+int Tweens::To(std::function<Vector2()> get, std::function<void(Vector2)> set, Vector2 end, float duration, Ease ease, float delay,
+               bool ignoreTimeScale)
 {
-    Move(std::move(get), std::move(set), end, duration, ease, delay, ignoreTimeScale);
+    const int id = Move(std::move(get), std::move(set), end, duration, ease, delay, ignoreTimeScale);
     tweens_.back().fused = true;
+    return id;
+}
+
+void Tweens::OnComplete(int id, std::function<void()> callback)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id) {
+            t.onComplete = std::move(callback);
+            return;
+        }
 }
 
 int Tweens::Timer(float duration, float delay, std::function<void()> onComplete)

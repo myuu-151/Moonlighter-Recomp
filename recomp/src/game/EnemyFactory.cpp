@@ -1,6 +1,7 @@
 #include "game/EnemyFactory.h"
 
 #include "game/BabySlime.h"
+#include "game/BrokenGolemTurret.h"
 #include "game/GolemSoldier.h"
 #include "game/Tangle.h"
 
@@ -37,6 +38,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
     for (const Behaviour& b : root.behaviours) {
         if (!enemy->enemyBehaviour && b.cls == "TangleBehaviour") { // (its fields: game/Tangle.h)
             enemy->enemyBehaviour = MakeTangleBehaviour(*enemy, b);
+            behaviourFields = &b;
+        } else if (!enemy->enemyBehaviour && b.cls == "BrokenGolemTurretBehaviour") { // (game/BrokenGolemTurret.h)
+            enemy->enemyBehaviour = MakeBrokenGolemTurretBehaviour(*enemy, b);
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour) {
             if (auto behaviour = MakeBehaviour(b.cls, prefab.name, *enemy)) {

@@ -49,6 +49,7 @@ namespace game {
 class Enemy;
 class EnemyBehaviour;
 class EnemyPhysics;
+class EnemyProjectiles;
 class MasterAudio;
 
 enum class EnemyDamageReceivedType { Normal, Effect, Familiar, Trick };
@@ -98,6 +99,9 @@ struct EnemyScene {
     // Each clip event the Animator fires, before (after = false) and after the behaviour's
     // method has run (for checks; the behaviour gets it either way).
     std::function<void(Enemy&, const unity::AnimationEvent&, bool after)> onAnimationEvent;
+    // The room's enemy projectiles and DungeonManager's PoolManager (game/EnemyProjectile.h:
+    // the turrets' shots); none: the enemies that shoot don't.
+    EnemyProjectiles* projectiles = nullptr;
 };
 
 class Enemy {
@@ -366,6 +370,20 @@ public:
     // restarted), remade (what it touched doesn't enter again) or taken away.
     void SyncAttackCollider(Enemy& enemy);
 
+    // Other bodies of the world stepped with the enemies' (game/EnemyProjectile.h: the enemy
+    // projectiles), called in Step: Sync after the enemies' sync, AfterWorldStep right after
+    // b2World::Step (before Unity's trigger pass), WriteBack after theirs, Report after
+    // ReportTriggers (their OnCollisionEnter2D).
+    class Companion {
+    public:
+        virtual ~Companion() = default;
+        virtual void Sync() {}
+        virtual void AfterWorldStep() {}
+        virtual void WriteBack() {}
+        virtual void Report() {}
+    };
+    void AddCompanion(Companion* companion) { companions_.push_back(companion); }
+
     // The attack triggers that began touching in the last step, in Box2D's order (for checks).
     struct Hit {
         Enemy* enemy = nullptr;
@@ -384,6 +402,7 @@ private:
     std::vector<Hit> hits_;
     // What remade attack fixtures were touching: no new enter with these in the next step.
     std::vector<std::pair<const b2Fixture*, const b2Fixture*>> carried_;
+    std::vector<Companion*> companions_;
 };
 
 } // namespace game

@@ -64,6 +64,11 @@ FIELDS = {
     # shapeType 0 polygon, 1 box; m_Enabled: the behaviour's enabled flag (only enabled ones join the map)
     'PolyNavObstacle': ('invertPolygon', 'extraOffset', 'shapeType', 'm_Enabled'),
     'EnemyAttackCollisionDetection': ('dealDamageToBreakables', 'gameObjectToAdvise'),
+    # The Broken turret (an EnemyBehaviour) and its shot: the projectile prefab (its name), the
+    # Invoke's delay, where shots start (EnemyBehaviour.spawnProyectilePositions), the look it
+    # starts with (HeroMerchantController.Direction); the crash's wait, the art the shot turns.
+    'BrokenGolemTurretBehaviour': ENEMY_BEHAVIOUR + ('projectilePrefab', 'shootDelay', 'spawnProyectilePositions', 'enemyDirection'),
+    'BrokenGolemTurretProjectile': ('timeToDestroyAfterCrash', 'projectileArt'),
     # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
     'WeaponCollisionDetection': ('weaponAttackType',),
 }
@@ -80,6 +85,15 @@ def object_path(value, go_path, sprite):
     return go_path.get(value['m_PathID']) if value['m_FileID'] == 0 else None
 
 
+def object_name(value, go_path, sprite):
+    """A reference to another object of the bundle (a prefab's root) as its name, null if unset."""
+    return sprite(value)
+
+
+def vector2_list(value, go_path, sprite):
+    return [[v['x'], v['y']] for v in value]
+
+
 def breakable_skins(value, go_path, sprite):
     """BreakableObjectBehaviour.skins: each skin's whole and broken sprites."""
     return [{'full': sprite(k['fullHealthSprite']), 'broken': sprite(k['breakSprite'])} for k in value]
@@ -92,6 +106,9 @@ STRUCTURED = {
     ('BreakableBoxBehaviour', 'skins'): breakable_skins,
     ('Enemy', 'itemDrops'): item_drops,
     ('EnemyAttackCollisionDetection', 'gameObjectToAdvise'): object_path,
+    ('BrokenGolemTurretBehaviour', 'projectilePrefab'): object_name,
+    ('BrokenGolemTurretBehaviour', 'spawnProyectilePositions'): vector2_list,
+    ('BrokenGolemTurretProjectile', 'projectileArt'): object_path,
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 

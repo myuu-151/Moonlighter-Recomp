@@ -224,6 +224,14 @@ void PhysicsWorld::SetLayer(Rigidbody2D& body, int layer)
 
 void PhysicsWorld::FixtureMadeElsewhere() { newContacts_ = true; }
 
+const Collider2D* PhysicsWorld::ColliderOf(const b2Fixture* fixture) const
+{
+    for (const ColliderEntry& e : colliders_)
+        for (const b2Fixture* f : e.fixtures)
+            if (f == fixture) return e.collider;
+    return nullptr;
+}
+
 void PhysicsWorld::UpdateContacts()
 {
     // (b2ContactManager::Collide is public; the world only hands the manager out const.)

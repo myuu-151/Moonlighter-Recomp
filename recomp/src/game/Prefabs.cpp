@@ -61,8 +61,8 @@ void PrefabLibrary::Load(const json::Value& extracted)
                             if (v.IsArray()) {
                                 beh.fields[field] = static_cast<double>(v.size());
                                 beh.raw[field] = v;
-                            } else if (v.kind == json::Value::Kind::Object) {
-                                beh.raw[field] = v;
+                            } else if (v.kind == json::Value::Kind::Object || v.IsString()) {
+                                beh.raw[field] = v; // (a string: a name, e.g. a prefab reference's)
                             } else {
                                 beh.fields[field] = v.kind == json::Value::Kind::Bool ? (v.b ? 1.0 : 0.0) : static_cast<double>(F(v));
                             }
