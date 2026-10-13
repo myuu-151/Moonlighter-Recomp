@@ -396,14 +396,17 @@ namespace MoonlighterOracle
         [HarmonyPatch(typeof(HeroMerchant), "DealDamageToPlayer")]
         private static class DamageToPlayerHook
         {
-            private static void Prefix(float attackStrength, HeroMerchant.DamageType type, Enemy enemySource)
+            // (The Random state before and after: the hero's own draws in it, "rng0" and "rng1".)
+            private static void Prefix(float attackStrength, HeroMerchant.DamageType type, Enemy enemySource, out Ev __state)
             {
-                Add(new Ev { k = "dmgToPlayer", s = enemySource != null ? Id(enemySource) : -1, step = Step, a = attackStrength, type = (int)type });
+                __state = new Ev { k = "dmgToPlayer", s = enemySource != null ? Id(enemySource) : -1, step = Step, a = attackStrength, type = (int)type, rng0 = Rng.Get() };
+                Add(__state);
             }
 
             // God mode the plain way: his health back after the hit (the hit itself as in play).
-            private static void Postfix(HeroMerchant __instance)
+            private static void Postfix(HeroMerchant __instance, Ev __state)
             {
+                if (__state != null) __state.rng1 = Rng.Get();
                 if (Active || recording) __instance.heroMerchantStats.RecoverAllHealth();
             }
         }
@@ -871,7 +874,14 @@ namespace MoonlighterOracle
                 {
                     case "attackHit": j.Prop("player", e.player).Prop("other", e.other); break;
                     case "attackEnter": j.Prop("player", e.player).Prop("other", e.other).Prop("how", e.caller); break;
-                    case "dmgToPlayer": j.Key("str").Bits(e.a).Prop("type", e.type); break;
+                    case "dmgToPlayer":
+                        j.Key("str").Bits(e.a).Prop("type", e.type);
+                        if (e.rng0 != null)
+                        {
+                            Rng.WriteState(j.Key("rng0"), e.rng0);
+                            Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
+                        }
+                        break;
                     case "dmgToEnemy":
                         j.Key("str").Bits(e.a).Prop("type", e.type).Key("hp0").Bits(e.hp0).Key("hp1").Bits(e.hp1).Prop("recv", e.other);
                         if (e.caller != null) j.Prop("by", e.caller); // (a kamikaze's: KamikazeOracle.DamageBy)
@@ -1112,6 +1122,8 @@ namespace MoonlighterOracle
             Active = false;
             // (The turret's root motion on a moving body: one line after the last frame.)
             if (TurretOracle.Wants(prefab)) yield return TurretRootMotionProbe.Run(slimes, Emit);
+            // (The order of OnCollisionEnter2D calls that start in one step: ContactOrderProbe.cs.)
+            if (TurretOracle.Wants(prefab)) yield return ContactOrderProbe.Run(Emit);
             TurretOracle.End();
             FlyKamiOracle.End();
             CritterOracle.End();
