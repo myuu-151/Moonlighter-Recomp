@@ -207,7 +207,7 @@ def report():
             f"**{tpct:.1f}%** translates today: the share of the game's lines that `tools/translate` turns into C++ "
             'with every API it calls bound to the hand-written Unity layer ([docs/translator_plan.md](docs/translator_plan.md); '
             'per class in `progress/class_deps.tsv`, what blocks the rest in `progress/unity_api_gaps.tsv`; '
-            'each class counts by its share rounded to a whole percent).',
+            'each class counts by its share to a tenth of a percent).',
             '',
             f'<img src="{bar_svg("translated", translated / total, 0.0, width=360, height=18, label=f"{tpct:.1f}%", fill="#58a6ff")}" alt="{tpct:.1f}% translates">',
             '',

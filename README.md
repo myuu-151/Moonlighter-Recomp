@@ -19,7 +19,7 @@ It also builds for the GameCube:
 
 <sub>gold: ported · green: verified against the game</sub>
 
-**70.3%** translates today: the share of the game's lines that `tools/translate` turns into C++ with every API it calls bound to the hand-written Unity layer ([docs/translator_plan.md](docs/translator_plan.md); per class in `progress/class_deps.tsv`, what blocks the rest in `progress/unity_api_gaps.tsv`; each class counts by its share rounded to a whole percent).
+**70.3%** translates today: the share of the game's lines that `tools/translate` turns into C++ with every API it calls bound to the hand-written Unity layer ([docs/translator_plan.md](docs/translator_plan.md); per class in `progress/class_deps.tsv`, what blocks the rest in `progress/unity_api_gaps.tsv`; each class counts by its share to a tenth of a percent).
 
 <img src="progress/bars/translated.svg" alt="70.3% translates">
 
