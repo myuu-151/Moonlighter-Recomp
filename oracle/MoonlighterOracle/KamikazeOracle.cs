@@ -52,8 +52,13 @@ namespace MoonlighterOracle
     ///     singletons' getters...: "other" the method), each with the Random state before and
     ///     after;
     ///   - the start line's "kroom" (WriteStart): the room's chests ([type, name, isLocked, active]
-    ///     in roomChests' order), OnAllEnemiesDefeated's handlers ("Type.Method" in order) and
-    ///     isRoomCleared.
+    ///     in roomChests' order), OnAllEnemiesDefeated's handlers ("Type.Method" in order),
+    ///     isRoomCleared and "locked" (its isLocked); and "heroEffects": Enemy.OnEnemyRecivesDamage's
+    ///     handlers ("damage", "Type.Method" in order), MoonlighterEffectRegistry's effects
+    ///     ("effects": each [type, active] and, for a WandererAmuletEffect, its probToCallWanderer
+    ///     bits), DungeonManager.isWandererActive ("wandererActive"). (kamifix-3: the hero's
+    ///     Wanderer amulet draws Random.value on every DealDamageToEnemy, the kamikaze's
+    ///     explosion on itself included.)
     /// The damage a kamikaze deals to an enemy (the explosion's, AttackHit's on an "Enemy") is
     /// marked on EnemyOracle's "dmgToEnemy" as "by" (DamageBy). The SoundsKamikaze component's
     /// clip-event methods join EnemyOracle's "anim" events (its AnimPrefix / AnimPostfix).
@@ -285,6 +290,37 @@ namespace MoonlighterOracle
             catch (Exception) { }
             j.EndArr();
             j.Prop("cleared", room.isRoomCleared);
+            j.Prop("locked", room.isLocked);
+            j.EndObj();
+            j.Key("heroEffects").Obj();
+            j.Key("damage").Arr();
+            try
+            {
+                var f = AccessTools.Field(typeof(Enemy), "OnEnemyRecivesDamage");
+                var d = f != null ? f.GetValue(null) as Delegate : null;
+                if (d != null)
+                    foreach (var h in d.GetInvocationList()) j.Val(h.Method.DeclaringType.Name + "." + h.Method.Name);
+            }
+            catch (Exception) { }
+            j.EndArr();
+            j.Key("effects").Arr();
+            try
+            {
+                var inst = AccessTools.Field(typeof(MoonlighterEffectRegistry), "_instance").GetValue(null);
+                var reg = inst != null ? AccessTools.Field(typeof(MoonlighterEffectRegistry), "_reg").GetValue(inst) as System.Collections.IEnumerable : null;
+                if (reg != null)
+                    foreach (var entry in reg)
+                    {
+                        var eff = entry != null ? Traverse.Create(entry).Field("effect").GetValue() as MoonlighterEffect : null;
+                        if (eff == null) continue;
+                        j.Arr().Val(eff.GetType().Name).Val(eff is AmuletMoonlighterEffect a && a.IsEffectActive());
+                        if (eff is WandererAmuletEffect w) j.Bits(w.probToCallWanderer);
+                        j.EndArr();
+                    }
+            }
+            catch (Exception) { }
+            j.EndArr();
+            j.Prop("wandererActive", DungeonManager.Instance != null && DungeonManager.Instance.isWandererActive);
             j.EndObj();
         }
 
