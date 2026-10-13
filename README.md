@@ -19,24 +19,24 @@ It also builds for the GameCube:
 
 <sub>gold: ported · green: verified against the game</sub>
 
-**67.8%** translates today: the share of the game's lines that `tools/translate` turns into C++ with every API it calls bound to the hand-written Unity layer ([docs/translator_plan.md](docs/translator_plan.md); per class in `progress/class_deps.tsv`, what blocks the rest in `progress/unity_api_gaps.tsv`; each class counts by its share rounded to a whole percent).
+**70.3%** translates today: the share of the game's lines that `tools/translate` turns into C++ with every API it calls bound to the hand-written Unity layer ([docs/translator_plan.md](docs/translator_plan.md); per class in `progress/class_deps.tsv`, what blocks the rest in `progress/unity_api_gaps.tsv`; each class counts by its share rounded to a whole percent).
 
-<img src="progress/bars/translated.svg" alt="67.8% translates">
+<img src="progress/bars/translated.svg" alt="70.3% translates">
 
 <sub>blue: translates today</sub>
 
 | Area | Lines | Ported | Verified | Translates | |
 |---|---:|---:|---:|---:|---|
-| Dungeon generation | 10,310 | 50.6% | 50.6% | 65.7% | <img src="progress/bars/dungeon_generation.svg" alt="50.6%"> |
-| Player | 9,277 | 22.0% | 20.9% | 76.2% | <img src="progress/bars/player.svg" alt="22.0%"> |
-| Enemies | 27,342 | 12.2% | 12.2% | 79.3% | <img src="progress/bars/enemies.svg" alt="12.2%"> |
-| Dungeon runtime | 5,487 | 6.0% | 3.8% | 62.8% | <img src="progress/bars/dungeon_runtime.svg" alt="6.0%"> |
-| Bosses | 8,285 | 2.3% | 2.3% | 83.0% | <img src="progress/bars/bosses.svg" alt="2.3%"> |
-| Items & effects | 13,388 | 0.8% | 0.2% | 74.9% | <img src="progress/bars/items_effects.svg" alt="0.8%"> |
-| Town, shop & villagers | 12,097 | 0.0% | 0.0% | 66.4% | <img src="progress/bars/town_shop_villagers.svg" alt="0.0%"> |
-| UI | 20,716 | 0.0% | 0.0% | 42.5% | <img src="progress/bars/ui.svg" alt="0.0%"> |
-| Wanderer DLC | 9,474 | 0.9% | 0.9% | 67.4% | <img src="progress/bars/wanderer_dlc.svg" alt="0.9%"> |
-| Core & other | 44,306 | 1.2% | 0.8% | 67.4% | <img src="progress/bars/core_other.svg" alt="1.2%"> |
+| Dungeon generation | 10,310 | 50.6% | 50.6% | 66.6% | <img src="progress/bars/dungeon_generation.svg" alt="50.6%"> |
+| Player | 9,277 | 22.0% | 20.9% | 78.2% | <img src="progress/bars/player.svg" alt="22.0%"> |
+| Enemies | 27,342 | 12.2% | 12.2% | 87.3% | <img src="progress/bars/enemies.svg" alt="12.2%"> |
+| Dungeon runtime | 5,487 | 6.0% | 3.8% | 63.3% | <img src="progress/bars/dungeon_runtime.svg" alt="6.0%"> |
+| Bosses | 8,285 | 2.3% | 2.3% | 87.8% | <img src="progress/bars/bosses.svg" alt="2.3%"> |
+| Items & effects | 13,388 | 0.8% | 0.2% | 75.9% | <img src="progress/bars/items_effects.svg" alt="0.8%"> |
+| Town, shop & villagers | 12,097 | 0.0% | 0.0% | 66.6% | <img src="progress/bars/town_shop_villagers.svg" alt="0.0%"> |
+| UI | 20,716 | 0.0% | 0.0% | 42.6% | <img src="progress/bars/ui.svg" alt="0.0%"> |
+| Wanderer DLC | 9,474 | 0.9% | 0.9% | 68.5% | <img src="progress/bars/wanderer_dlc.svg" alt="0.9%"> |
+| Core & other | 44,306 | 1.2% | 0.8% | 69.2% | <img src="progress/bars/core_other.svg" alt="1.2%"> |
 
 _Updated by `tools/progress.py` on every commit._ On Windows, `py tools/tray_progress_startup.py` puts the same numbers next to the taskbar clock (`tools/tray_progress.ps1`), starting with Windows.
 <!-- progress:end -->
