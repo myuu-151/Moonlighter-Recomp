@@ -1,6 +1,8 @@
 #pragma once
-// enemy_test's self-checks for the KamikazeGolem (game/KamikazeGolem.h, unity/Physics2DOverlap.h),
-// with the game's data and no recording:
+// enemy_test's self-checks for the KamikazeGolem (game/KamikazeGolem.h, unity/Physics2DOverlap.h,
+// game/EnemyJump.h), with the game's data and no recording:
+//   - EnemyBehaviour.MakeJump on its own: the rise, the descent its OnComplete starts, x, the
+//     callback, transform.DOKill() midway;
 //   - Physics2D.OverlapCircleAll over a world of bodies and room colliders: the skin counts, the
 //     layer mask (Ignore Raycast left out by default), triggers in or out, a body's collider seen
 //     where its body is;
@@ -29,6 +31,7 @@
 
 #include <Box2D/Box2D.h>
 
+#include "game/EnemyJump.h"
 #include "game/KamikazeGolem.h"
 #include "unity/Physics2DOverlap.h"
 
@@ -408,7 +411,7 @@ void CheckKamikazeJump(const game::Prefab& prefab, const unity::AnimatorControll
         drawsOk = sound ? draws[i] >= 0 && (box.haveAudio || draws[i] == 0) : draws[i] == 0;
     }
     Check(drawsOk, "the sounds' draws are MasterAudio's, the other events draw nothing" + tag);
-    Check(box.tweens.Empty() && b->jumpTweenX == 0 && b->jumpTweenY == 0, "no tween left on it (the jump's done or killed by StopOnExplode)" + tag);
+    Check(box.tweens.Empty(), "no tween left on it (the jump's done or killed by StopOnExplode)" + tag);
     Check(boxOnFrames > 0 && fixtureOnOwnBody && fixtureOnlyWhenOn, "the attack box: a fixture only while it's on, on its own body" + tag);
     bool selfTouched = false;
     int heroTouches = 0;
@@ -446,10 +449,79 @@ void CheckKamikazeJump(const game::Prefab& prefab, const unity::AnimatorControll
     Check(nInvokingDead && !nInvokingGone, "its MoveEnemy still invoked while it's dead, not once it's gone" + tag);
 }
 
+// EnemyBehaviour.MakeJump (game/EnemyJump.h) on its own, at 60 fps from (0, 0) to (30, 10),
+// height 20, 0.3 s: the rise (DOMoveY to (10 + 0) / 2 + 20 = 25 over 0.15 s, OutCubic) ends in
+// the update where its time reaches 0.15 (the 9th), its OnComplete's descent (DOMoveY to 10
+// over jumpTime / 2, InCubic, the fields as they are then) starts in the next update and ends,
+// with DOMoveX (Linear, 0.3 s), in the 18th, where the callback runs once; each value FloatPlugin's
+// start + change * ease. transform.DOKill() midway: nothing moves after, no descent, no callback.
+void CheckMakeJump(const game::Prefab& prefab, const unity::AnimatorController& controller, const Value& enemyStats, const Value& physics2d,
+                   const Value& soundGroups)
+{
+    KamikazeBox box(physics2d, soundGroups);
+    game::Enemy& k = box.Add(prefab, controller, enemyStats, {0.0f, 0.0f});
+    k.SetActive(true);
+    const float dt = 1.0f / 60.0f;
+    for (int run = 0; run < 2; run++) {
+        const bool kill = run == 1;
+        k.setPosition({0.0f, 0.0f});
+        int calls = 0, callFrame = -1;
+        game::MakeJump(k, {30.0f, 10.0f}, 20.0f, 0.3f, [&] { calls++; }, unity::Ease::Linear);
+        const bool fields = Same(k.enemyBehaviour->jumpEndPosition, {30.0f, 10.0f}) && k.enemyBehaviour->jumpTime == 0.3f;
+        bool path = true, peak = false;
+        float rise = 0.0f, fall = 0.0f, x = 0.0f;
+        bool falling = false;
+        Vector2 killedAt;
+        for (int f = 1; f <= 24; f++) {
+            if (kill && f == 5) {
+                box.tweens.KillTarget(&k);
+                killedAt = k.position();
+            }
+            box.tweens.Update(dt);
+            if (calls && callFrame < 0) callFrame = f;
+            if (kill && f >= 5) {
+                path = path && Same(k.position(), killedAt);
+                continue;
+            }
+            // The expected values: each tween's time on by dt per update, clamped at its end.
+            x += dt;
+            const float xt = x >= 0.3f ? 0.3f : x;
+            float ex = static_cast<float>(0.0 + 30.0 * static_cast<double>(unity::EaseEvaluate(unity::Ease::Linear, xt, 0.3f)));
+            float ey;
+            if (!falling) {
+                rise += dt;
+                const float rt = rise >= 0.15f ? 0.15f : rise;
+                ey = static_cast<float>(0.0 + 25.0 * static_cast<double>(unity::EaseEvaluate(unity::Ease::OutCubic, rt, 0.15f)));
+                if (rise >= 0.15f) {
+                    falling = true; // (the descent's first update is the next one)
+                    peak = ey == 25.0f && f == 9;
+                }
+            } else {
+                fall += dt;
+                const float ft = fall >= 0.15f ? 0.15f : fall;
+                ey = static_cast<float>(25.0 + -15.0 * static_cast<double>(unity::EaseEvaluate(unity::Ease::InCubic, ft, 0.15f)));
+            }
+            if (f > 18) { // (both done: no tween left to move it)
+                ex = 30.0f;
+                ey = 10.0f;
+            }
+            path = path && Same(k.position(), {ex, ey});
+        }
+        if (!kill) {
+            Check(fields && path && peak && Same(k.position(), {30.0f, 10.0f}),
+                  "MakeJump: its fields, the rise to 25 (OutCubic) ending in the 9th update, the descent (InCubic) from the next, x Linear, at (30, 10)");
+            Check(calls == 1 && callFrame == 18 && box.tweens.Empty(), "MakeJump: the callback once, in the 18th update (the descent's end), no tween left");
+        } else {
+            Check(path && calls == 0 && box.tweens.Empty(), "MakeJump: transform.DOKill() in the rise: it stays, no descent, no callback");
+        }
+    }
+}
+
 void CheckKamikazeGolem(const game::Prefab& prefab, const unity::AnimatorController& controller, const Value& enemyStats, const Value& physics2d,
                         const Value& soundGroups)
 {
     CheckOverlapCircleAll(physics2d);
+    CheckMakeJump(prefab, controller, enemyStats, physics2d, soundGroups);
     CheckKamikazePrefab(prefab, controller, enemyStats, physics2d, soundGroups);
     CheckKamikazeWander(prefab, controller, enemyStats, physics2d, soundGroups);
     CheckKamikazeAwake(prefab, controller, enemyStats, physics2d, soundGroups);

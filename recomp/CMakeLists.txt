@@ -85,6 +85,8 @@ add_library(mlcore STATIC
     # The KamikazeGolem, Physics2D.OverlapCircleAll over the physics world.
     src/game/KamikazeGolem.cpp
     src/unity/Physics2DOverlap.cpp
+    # EnemyBehaviour.MakeJump (shared with the chest mimics).
+    src/game/EnemyJump.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 

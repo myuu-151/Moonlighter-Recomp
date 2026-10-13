@@ -4,9 +4,10 @@
 // read here):
 //   - the scene gets the room's colliders for the hole check (Update's OverlapBox);
 //   - each kamikaze from its recorded state ("kami": the Animator's Awake / Attacking / Jump
-//     triggers, MakeJump's end and time) and its InvokeRepeating("MoveEnemy", 0.65, 0.65) made
-//     when its room was entered ("enter": Time.time, or Time.fixedTime if that was in a fixed
-//     step);
+//     triggers, MakeJump's end and time, its attack body's position and rest in the first frame)
+//     and its InvokeRepeating("MoveEnemy", 0.65, 0.65) made when its room was entered ("enter":
+//     Time.time, or Time.fixedTime if that was in a fixed step), on from the run after the
+//     "moves" it has made already (each 0.65 after the last one was due);
 //   - each fixed step's start ("ksteps"): the AttackCollider's own body (position, awake);
 //   - each MoveEnemy ("kev" "move", in order per kamikaze): when it runs (the frame and the
 //     fixed step, -1: the frame's pass), from the game's Random state before it (resynced), its
@@ -16,12 +17,15 @@
 //     EnemyBehaviour, by id) against the port's; colliders the port doesn't hold (a breakable's)
 //     inform without failing;
 //   - each frame's end ("kami" in "enemies"): MakeJump's end and time, the triggers (an active
-//     Animator's), the attack body (position, awake, the box on), the tweens on its transform
-//     (how many), its EnteredInCombat subscription.
+//     Animator's), the attack body (position, awake, the box on), its EnteredInCombat
+//     subscription.
 
+#include <cmath>
 #include <map>
 #include <string>
 #include <vector>
+
+#include <Box2D/Box2D.h>
 
 #include "enemy_replay.h"
 #include "game/KamikazeGolem.h"
@@ -42,9 +46,19 @@ struct KamikazeReplay : ReplayHooks {
         int id;
         double base;
         bool fixed;
+        int moves;      // MoveEnemy runs before the recording
+        float lastMove; // the last one's Time.time (-1: none)
     };
     std::vector<Enter> enters;
     float startTime = 0.0f;
+    // The attack bodies as the recording starts ([x, y, awake]: "ab"), set in the first frame
+    // (after the steps the replay runs before it, which sync them to the transform).
+    struct StartBody {
+        Vector2 position;
+        bool awake;
+    };
+    std::map<int, StartBody> startBodies;
+    bool bodiesPlaced = false;
 
     static game::GolemKamikazeBehaviour* Kami(game::Enemy& e) { return dynamic_cast<game::GolemKamikazeBehaviour*>(e.enemyBehaviour.get()); }
 
@@ -99,9 +113,17 @@ struct KamikazeReplay : ReplayHooks {
             k->jumpEndPosition = {Bits((*j)[0]), Bits((*j)[1])};
             k->jumpTime = Bits((*j)[2]);
         }
+        if (const Value* ab = ka->Find("ab"); ab && ab->IsArray() && ab->size() >= 3)
+            startBodies[id] = {{Bits((*ab)[0]), Bits((*ab)[1])}, (*ab)[2].b};
         const Value* en = ka->Find("enter");
-        if (en && en->IsArray()) enters.push_back({id, static_cast<double>(Bits((*en)[en->arr.size() > 2 && (*en)[2].b ? 1 : 0])), (*en)[2].b});
-        else std::printf("note: enemy %d never entered its room (no EnemyRoom_OnRoomEnter): no MoveEnemy\n", id);
+        if (en && en->IsArray()) {
+            const bool fixed = en->size() > 2 && (*en)[2].b;
+            const Value* lm = ka->Find("lastMove");
+            enters.push_back({id, static_cast<double>(Bits((*en)[fixed ? 1 : 0])), fixed, ka->Find("moves") ? static_cast<int>((*ka)["moves"].AsInt()) : 0,
+                              lm && lm->IsArray() ? Bits((*lm)[0]) : -1.0f});
+        } else {
+            std::printf("note: enemy %d never entered its room (no EnemyRoom_OnRoomEnter): no MoveEnemy\n", id);
+        }
         // Each MoveEnemy against the game's: when, from its Random state, its draws and its wander.
         k->onMoveEnemy = [this, id](game::GolemKamikazeBehaviour& self, bool after) {
             const std::vector<const Value*> moves = GameMoves(id);
@@ -134,11 +156,18 @@ struct KamikazeReplay : ReplayHooks {
         const bool inFixed = calls->inFixedStep;
         for (const Enter& en : enters) {
             game::GolemKamikazeBehaviour* k = Kami(*enemies[en.id]);
-            if (en.base + static_cast<double>(0.65f) <= static_cast<double>(startTime))
-                std::printf("note: enemy %d's first MoveEnemy was due before the recording (not replayable)\n", en.id);
+            // The runs made before the recording: the next is due 0.65 after the last one was
+            // (the repeat adds its rate to the due time, as unity/DelayedCalls has it).
+            double at = en.base;
+            for (int n = 0; n < en.moves; n++) at += static_cast<double>(0.65f);
+            if (en.moves > 0 && std::fabs(static_cast<double>(en.lastMove) - at) > 0.02)
+                std::printf("note: enemy %d's last MoveEnemy before the recording ran at %.6f, due at %.6f (InvokeRepeating's period?)\n", en.id,
+                            static_cast<double>(en.lastMove), at);
+            if (at + static_cast<double>(0.65f) <= static_cast<double>(startTime))
+                std::printf("note: enemy %d's next MoveEnemy was due before the recording (%.6f): not replayable\n", en.id, at + 0.65);
             calls->inFixedStep = en.fixed;
-            calls->now = en.base;
-            calls->fixedNow = en.base;
+            calls->now = at;
+            calls->fixedNow = at;
             calls->Invoke(k, "MoveEnemy", 0.65f, [k] { k->MoveEnemy(0.0f); }, 0.65f);
         }
         calls->now = now;
@@ -149,6 +178,16 @@ struct KamikazeReplay : ReplayHooks {
 
     void BeginFrame(long long fn, const Value& f) override
     {
+        if (!bodiesPlaced) {
+            bodiesPlaced = true;
+            for (const auto& [id, sb] : startBodies) {
+                const auto it = enemies.find(id);
+                if (it == enemies.end() || !it->second->attackBody) continue;
+                b2Body* b = it->second->attackBody->Body();
+                b->SetTransform(b2Vec2(sb.position.x, sb.position.y), b->GetAngle());
+                b->SetAwake(sb.awake);
+            }
+        }
         frame = fn;
         frameLine = &f;
         step = -1;
@@ -242,11 +281,8 @@ struct KamikazeReplay : ReplayHooks {
                           e.attackEnabled == (*ab)[3].b,
                       at + ": port " + Str(e.attackBody->position()) + (e.attackBody->IsAwake() ? " awake" : " asleep") + " game " +
                           Str({Bits((*ab)[0]), Bits((*ab)[1])}) + ((*ab)[2].b ? " awake" : " asleep"));
-            if (const Value* tw = ka->Find("tw")) {
-                const size_t mine = tweens ? static_cast<size_t>(tweens->IsPlaying(k->jumpTweenX)) + static_cast<size_t>(tweens->IsPlaying(k->jumpTweenY)) : 0;
-                t.Add("tweens on its transform (the jump's)", mine == tw->size(),
-                      at + ": port " + std::to_string(mine) + " game " + std::to_string(tw->size()));
-            }
+            // ("tw", the tweens on its transform, is for reading: the jump's moves are the shared
+            // MakeJump's (game/EnemyJump.h), seen in the positions.)
             if (const Value* subs = ka->Find("subs")) t.Add("on HeroMerchant.EnteredInCombat", k->subscribedToCombat == subs->b, at);
         }
     }

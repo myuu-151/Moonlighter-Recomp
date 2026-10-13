@@ -11,7 +11,9 @@ namespace MoonlighterOracle
     /// enemies; this adds what the kamikaze does on its own), written into EnemyOracle's lines:
     ///   - each enemy ("enemy", a frame's "enemies"): "kami": "enter" (EnemyRoom_OnRoomEnter's
     ///     clocks, the InvokeRepeating("MoveEnemy", 0.65, 0.65) it made counts from: [Time.time,
-    ///     Time.fixedTime, in a fixed step (0/1), Time.frameCount], null if it never ran), "jump"
+    ///     Time.fixedTime, in a fixed step (0/1), Time.frameCount], null if it never ran), "moves"
+    ///     (how many times MoveEnemy has run since), "lastMove" (the last one's [Time.time,
+    ///     Time.fixedTime, in a fixed step], null: none yet), "jump"
     ///     (EnemyBehaviour's jumpEndPosition x, y and jumpTime), "trig" (the Animator's Awake,
     ///     Attacking and Jump triggers, while it's active and enabled), "ab" (the AttackCollider's
     ///     own Rigidbody2D: position x, y, awake, the box's enabled flag), "tw" (the tweens on its
@@ -40,6 +42,10 @@ namespace MoonlighterOracle
     {
         private static bool active;
         private static readonly Dictionary<GolemKamikazeBehaviour, float[]> entered = new Dictionary<GolemKamikazeBehaviour, float[]>();
+        // Per kamikaze, since its last EnemyRoom_OnRoomEnter (kept from before the recording):
+        // how many times MoveEnemy ran, and the last one's [Time.time, Time.fixedTime, in a fixed step].
+        private static readonly Dictionary<GolemKamikazeBehaviour, int> moveCount = new Dictionary<GolemKamikazeBehaviour, int>();
+        private static readonly Dictionary<GolemKamikazeBehaviour, float[]> lastMove = new Dictionary<GolemKamikazeBehaviour, float[]>();
         private static readonly List<List<string>> stepRows = new List<List<string>>();
         private static readonly List<Ev> events = new List<Ev>();
         private static bool soundsHooked;
@@ -119,6 +125,10 @@ namespace MoonlighterOracle
             j.Key("kami").Obj();
             j.Key("enter");
             if (entered.TryGetValue(k, out float[] en)) j.Arr().Bits(en[0]).Bits(en[1]).Val(en[2] != 0f).Val((int)en[3]).EndArr();
+            else j.Val((string)null);
+            j.Prop("moves", moveCount.TryGetValue(k, out int moves) ? moves : 0);
+            j.Key("lastMove");
+            if (lastMove.TryGetValue(k, out float[] lm)) j.Arr().Bits(lm[0]).Bits(lm[1]).Val(lm[2] != 0f).EndArr();
             else j.Val((string)null);
             var tr = Traverse.Create(k);
             Vector3 end = tr.Field("jumpEndPosition").GetValue<Vector3>();
@@ -251,6 +261,8 @@ namespace MoonlighterOracle
             private static void Prefix(GolemKamikazeBehaviour __instance)
             {
                 entered[__instance] = new[] { Time.time, Time.fixedTime, Time.inFixedTimeStep ? 1f : 0f, (float)Time.frameCount };
+                moveCount[__instance] = 0;
+                lastMove.Remove(__instance);
             }
         }
 
@@ -260,6 +272,10 @@ namespace MoonlighterOracle
             private static void Prefix(GolemKamikazeBehaviour __instance, out Ev __state)
             {
                 __state = null;
+                // (Counted from the room's entry on, recording or not: the replay's InvokeRepeating
+                // goes on from the next one.)
+                moveCount[__instance] = (moveCount.TryGetValue(__instance, out int n) ? n : 0) + 1;
+                lastMove[__instance] = new[] { Time.time, Time.fixedTime, Time.inFixedTimeStep ? 1f : 0f };
                 if (!Recording || EnemyOracle.IdOf(__instance) < 0) return;
                 var e = Add("move", __instance);
                 e.flag = __instance.canMove;
@@ -407,6 +423,62 @@ namespace MoonlighterOracle
             {
                 if (Recording && EnemyOracle.IdOf(__instance) >= 0) Add("exitRoom", __instance);
             }
+        }
+    }
+
+    /// EnemyOracle's own events for the KamikazeGolem, where its overrides go around the generic
+    /// hooks:
+    ///   - "attackHit": GolemKamikazeBehaviour.AttackHit overrides EnemyBehaviour.AttackHit
+    ///     without calling it, so the generic AttackHitHook never sees its OnTriggerEnter2D; this
+    ///     one adds the same event;
+    ///   - "anim" callers: a clip-event method its own clip-event methods call (StopOnExplode's
+    ///     ForbidEnemyMovement; anything CreateExplosionToDamageEnemies' damage or SelfDestroy's
+    ///     Die reach) is a script's call, not the Animator's. ScriptCaller finds the caller on the
+    ///     stack, but these callers are Harmony-patched themselves (their frames are Harmony's
+    ///     replacements, outside Assembly-CSharp), so an "anim" event added inside one with no
+    ///     caller gets that method as its caller.
+    internal static partial class EnemyOracle
+    {
+        [HarmonyPatch(typeof(GolemKamikazeBehaviour), "AttackHit", new[] { typeof(GameObject) })]
+        private static class KamikazeAttackHitHook
+        {
+            private static void Prefix(GolemKamikazeBehaviour __instance, GameObject other)
+            {
+                int id = Id(__instance);
+                if (id >= 0) Add(new Ev { k = "attackHit", s = id, step = Step, player = other != null && other.CompareTag("Player"), other = other != null ? other.name : null });
+            }
+        }
+
+        /// The events added from `mark` on: an "anim" one with no caller (but the method's own)
+        /// was called by `method`.
+        private static void NestedAnimCallers(int mark, string method)
+        {
+            for (int i = mark; i < events.Count; i++)
+            {
+                var e = events[i];
+                if (e.k == "anim" && e.caller == null && e.other != method) e.caller = "GolemKamikazeBehaviour." + method;
+            }
+        }
+
+        [HarmonyPatch(typeof(GolemKamikazeBehaviour), "StopOnExplode")]
+        private static class KamikazeStopNesting
+        {
+            private static void Prefix(out int __state) => __state = events.Count;
+            private static void Postfix(int __state) => NestedAnimCallers(__state, "StopOnExplode");
+        }
+
+        [HarmonyPatch(typeof(GolemKamikazeBehaviour), "CreateExplosionToDamageEnemies")]
+        private static class KamikazeExplosionNesting
+        {
+            private static void Prefix(out int __state) => __state = events.Count;
+            private static void Postfix(int __state) => NestedAnimCallers(__state, "CreateExplosionToDamageEnemies");
+        }
+
+        [HarmonyPatch(typeof(GolemKamikazeBehaviour), "SelfDestroy")]
+        private static class KamikazeSelfDestroyNesting
+        {
+            private static void Prefix(out int __state) => __state = events.Count;
+            private static void Postfix(int __state) => NestedAnimCallers(__state, "SelfDestroy");
         }
     }
 }

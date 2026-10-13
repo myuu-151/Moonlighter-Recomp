@@ -325,6 +325,11 @@ public:
     int deadForce = 100;
     bool subscribedToRoomEnter = false;
     bool hasConfusedEffect = false; // a ConfusedEffect below it (not ported: none)
+    // MakeJump's (game/EnemyJump.h; private in C#): its end, its time, its callback, read by
+    // ContinueJump and EndJump when the rise completes.
+    unity::Vector2 jumpEndPosition;
+    float jumpTime = 0.0f;
+    std::function<void()> jumpCallback;
 
     virtual void Init();
     // MonoBehaviour.Update.
