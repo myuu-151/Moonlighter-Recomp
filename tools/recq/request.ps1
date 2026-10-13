@@ -140,9 +140,9 @@ if ($Json) { [IO.File]::ReadAllText($resultPath) }
 else {
     Say "recq: $Id $($r.status)$(if ($r.status -ne 'ok') { " ($($r.reason)): $($r.detail)" }) after $(@($r.attempts).Count) attempt(s)"
     foreach ($a in @($r.attempts)) { if ($a) { Write-Output ("  attempt {0}: {1} - {2}" -f $a.n, $a.reason, $a.detail) } }
-    foreach ($f in @($r.files)) { if ($f) { Write-Output ("  {0}  ({1} bytes, sha256 {2})" -f (Join-Path $doneDir $f.name), $f.bytes, $f.sha256.Substring(0, 16)) } }
-    if (@($r.otherFiles).Count -and $r.otherFiles[0]) { Write-Output "  also written: $(@($r.otherFiles) -join ', ') (in $(Join-Path $doneDir 'other'))" }
-    if (@($r.promoted).Count -and $r.promoted[0]) { Write-Output "  promoted into $($cfg.OracleOutDir): $(@($r.promoted) -join ', ')" }
+    foreach ($f in @($r.files)) { if ($f) { Write-Output ("  {0}  ({1} bytes, sha256 {2})" -f (Join-Path $doneDir $f.name), $f.bytes, "$($f.sha256)".PadRight(16).Substring(0, 16)) } }
+    if (@($r.otherFiles | Where-Object { $_ }).Count) { Write-Output "  also written: $(@($r.otherFiles) -join ', ') (in $(Join-Path $doneDir 'other'))" }
+    if (@($r.promoted | Where-Object { $_ }).Count) { Write-Output "  promoted into $($cfg.OracleOutDir): $(@($r.promoted) -join ', ')" }
     Write-Output "  result: $resultPath"
 }
 exit $(if ($r.status -eq 'ok') { 0 } else { 1 })
