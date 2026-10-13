@@ -499,7 +499,7 @@ namespace MoonlighterOracle
                     }
             if (prefabs.Any(x => x.enemy))
                 foreach (var e in UnityEngine.Object.FindObjectsOfType<Enemy>())
-                    if (e != null && e.enemyBehaviour != null && !slimes.Contains(e.enemyBehaviour) && prefabByName.TryGetValue(PrefabName(e.name), out var ep) && ep.enemy)
+                    if (e != null && !(e is BreakableObject) && e.enemyBehaviour != null && !slimes.Contains(e.enemyBehaviour) && prefabByName.TryGetValue(PrefabName(e.name), out var ep) && ep.enemy)
                         JoinEnemy(e.enemyBehaviour, "start");
             for (int i = 0; i < slimes.Count; i++)
                 if (slimes[i] != null)
@@ -650,15 +650,20 @@ namespace MoonlighterOracle
             }
         }
 
-        /// A spawned enemy joins the recorded ones (the next id).
+        /// A spawned enemy joins the recorded ones (the next id), if its setup line can be written
+        /// (every row is written for it from then on: one that throws would lose every frame).
         private static void JoinEnemy(EnemyBehaviour b, string how)
         {
             if (b == null || slimes.Contains(b)) return;
-            slimes.Add(b);
-            int id = slimes.Count - 1;
+            int id = slimes.Count;
             var j = new Json().Obj();
             try { WriteSlime(j, id, b, true); }
-            catch (Exception e) { OraclePlugin.Log.LogWarning(Tag + ": spawned enemy " + b.name + ": " + e.Message); }
+            catch (Exception e)
+            {
+                OraclePlugin.Log.LogWarning(Tag + ": " + b.name + " not joined (" + how + "): " + e.Message);
+                return;
+            }
+            slimes.Add(b);
             j.EndObj();
             Add(new Ev { k = "spawnEnemy", s = id, step = Step, other = PrefabName(b.name), caller = how, raw = j.ToString() });
             animRehook = true;
@@ -671,7 +676,10 @@ namespace MoonlighterOracle
             private static void Postfix(Enemy __instance)
             {
                 if (!biome || __instance == null || __instance.enemyBehaviour == null) return; // (from the preparation on)
-                if (slimes.Contains(__instance.enemyBehaviour)) return;
+                if (slimes.Contains(__instance.enemyBehaviour) || __instance is BreakableObject) return; // (a pot is an Enemy too)
+                // Before the start, only what the enemies make (the room's pots and the rest start
+                // then: recq biome-forest-VenomousTangle-1 took a Forest_Pot2_Breakable).
+                if (!recording && !(prefabByName.TryGetValue(PrefabName(__instance.name), out var sp) && sp.enemy)) return;
                 JoinEnemy(__instance.enemyBehaviour, ScriptCaller("Init") ?? "Init");
             }
         }
