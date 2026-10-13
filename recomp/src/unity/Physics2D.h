@@ -34,6 +34,14 @@ struct Collider2D {
     // vertices (a PolygonCollider2D as Unity cuts it for Box2D: unity/PolygonCollider2D.h). The
     // queries here keep using the parts (the same outline).
     std::vector<std::vector<Vector2>> shapes;
+    // Its transform's world rotation as Unity holds it (Transform.rotation, a turn about z: the
+    // quaternion's z and w) and the scale its localToWorldMatrix carries (the local scales down
+    // the hierarchy). A box on a Rigidbody2D of its own that is turned takes its body's angle
+    // and its corners in the body's frame from them, as Unity computes them
+    // (PhysicsWorld::CreateFixtures); the world box above stays its outline for the queries.
+    float rotZ = 0.0f, rotW = 1.0f;
+    Vector2 matrixScale{1.0f, 1.0f};
+    bool Turned() const { return rotZ != 0.0f; } // (z = 0: angle 0, whatever w's sign)
     // World box, without the skin.
     Vector2 Min() const;
     Vector2 Max() const;

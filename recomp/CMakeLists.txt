@@ -235,6 +235,12 @@ add_test(NAME enemy_broken_turret
 add_test(NAME enemy_flyingkamikazegolem
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_FlyingKamikazeGolem.jsonl FlyingKamikazeGolem
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# A second room (Golem_Chest_Holes_14, recq enemyfix-flykami-2): the golem pressed into the
+# half-turned DoorBoundaryDown (its faces lean as Unity's do) and asleep only after its return's
+# tween stops writing its velocity.
+add_test(NAME enemy_flyingkamikazegolem_bis
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_FlyingKamikazeGolem_bis.jsonl FlyingKamikazeGolem
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The KamikazeGolem (game/KamikazeGolem.h): kamikazes in a walled box (the wander, the jump, the
 # explosion and its OverlapCircleAll, SelfDestroy), and against the game

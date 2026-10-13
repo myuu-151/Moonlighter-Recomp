@@ -10,15 +10,15 @@
 // polygons while they stay convex and within 8 vertices. Each polygon then goes through
 // b2PolygonShape::Set (PhysicsWorld), whose hull drops the collinear vertices a merge leaves.
 //
-// The evidence so far (2026-10-13): tangle.jsonl's Tangles 2 and 5 are pushed into the inside
-// corners of a plus-shaped hole (Golem_Enemies_1, Collider_2) for 130 frames, and match bit for
-// bit only when the corner has two pieces touching it, the arm and the column through the
-// middle, as libtess2 cuts it. One box per tile (what the replays used before) puts a third,
-// diagonal piece at the corner, whose extra contact pushes the Tangle further out. Any cut into
-// a few rectangles fits those frames as well; that it is libtess2 (Unity 2021.2's
-// PolygonCollider2D.useDelaunayMesh names the Delaunay pass libtess2 later gained) is the
-// hypothesis the oracle's polygon probe settles (PolygonProbe.cs: each PolygonCollider2D's
-// shapeCount and the internal edges raycasts from inside it meet).
+// The evidence: UnityPlayer.dll's PolygonCollider2D::PreparePolygonShapes makes exactly these
+// libtess2 calls (third_party/libtess2/README.md). tangle.jsonl's Tangles 2 and 5 are pushed into
+// the inside corners of a plus-shaped hole (Golem_Enemies_1, Collider_2) for 130 frames, and match
+// bit for bit only when the corner has two pieces touching it, the arm and the column through the
+// middle, as libtess2 cuts it (one box per tile puts a third, diagonal piece there). The oracle's
+// polygon probe (PolygonProbe.cs; tests/polygon_probe.h) agrees on every recorded hole: the
+// number of pieces (Collider2D.shapeCount), and for each ray cast from inside the hole the nearest
+// piece it enters, bit for bit (tangle, slime, slime_bis and recq enemyfix-flykami-2's
+// enemy_FlyingKamikazeGolem: 12,124 rays).
 
 #include <vector>
 
