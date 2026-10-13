@@ -192,6 +192,39 @@ speed work. Dolphin's timebase counts instructions, not cache misses or latencie
 everything is slower, the pointer-heavy translated code and the collector likely more so. The fixes,
 ranked by what they save, are in `docs/gamecube_translated.md`.
 
+### Fitting in 24 MB of RAM and 16 MB of ARAM
+
+The game fits; the 20 MB above is what today's unoptimised translator emits, not what the game
+needs:
+
+- **20 MB is the unoptimised translator's output, not the game's real size.** The same code
+  hand-ported is about 4 times smaller, and the extra is duplicated machinery the translator can
+  share: one body for each generic over reference types (as .NET does), interfaces without virtual
+  bases, MonoBehaviour messages from a table, tracing from per-type field maps, exception tables
+  only where the game catches.
+- **Not all code has to be in RAM at once.** Town, each dungeon and the UI screens can load as
+  separate code modules (RELs, as commercial GameCube games do), so only the current area's code
+  sits next to what every area shares.
+- **Data streams.** Sprites and sounds come from the disc per area, with ARAM as the cache and the
+  sound bank, as a previous GameCube port on the same engine did.
+
+The rough target budget:
+
+| | RAM (24 MB) | ARAM (16 MB) |
+|---|---|---|
+| Resident code | ~3-5 MB | - |
+| Current area's code module | ~1 MB | - |
+| Engine (Octave) | ~2.3 MB | - |
+| Game heap (objects, scene) | ~3-4 MB | - |
+| Textures in use | ~6-8 MB | spill / cache |
+| UI (open screens) | ~2-3 MB | closed screens |
+| Audio | small mixing buffers | SFX bank ~8-10 MB |
+| Streaming buffers (music, loads) | ~1 MB | music stream buffers |
+
+That's a target, not a measurement yet: the next step is a whole-game GameCube build of the
+translated code, shrunk as above, whose measured numbers replace this table
+(`docs/gamecube_translated.md`).
+
 ### The GameCube optimisation pass
 
 Like the Castle Crashers GameCube port, the GameCube build gets hand-optimised beyond what the
