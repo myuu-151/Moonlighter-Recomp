@@ -514,7 +514,8 @@ namespace MoonlighterOracle
             var font = sm.s.font;
             if (font != null)
             {
-                var wanted = new HashSet<char>(sm.str ?? "");
+                // (The space too: Setup caches it for the tab width.)
+                var wanted = new HashSet<char>(sm.str ?? "") { ' ' };
                 var sizes = GlyphSizes(sm.s, sm.str, gen.fontSizeUsedForBestFit);
                 ms = new MemoryStream();
                 b = new BinaryWriter(ms);
@@ -532,27 +533,45 @@ namespace MoonlighterOracle
             Emit(j);
         }
 
-        private static readonly Regex SizeTag = new Regex(@"<size=\+?(\d{1,4})>", RegexOptions.IgnoreCase);
+        private static readonly Regex SizeTag = new Regex(@"<size=([^>]*)>", RegexOptions.IgnoreCase);
 
-        /// The sizes a generation can have asked the font for: its size (or the font's own for 0),
-        /// the best fit's, the sizes of its <size=N> tags, the best fit's range; each also times the
-        /// scale factor (rounded, floored, ceiled).
+        private static int FloorToInt(float f) => (int)(f >= 0f ? f : f - 0.99999994f);
+
+        /// The sizes a generation can have asked the font for, as GetStringRenderInfo and the
+        /// generator's Setup make them: each best-fit try's size `cur` (the scaled size alone without
+        /// best fit), the font's own for 0, and each <size=N> tag's (int)((N * scale) * (cur / initial))
+        /// ((int)(cur * scale) for 0); each give or take one.
         private static HashSet<int> GlyphSizes(TextGenerationSettings s, string str, int bestSize)
         {
-            var baseSizes = new List<int> { s.fontSize, bestSize };
-            if (s.font != null) baseSizes.Add(s.font.fontSize);
-            if (!string.IsNullOrEmpty(str))
-                foreach (Match m in SizeTag.Matches(str)) baseSizes.Add(int.Parse(m.Groups[1].Value));
+            float scale = s.scaleFactor;
+            int fs = s.fontSize == 0 && s.font != null ? s.font.fontSize : s.fontSize;
+            int maxS = Math.Max(s.resizeTextMinSize, s.resizeTextMaxSize);
+            int size = Math.Min(FloorToInt(fs * scale), 500);
+            int lo = Math.Min(FloorToInt(s.resizeTextMinSize * scale), 500);
+            int hi = Math.Min(FloorToInt(maxS * scale), 500);
+            var tries = new List<int> { size, bestSize };
             if (s.resizeTextForBestFit)
-                for (int i = Math.Max(0, s.resizeTextMinSize); i <= Math.Min(500, s.resizeTextMaxSize); i++) baseSizes.Add(i);
+                for (int c = Math.Max(0, lo); c <= hi; c++) tries.Add(c);
+            var tags = new List<int>();
+            if (!string.IsNullOrEmpty(str))
+                foreach (Match m in SizeTag.Matches(str))
+                {
+                    string p = m.Groups[1].Value.Trim().Trim('"', '\'');
+                    int sign = 1, i = 0, v = 0;
+                    if (i < p.Length && (p[i] == '+' || p[i] == '-')) { sign = p[i] == '-' ? -1 : 1; i++; }
+                    while (i < p.Length && p[i] >= '0' && p[i] <= '9') v = v * 10 + (p[i++] - '0');
+                    tags.Add(sign * v);
+                }
             var sizes = new HashSet<int>();
-            foreach (int b in baseSizes)
+            void Add(int x) { sizes.Add(x - 1); sizes.Add(x); sizes.Add(x + 1); }
+            if (s.font != null) Add(s.font.fontSize);
+            foreach (int cur in tries)
             {
-                float x = b * s.scaleFactor;
-                sizes.Add(b);
-                sizes.Add(Mathf.RoundToInt(x));
-                sizes.Add(Mathf.FloorToInt(x));
-                sizes.Add(Mathf.CeilToInt(x));
+                Add(cur);
+                float ratio = size == 0 ? 1f : (float)cur / size;
+                int baseSize = size != 0 ? FloorToInt(size * ratio + 0.5f) : (s.font != null ? s.font.fontSize : 0);
+                Add(baseSize);
+                foreach (int n in tags) Add(n != 0 ? (int)((n * scale) * ratio) : (int)(baseSize * scale));
             }
             return sizes;
         }
