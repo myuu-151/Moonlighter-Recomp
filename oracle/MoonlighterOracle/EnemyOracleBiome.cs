@@ -99,7 +99,7 @@ namespace MoonlighterOracle
 
         /// The dungeon `-oracle-dungeon=` names (Golem without it); null and the reason when
         /// it names none of the five.
-        private static string ParseDungeon()
+        internal static string ParseDungeon()
         {
             Dungeon = ItemMaster.Culture.Golem;
             string arg = Array.Find(Environment.GetCommandLineArgs(), a => a.StartsWith("-oracle-dungeon="));

@@ -13,7 +13,8 @@ namespace MoonlighterOracle
     /// tangle.jsonl. SlimeOracle's recording (its helpers copied here, to be unified with the
     /// generic enemy oracle later) for TangleBehaviour, plus what its LateUpdate does.
     ///
-    /// Loads the first save slot, takes the Golem gate on seed 7919 and goes through a door into
+    /// Loads the first save slot, takes the Golem gate (or `-oracle-dungeon`'s: EnemyOracleBiome.cs;
+    /// the Forest's Tangles are ForestTangles, TangleBehaviour too) on seed 7919 and goes through a door into
     /// the room with the most Tangles (ties: the fewest other enemies; or the room named). Its
     /// other enemies leave roomEnemies and are switched off before EnableEnemies, the familiars
     /// are switched off.
@@ -649,7 +650,7 @@ namespace MoonlighterOracle
             var ctrl = hero.heroMerchantController;
             var rb = hero.GetComponent<Rigidbody2D>();
             var j = new Json().Obj().Prop("ev", "tangleStart").Prop("session", Trace.Session).Prop("floor", Trace.Floor)
-                .Prop("room", room.name).Prop("roomInfo", room.roomInfo != null ? room.roomInfo.name : "").Prop("enemy", "Tangle");
+                .Prop("room", room.name).Prop("roomInfo", room.roomInfo != null ? room.roomInfo.name : "").Prop("enemy", PrefabOfTangles());
             j.Key("roomPos"); V2(j, room.transform.position);
             var info = dm.intermediateInfo;
             var culture = info.dungeonType == DungeonManager.DungeonType.Intermediate ? info.intermediateCulture : dm.culture;
@@ -881,15 +882,31 @@ namespace MoonlighterOracle
             return room != null;
         }
 
+        /// The recorded Tangles' prefab (Enemy.name: "Tangle" in the Golem dungeon, "ForestTangle" in the Forest).
+        private static string PrefabOfTangles()
+        {
+            var b = tangles.FirstOrDefault(t => t != null);
+            string n = b != null && b.enemy != null ? b.enemy.name : "Tangle";
+            return n.EndsWith("(Clone)") ? n.Substring(0, n.Length - "(Clone)".Length) : n;
+        }
+
         public static IEnumerator Run(MonoBehaviour host, bool quit, string roomArg)
         {
             var log = OraclePlugin.Log;
+            string dungeonError = EnemyOracle.ParseDungeon(); // (-oracle-dungeon)
+            if (dungeonError != null)
+            {
+                log.LogError("tangle: " + dungeonError);
+                File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "FAILED"), DateTime.Now.ToString("o") + " tangle: " + dungeonError);
+                if (quit) Application.Quit();
+                yield break;
+            }
             yield return Harvest.LoadSlot();
             bool generated = false;
             Action done = () => generated = true;
             DungeonGenerator.OnGeneratedDungeon += done;
             UnityEngine.Random.InitState(7919);
-            HeroMerchant.Instance.LoadDungeonScene(ItemMaster.Culture.Golem);
+            HeroMerchant.Instance.LoadDungeonScene(EnemyOracle.Dungeon);
             float start = Time.realtimeSinceStartup;
             while (!generated && Time.realtimeSinceStartup - start < 120f) yield return null;
             DungeonGenerator.OnGeneratedDungeon -= done;
