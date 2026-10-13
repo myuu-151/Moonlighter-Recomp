@@ -75,7 +75,8 @@ ConsumableItemMaster.cs	1	n	MLGC MoonGame	the potion data
 HermitSlimeBehaviourNEW.cs	1	n	game/HermitSlime	waits on its recording
 EnemyDamageReceiver.cs	1	n	game/EnemyColliders
 HermitSlimeAttackState.cs	1	n	game/HermitSlime	no-ops (parameters that do not exist)
-BrokenGolemTurretBehaviour.cs	1	n	game/BrokenGolemTurret	waits on its recording
-BrokenGolemTurretProjectile.cs	1	n	game/EnemyProjectile
+BrokenGolemTurretBehaviour.cs	1	y	game/BrokenGolemTurret	enemy_BrokenGolemTurret.jsonl (its root motion on a moving body unchecked until a recording has rootMotionProbe)
+BrokenGolemTurretProjectile.cs	1	y	game/EnemyProjectile	enemy_BrokenGolemTurret.jsonl
 FlyingKamikazeGolemBehaviour.cs	1	n	game/FlyingKamikazeGolem	waits on its recording (audited)
+GolemKamikazeBehaviour.cs	1	n	game/KamikazeGolem	waits on its recording (audited)
 PoolManager.cs	0.6	n	game/PoolManager	the enemies' projectile pools

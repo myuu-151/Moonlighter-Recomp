@@ -37,7 +37,14 @@
 // For the FlyingKamikazeGolem (enemy_FlyingKamikazeGolem.jsonl): tests/enemy_flykami_checks.h's
 // golem in a box, and tests/flykami_replay.h's part of the replay (ML_FLY_BOX=1: the box's frames).
 //
-// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime, BrokenGolemTurret, FlyingKamikazeGolem)]
+// For the KamikazeGolem (enemy_KamikazeGolem.jsonl, prefab KamikazeGolem; game/KamikazeGolem.h):
+//  1. self-checks (tests/enemy_kamikaze_checks.h): OverlapCircleAll, the prefab, kamikazes in a
+//     walled box (the wander, the Awake trigger, the jump and the explosion, a neighbour killed);
+//  2. the replay (tests/kamikaze_replay.h): the common one plus MoveEnemy's timing and draws, the
+//     attack box's own body, the explosions' hits, the jump's fields.
+//
+// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime, BrokenGolemTurret, FlyingKamikazeGolem,
+//        KamikazeGolem)]
 //        (ML_HERMIT_BOX=1: the hermit's root box in its attack frames)
 //        (ML_ENEMY_DEBUG=1: every mismatch; ML_ENEMY_CONTACTS=<frame>: the enemies' Box2D
 //        contacts after each of that frame's steps; ML_ENEMY_BOX=1: the soldier in a box's
@@ -49,6 +56,8 @@
 #include "turret_replay.h"
 #include "enemy_flykami_checks.h" // (the FlyingKamikazeGolem's self-checks)
 #include "flykami_replay.h"
+#include "enemy_kamikaze_checks.h" // (the KamikazeGolem's self-checks)
+#include "kamikaze_replay.h"
 
 namespace {
 
@@ -557,6 +566,7 @@ int main(int argc, char** argv)
         }
         if (name == "FlyingKamikazeGolem") CheckFlyingKamikazeGolem(*data.prefab, *data.controller, data.enemyStats, data.physics2d, data.soundGroups);
         if (name == "HermitSlime") CheckHermitSlime(*data.prefab, *data.controller, data.enemyStats, data.physics2d, data.soundGroups);
+        if (name == "KamikazeGolem") CheckKamikazeGolem(*data.prefab, *data.controller, data.enemyStats, data.physics2d, data.soundGroups);
         if (name == "BrokenGolemTurret") {
             if (data.projectilePrefab && data.projectileController && data.controller->Param("Shoot") >= 0)
                 for (int variant = 0; variant < 3; variant++) CheckTurretInABox(data, variant);
@@ -585,6 +595,8 @@ int main(int argc, char** argv)
     }
     FlyKamiReplay flykami; // (tests/flykami_replay.h)
     if (name == "FlyingKamikazeGolem") replay.hooks = &flykami;
+    KamikazeReplay kamikaze;
+    if (name == "KamikazeGolem") replay.hooks = &kamikaze;
     const int replayed = ReplayRecording(file, replay);
     turret.Summary();
     return gFailed || replayed ? 1 : 0;

@@ -1,5 +1,45 @@
 # Unattended recording queue: plan
 
+## Status: built (tools/recq)
+
+All three pieces are built and tested in `tools/recq/` (how to use it:
+[tools/recq/README.md](../tools/recq/README.md)):
+
+- `start.ps1` starts the runner (`runner.ps1`) in the background: no window, Idle priority,
+  created through WMI so it outlives the shell that started it. `status.ps1` shows the queue and
+  writes the PAUSE / STOP control files. Agents use `request.ps1` to submit a request and wait for
+  `done/<id>/result.json` in pieces that fit a tool call.
+- Failure handling as planned: Steam checked (and started with `-silent`) before every attempt,
+  the expected files and the done-marker checked for freshness, quick exits counted as `startup`
+  failures, up to 2 retries, the timeout, timestamped backups that are never overwritten. Each
+  failure has its own reason in `result.json`.
+- One oracle build per request, swapped into the game for the run, main's plugin restored in a
+  `finally` and, after a crash of the runner, by the next runner before anything else.
+- Tests: `tools/recq/tests/run_tests.ps1` drives the real runner against a fake game, a fake
+  Steam and throwaway oracle projects, one test per failure path, including a runner killed in
+  the middle of a run.
+
+Where it differs from the plan below:
+
+- **Game runs** go through `tools/oracle_launch.ps1`: a hidden desktop (the window never shows),
+  windowed 640x360, **Normal** priority (Idle priority caused frame hitches that broke
+  recordings), not minimized at Idle.
+- **Steam's connection**: the test is the last state line being `[Logged On`, not `[Connected`
+  (a bare `Connected` also shows up in failed logons). The log is the long-lived
+  `connection_log.txt`, so after starting Steam only lines written since count.
+- **Output folder**: the oracle now takes `-oracle-out=<dir>` (OraclePlugin.cs). The runner gives
+  each run of an oracle that knows it its own folder, and main's `data/oracle` is never touched.
+  For an older oracle (main's deployed plugin until this is merged and deployed, and lanes
+  branched before), the runner copies `data/oracle` before the run and puts main's files back
+  after it, moving what the run wrote into the request's folder.
+- **Builds** copy the worktree's oracle project into `builds/<id>/src`, remove its deploy
+  targets and point `GameDir` at a copy of the game's reference DLLs, so a build can't write into
+  the game; main's plugin is guarded during the build too.
+- **The results**: `done/<id>/` holds the expected files and the marker, `other/` for anything
+  else the run wrote, `attempts/<n>/` for each attempt's logs and a failed attempt's files.
+
+The plan as it was written:
+
 Every system in the port is verified byte for byte against a recording of the real game, made by
 the BepInEx oracle (`oracle/MoonlighterOracle`). Recording already runs unattended: a shell queue
 launches the game minimized at Idle priority, one `-oracle-*` mode after another, and each run
@@ -71,7 +111,8 @@ copied back after the run.
 
 ## Rules that stay
 
-- Game windows stay minimized at Idle priority. Never `-oracle-visible` in the queue.
+- Game windows stay out of sight (now: a hidden desktop, at Normal priority, see above). Never
+  `-oracle-visible` in the queue.
 - Harvest safety blocks saving and Steam stats in every mode. Never press "Read More" on the news
   popup.
 - Agents never launch the game, the oracle or Dolphin themselves: they only write requests.

@@ -30,6 +30,9 @@ the port uses (TARGETS):
       sprites/enemies/GolemTurretProjectile/ (the turrets' shot: its flight and its crash)
   enemies_golem / FlyingKamikazeGolem (controller), exact      -> animators/FlyingKamikazeGolem.json,
       sprites/enemies/FlyingKamikazeGolem/ (its hover and its charge)
+  enemies_golem / GolemKamikaze (controller), exact            -> animators/KamikazeGolem.json,
+      sprites/enemies/KamikazeGolem/ (its sleep, wake, hops and explosion; the explosion's
+      clip drives the AttackCollider's box)
 
   animators/<name>.json:
     controller, override (the override's name, null for a plain controller)
@@ -108,6 +111,7 @@ TARGETS = (
     ('enemies_golem', 'GolemTurretProjectile', 'controller', 'GolemTurretProjectile', 'enemies/GolemTurretProjectile', 'prefab', True),
     # The FlyingKamikazeGolem: its charge, its flight (its AttackCollider and root box are the script's).
     ('enemies_golem', 'FlyingKamikazeGolem', 'controller', 'FlyingKamikazeGolem', 'enemies/FlyingKamikazeGolem', 'prefab', True),
+    ('enemies_golem', 'GolemKamikaze', 'controller', 'KamikazeGolem', 'enemies/KamikazeGolem', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).

@@ -654,7 +654,7 @@ public:
             hit.enemy = e;
             hit.player = owner_.hero_ && other->GetBody() == owner_.hero_->Body() && !other->IsSensor();
             hit.otherTrigger = other->IsSensor();
-            hit.otherFixture = other;
+            hit.other = other;
             owner_.hits_.push_back(hit);
         }
     }
@@ -686,8 +686,10 @@ void EnemyPhysics::Add(Enemy& e)
         e.colliderEnabled = true;
         SetRootColliderEnabled(e, false);
     }
+    // The AttackCollider's own Rigidbody2D (the KamikazeGolem's), at the child's world position.
+    if (e.attackHasRigidbody) e.attackBody = &world_.AddBody(e.attackRigidbody, e.position() + e.attackPosition, e.attackLayer);
     SyncAttackCollider(e);
-    if (!e.active || e.destroyed) e.body->Body()->SetActive(false);
+    if (!e.active || e.destroyed) SetBodyActive(e, false);
     e.synced_ = e.position();
 }
 
@@ -695,14 +697,15 @@ void EnemyPhysics::SyncAttackCollider(Enemy& e)
 {
     if (!e.body) return;
     // The child's box on the parent's body (it has no Rigidbody2D of its own), in the body's
-    // frame: the child's local position plus the box's offset.
+    // frame: the child's local position plus the box's offset. On the child's own body (the
+    // KamikazeGolem's), at its origin plus the offset.
     const bool on = e.hasAttackCollider && e.attackEnabled && e.attackActive;
-    const Vector2 center{e.attackPosition.x + e.attackOffset.x, e.attackPosition.y + e.attackOffset.y};
+    const Vector2 center = e.attackBody ? e.attackOffset : Vector2{e.attackPosition.x + e.attackOffset.x, e.attackPosition.y + e.attackOffset.y};
     const Vector2 size = e.attackSize;
     if (on == e.attackBuilt_ && (!on || (center.x == e.attackBuiltCenter_.x && center.y == e.attackBuiltCenter_.y &&
                                          size.x == e.attackBuiltSize_.x && size.y == e.attackBuiltSize_.y)))
         return;
-    b2Body* b = e.body->Body();
+    b2Body* b = e.attackBody ? e.attackBody->Body() : e.body->Body();
     // Box2D's DestroyFixture recomputes the mass from the densities (the root box's area, or 1
     // with none): Unity keeps the mass set by hand (useAutoMass off), so it goes back after.
     b2MassData mass;
@@ -742,7 +745,7 @@ void EnemyPhysics::SyncAttackCollider(Enemy& e)
     fd.isSensor = true;
     fd.userData = &e.attackLayer;
     e.attackFixture = b->CreateFixture(&fd);
-    world_.RestartRest(*e.body);
+    world_.RestartRest(e.attackBody ? *e.attackBody : *e.body);
     for (auto& c : carried_)
         if (!c.first) c.first = e.attackFixture;
 }
@@ -763,6 +766,7 @@ void EnemyPhysics::SetLayer(Enemy& e, int layer)
 void EnemyPhysics::SetBodyActive(Enemy& e, bool active)
 {
     if (e.body) e.body->Body()->SetActive(active);
+    if (e.attackBody) e.attackBody->Body()->SetActive(active);
 }
 
 void EnemyPhysics::Sync()
@@ -779,6 +783,8 @@ void EnemyPhysics::Sync()
             e->synced_ = p;
             e->transformDirty_ = false;
         }
+        // The AttackCollider's own body to the child's world position (the parent's moves carry it).
+        if (e->attackBody) world_.SyncTransform(*e->attackBody, p + e->attackPosition);
     }
 }
 
@@ -798,7 +804,34 @@ void EnemyPhysics::ReportTriggers()
     // EnemyAttackCollisionDetection.OnTriggerEnter2D -> gameObjectToAdvise's AttackHit (sent to
     // the dead too: AttackHit checks).
     for (const Hit& h : hits_)
-        if (!h.enemy->destroyed && h.enemy->active && h.enemy->enemyBehaviour) h.enemy->enemyBehaviour->AttackHit(h.player);
+        if (!h.enemy->destroyed && h.enemy->active && h.enemy->enemyBehaviour) h.enemy->enemyBehaviour->AttackHitOther(OtherOf(h));
+}
+
+Enemy* EnemyPhysics::RootOf(const b2Fixture* fixture) const
+{
+    if (!fixture) return nullptr;
+    for (Enemy* e : enemies_)
+        if (e->rootFixture == fixture) return e;
+    return nullptr;
+}
+
+EnemyBehaviour::AttackOther EnemyPhysics::OtherOf(const Hit& hit)
+{
+    EnemyBehaviour::AttackOther o;
+    o.player = hit.player;
+    if (!hit.other) return o;
+    if (hero_ && hit.other->GetBody() == hero_->Body()) {
+        o.tag = "Player";
+    } else if (Enemy* e = RootOf(hit.other)) {
+        o.enemy = e;
+        o.tag = e->tag;
+    } else if (EnemyDamageReceiver* r = ReceiverOf(hit.other)) {
+        o.receiver = r;
+        o.tag = r->tag;
+    } else if (const unity::Collider2D* c = world_.ColliderOf(hit.other)) {
+        o.tag = c->tag;
+    }
+    return o;
 }
 
 void EnemyPhysics::Step(float dt)

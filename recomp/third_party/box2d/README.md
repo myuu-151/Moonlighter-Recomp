@@ -16,12 +16,18 @@ Unity 2019.2's 2D physics is a fork of Box2D. This is stock Box2D 2.3.1, which
   outside. Unity's `Physics2DSettings.maxTranslationSpeed` is 100 in Moonlighter's project;
   this takes it as per second over the 0.01 s fixed step. Whether Unity's fork applies it per
   second or per step is not known.
-- `Dynamics/b2World.cpp` (`SolveTOI`): only a pair with a bullet body gets a time of impact. Unity's
-  `CollisionDetectionMode2D.Discrete` body (a non-bullet dynamic one: `unity::PhysicsWorld` makes
-  a Continuous one a bullet) takes no part in continuous collision, against static and kinematic
-  bodies too (stock Box2D gives every dynamic body a TOI against those):
-  `enemy_FlyingKamikazeGolem.jsonl` has the Discrete golem fly 0.18 into a Kinematic wall in one
-  step and get pushed out over the next ones.
+- `Dynamics/b2World.h`, `b2World.cpp`: `SetContinuousBulletsOnly` (default off, as stock).
+  On, `SolveTOI` skips contacts between two non-bullet bodies: a Discrete Rigidbody2D (a
+  non-bullet dynamic body) isn't swept against static or kinematic colliders either, only
+  Continuous ones (bullets: `unity::PhysicsWorld` makes a Continuous Rigidbody2D a bullet) are;
+  Unity's Discrete mode only generates contacts at the new position. Stock Box2D gives every
+  dynamic body a time of impact against static and kinematic ones. `PhysicsWorld` turns it on
+  (`PhysicsWorld::Options::continuousBulletsOnly`). The recordings that show it:
+  `tangle.jsonl` (frame 205: Tangle 5 pushed into a hole's inside corner, against a static
+  collider, ends where the island's position iterations left it, y 342.989410; stock Box2D's TOI
+  pushes it on to the slop, 342.985016) and `enemy_FlyingKamikazeGolem.jsonl` (frame 119: the
+  Discrete golem flies 0.18 into a Kinematic wall in one step and is pushed out over the next
+  ones).
 
 Every other tuning constant already matches the project's Physics2DSettings
 (`data/extracted/physics2d.json`): linear slop 0.005 (polygon radius 0.01 = the default contact

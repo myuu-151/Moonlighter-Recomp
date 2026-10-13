@@ -49,9 +49,14 @@
 #include "unity/Mathf.h"
 #include "unity/Physics2D.h"
 #include "unity/PhysicsWorld.h"
+#include "unity/PolygonCollider2D.h"
 #include "unity/Random.h"
 #include "unity/Tween.h"
 #include "util/Json.h"
+
+#include "enable_clock.h"
+#include "fixture_probe.h"
+#include "polygon_probe.h"
 
 using json::Value;
 using unity::Vector2;
@@ -371,7 +376,8 @@ unity::Collider2D ColliderFrom(const Value& v)
     return c;
 }
 
-// A hole region's outline back to the tiles it covers (as slime_test and player_walk_test do it).
+// A hole region's outline back to the tiles it covers (as slime_test and player_walk_test do it),
+// and its convex pieces in the physics world (unity/PolygonCollider2D.h).
 unity::Collider2D HoleFrom(const Value& v)
 {
     std::vector<std::vector<Vector2>> paths;
@@ -398,6 +404,9 @@ unity::Collider2D HoleFrom(const Value& v)
             if (j == 10) y1 += 10.0f;
             c.parts.emplace_back(Vector2{c.position.x + x0, c.position.y + y0}, Vector2{c.position.x + x1, c.position.y + y1});
         }
+    // In the physics world: the paths cut as Unity cuts a PolygonCollider2D (the tiles above stay
+    // for the queries, which only meet its outline).
+    unity::SetPolygonColliderShapes(c, paths);
     return c;
 }
 
@@ -478,7 +487,11 @@ int ReplayRecording(const std::string& file, const Data& data)
             if (c["type"].s == "BoxCollider2D") queries.Add(ColliderFrom(c));
             else if (!hole) std::printf("note: a %s on the weave's layers (%s): not in the queries\n", c["type"].s.c_str(), c["path"].s.c_str());
         }
-        if (hole && c["enabled"].b) queries.Add(HoleFrom(c));
+        if (hole && c["enabled"].b) {
+            const unity::Collider2D h = HoleFrom(c);
+            CheckPolygonProbe(t, c, h); // (the oracle's probe of Unity's cut, where recorded)
+            queries.Add(h);
+        }
         if (body == "Dynamic" || c["trigger"].b || !c["enabled"].b) continue;
         if (c["type"].s == "BoxCollider2D") roomColliders.Add(ColliderFrom(c));
         else if (hole) roomColliders.Add(HoleFrom(c));
@@ -650,35 +663,17 @@ int ReplayRecording(const std::string& file, const Data& data)
 
     const float fixedDt = Bits(start["fixedDeltaTime"]);
     double fixedClock = 0.0;
-    // The targeting a second after EnableEnemies, if it hasn't come yet. EnableEnemies is an
-    // Invoke itself: if Time.time then was a fixed step's (it ran in the pass after that step),
-    // the targeting's Invoke was made on the fixed clock, which the replay's runs on from the
-    // first recorded step: that step's, fixedDeltaTime (a float, 0.0099999998) back per step.
-    // A second later is then two hundredths of a microsecond past the hundredth step after it,
-    // and the targeting starts in the frame's pass, not in that step (slime.jsonl); one made in a
-    // frame can start in a fixed step (tangle.jsonl, slime_bis.jsonl).
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull()) {
-        const double enabled = static_cast<double>(Bits(*et));
-        calls.now = enabled;
-        if (!f0["steps"].arr.empty()) {
-            const double first = static_cast<double>(Bits(f0["steps"][0]["ft"]));
-            for (int k = 1; k < 1000; k++) {
-                const double at = first - static_cast<double>(k) * static_cast<double>(fixedDt);
-                // (Invoke counts from Time.fixedTime, the last step at or before EnableEnemies:
-                // unity/DelayedCalls.h.)
-                if (static_cast<float>(at) <= Bits(*et)) {
-                    calls.fixedNow = at;
-                    if (static_cast<float>(at) != Bits(*et)) break;
-                }
-                if (at < enabled - 0.005) break;
-                if (static_cast<float>(at) == Bits(*et)) {
-                    calls.inFixedStep = true;
-                    calls.fixedNow = at;
-                    std::printf("EnableEnemies ran in a fixed step's pass (%d steps before the first recorded)\n", k);
-                    break;
-                }
-            }
-        }
+    // EnableEnemies (an Invoke itself): the fixed steps it came after, and the targeting it
+    // starts a second later, if that hasn't come yet. That Invoke counts from Time.fixedTime then
+    // (unity/DelayedCalls.h, as every Invoke): the last fixed step at or before EnableEnemies'
+    // Time.time (EnableEnemiesClock).
+    const EnableClock enable = EnableEnemiesClock(start, f0, fixedDt);
+    if (enable.probed)
+        t.Add("EnableClockProbe: an Invoke made in a frame counts from Time.fixedTime (unity/DelayedCalls.h)", enable.invokeOnFixedClock,
+              "EnableEnemies at " + std::to_string(enable.time) + ", the fixed step before at " + std::to_string(enable.fixedTime));
+    if (enable.known) {
+        calls.now = enable.time;
+        calls.fixedNow = enable.fixedTime;
         for (TangleObj& s : tangles)
             if (!s.enemy->enemyBehaviour->targetPlayer) s.enemy->enemyBehaviour->StartTargetingPlayerAfterTime(Bits(start["targetDelay"]));
         calls.inFixedStep = false;
@@ -689,17 +684,24 @@ int ReplayRecording(const std::string& file, const Data& data)
         heroBody.SetVelocity({Bits(hs[4]), Bits(hs[5])});
         if (heroBody.IsAwake() != hs[7].b) heroBody.Body()->SetAwake(hs[7].b);
     };
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull() && !f0["steps"].arr.empty()) {
-        const double first = static_cast<double>(Bits(f0["steps"][0]["ft"])), enabled = static_cast<double>(Bits(*et));
-        int before = 0;
-        for (double ft = first - 0.01; ft > enabled + 0.005; ft -= 0.01) before++;
-        for (int k = 0; k < before; k++) {
+    if (enable.known) {
+        for (int k = 0; k < enable.stepsBefore; k++) {
             setHero(f0["steps"][0]["hero"]);
             physics.Step(fixedDt);
         }
-        std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", before);
+        std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", enable.stepsBefore);
     }
     int rngElsewhere = 0;
+    // Whether the recording has the fixtures Unity made per step (fixture_probe.h).
+    bool fixturesRecorded = false;
+    for (const Value& fr : frames)
+        if (!fr["steps"].arr.empty()) {
+            fixturesRecorded = RecordsFixtures(fr);
+            break;
+        }
+    if (!fixturesRecorded)
+        std::printf("note: no \"fx\" in the steps (recorded before the oracle's FixtureProbe): the fixtures Unity made for objects "
+                    "this replay doesn't hold are guessed from the weapon's hits\n");
     // The script order: per frame and Tangle with both LateUpdates, which ran first.
     int tangleFirst = 0, agentFirst = 0;
     int weaves = 0, weaveHits = 0;
@@ -719,6 +721,7 @@ int ReplayRecording(const std::string& file, const Data& data)
         nav.BeginFrame();
         const Value& events = f["events"];
         for (const Value& ev : events.arr) {
+            if (fixturesRecorded) break; // (the steps' "fx" tell: fixture_probe.h)
             const std::string& kind = ev["k"].s;
             if (ev["step"].AsInt() == 0 &&
                 (kind == "push" || kind == "dmgToEnemy" || (kind == "attackHit" && !ev["player"].b && ev["other"].IsString() && ev["other"].s == "Collider"))) {
@@ -747,6 +750,8 @@ int ReplayRecording(const std::string& file, const Data& data)
                           Str(e->position()) + " body " + Str(e->body->position()) + " v " + Str(e->body->velocity()) + "; game " +
                           Str({Bits(ss[1]), Bits(ss[2])}) + " body " + Str({Bits(ss[3]), Bits(ss[4])}) + " v " + Str({Bits(ss[5]), Bits(ss[6])}));
             }
+            // Fixtures Unity made since the step before that this world doesn't hold (fixture_probe.h).
+            if (fixturesRecorded && StepMadeFixtures(st)) world.FixtureMadeElsewhere();
             portDamage.clear();
             physics.Step(fixedDt);
             std::vector<std::pair<int, float>> gameDamage;

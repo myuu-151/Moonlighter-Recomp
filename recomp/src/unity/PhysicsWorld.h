@@ -101,6 +101,15 @@ public:
         bool groundBody = true;         // colliders without a Rigidbody2D: one static body at the origin, world vertices
         bool polygonSet = true;         // boxes through b2PolygonShape::Set (else SetAsBox)
         bool continuousPhysics = true;  // b2World's TOI pass
+        // Only bodies with continuous detection (Rigidbody2D.collisionDetectionMode Continuous: Box2D's
+        // bullets) take the TOI pass; a Discrete one isn't swept even against static or kinematic
+        // colliders (Unity: Discrete "only detects collisions at the new position"). tangle.jsonl,
+        // frames 205-492: Tangle 5 pushed into a hole's inside corner ends where the island's
+        // position iterations left it; stock Box2D's TOI pushes it on to the slop (y 342.985016
+        // against the game's 342.989410 at frame 205), and the replay differs from there.
+        // enemy_FlyingKamikazeGolem.jsonl, frame 119: the Discrete golem flies 0.18 into a Kinematic
+        // wall in one step and is pushed out over the next ones (third_party/box2d/README.md).
+        bool continuousBulletsOnly = true;
     };
 
     // (Two constructors, not a defaulted Options argument: GCC wants Options' member
@@ -122,12 +131,16 @@ public:
     // A body with one BoxCollider2D (local offset and size, density 1), its transform at
     // `position` on `layer`.
     Rigidbody2D& AddBody(const Rigidbody2DDef& def, Vector2 position, int layer, Vector2 boxOffset, Vector2 boxSize);
+    // A body with no collider yet (a child's Rigidbody2D whose box comes and goes: the
+    // KamikazeGolem's AttackCollider), its transform at `position` on `layer`.
+    Rigidbody2D& AddBody(const Rigidbody2DDef& def, Vector2 position, int layer);
 
     // gameObject.layer = layer (Unity refilters its fixtures).
     void SetLayer(Rigidbody2D& body, int layer);
     // A collider was made in Unity's world that this one doesn't hold (the hero's weapon
-    // hitbox): Box2D's e_newFixture, so the next step pairs every moved proxy before it
-    // collides (b2World::Step), not after it solves.
+    // hitbox), or remade where this one doesn't call CreateFixture (a pooled body switched back
+    // on: game/EnemyProjectile.cpp): Box2D's e_newFixture, so the next step pairs every moved
+    // proxy before it collides (b2World::Step), not after it solves.
     void FixtureMadeElsewhere();
     // b2ContactManager::Collide outside a step: contacts made at the step's end are tested now
     // (BeginContact for the ones touching). Unity's triggers (its own pass after the solve)

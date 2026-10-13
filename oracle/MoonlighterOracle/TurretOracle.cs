@@ -84,6 +84,16 @@ namespace MoonlighterOracle
 
         public static void End() => active = false;
 
+        /// The shots' transforms (the pools' objects and any shot seen since): the turret replay
+        /// makes these itself (game/EnemyProjectile.h), so FixtureProbe counts their colliders in
+        /// "fxOwn", not "fx". None unless recording the turret.
+        public static IEnumerable<Transform> Held()
+        {
+            if (!active) yield break;
+            foreach (var go in objects)
+                if (go != null) yield return go.transform;
+        }
+
         private static int IdOf(GameObject go)
         {
             if (go == null) return -1;

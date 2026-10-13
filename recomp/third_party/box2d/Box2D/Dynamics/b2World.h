@@ -153,6 +153,11 @@ public:
 	void SetContinuousPhysics(bool flag) { m_continuousPhysics = flag; }
 	bool GetContinuousPhysics() const { return m_continuousPhysics; }
 
+	/// ML port: TOI only for contacts with a bullet (Unity's CollisionDetectionMode2D.Continuous);
+	/// stock Box2D also sweeps a non-bullet dynamic body against static ones.
+	void SetContinuousBulletsOnly(bool flag) { m_continuousBulletsOnly = flag; }
+	bool GetContinuousBulletsOnly() const { return m_continuousBulletsOnly; }
+
 	/// Enable/disable single stepped continuous physics. For testing.
 	void SetSubStepping(bool flag) { m_subStepping = flag; }
 	bool GetSubStepping() const { return m_subStepping; }
@@ -256,6 +261,7 @@ private:
 	// These are for debugging the solver.
 	bool m_warmStarting;
 	bool m_continuousPhysics;
+	bool m_continuousBulletsOnly; // ML port
 	bool m_subStepping;
 
 	bool m_stepComplete;

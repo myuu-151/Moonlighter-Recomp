@@ -24,6 +24,10 @@ namespace MoonlighterOracle
         {
             Log = Logger;
             OutDir = Path.GetFullPath(Path.Combine(Paths.GameRootPath, "..", "data", "oracle"));
+            // -oracle-out=<dir>: write there instead. The recording queue (tools/recq) gives each
+            // run its own folder this way, so queued runs never touch main's data/oracle.
+            string outArg = Array.Find(Environment.GetCommandLineArgs(), a => a.StartsWith("-oracle-out="));
+            if (outArg != null && outArg.Length > "-oracle-out=".Length) OutDir = Path.GetFullPath(outArg.Substring("-oracle-out=".Length));
             Directory.CreateDirectory(OutDir);
             var harmony = new Harmony("moonlighter.oracle");
             harmony.PatchAll(typeof(OraclePlugin).Assembly);

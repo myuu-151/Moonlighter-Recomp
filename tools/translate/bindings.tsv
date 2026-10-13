@@ -1,0 +1,150 @@
+# tools/translate/bindings.tsv: the C# symbols from other assemblies the translated game code
+# uses, mapped onto hand-written C++ (Bindings.cs explains the format). Columns: TAB-separated.
+#
+# ---- mscorlib: the runtime (recomp/src/cs) ----
+type	System.Object	::cs::Object	conv
+type	System.String	::cs::String	conv
+members	System.String	get_Length get_Chars op_Equality op_Inequality Equals CompareOrdinal Compare CompareTo IsNullOrEmpty IsNullOrWhiteSpace IndexOf LastIndexOf IndexOfAny Contains StartsWith EndsWith Substring Replace ToLower ToUpper ToLowerInvariant ToUpperInvariant Trim TrimStart TrimEnd Insert Remove PadLeft PadRight Split ToCharArray Concat Join Format ToString GetHashCode
+field	System.String.Empty	::cs::String::get_Empty()	pure
+op	System.String.op_Equality(string,string)	::cs::String::op_Equality({0}, {1})	pure
+op	System.String.op_Inequality(string,string)	::cs::String::op_Inequality({0}, {1})	pure
+call	System.String.IsNullOrEmpty(string)	::cs::String::IsNullOrEmpty({0})	pure
+type	System.Exception	::cs::Exception	conv
+type	System.NullReferenceException	::cs::NullReferenceException	conv
+type	System.ArgumentException	::cs::ArgumentException	conv
+type	System.ArgumentNullException	::cs::ArgumentNullException	conv
+type	System.ArgumentOutOfRangeException	::cs::ArgumentOutOfRangeException	conv
+type	System.IndexOutOfRangeException	::cs::IndexOutOfRangeException	conv
+type	System.InvalidOperationException	::cs::InvalidOperationException	conv
+type	System.InvalidCastException	::cs::InvalidCastException	conv
+type	System.NotSupportedException	::cs::NotSupportedException	conv
+type	System.NotImplementedException	::cs::NotImplementedException	conv
+type	System.FormatException	::cs::FormatException	conv
+type	System.Collections.Generic.KeyNotFoundException	::cs::KeyNotFoundException	conv
+new	System.Exception.new(string)	::cs::gcnew<::cs::Exception>({0})
+new	System.Exception.new()	::cs::gcnew<::cs::Exception>()
+new	System.InvalidOperationException.new(string)	::cs::gcnew<::cs::InvalidOperationException>({0})
+new	System.InvalidOperationException.new()	::cs::gcnew<::cs::InvalidOperationException>()
+new	System.NotSupportedException.new()	::cs::gcnew<::cs::NotSupportedException>()
+new	System.NotSupportedException.new(string)	::cs::gcnew<::cs::NotSupportedException>({0})
+new	System.ArgumentException.new(string)	::cs::gcnew<::cs::ArgumentException>({0})
+new	System.ArgumentNullException.new(string)	::cs::gcnew<::cs::ArgumentNullException>({0})
+new	System.FormatException.new(string)	::cs::gcnew<::cs::FormatException>({0})
+new	System.NotImplementedException.new()	::cs::gcnew<::cs::NotImplementedException>()
+get	System.Exception.Message	{this}->get_Message()
+type	System.Math	::cs::Math	conv
+type	System.Collections.Generic.List<T>	::cs::List<{T0}>	conv
+type	System.Collections.Generic.List<T>.Enumerator	typename ::cs::List<{T0}>::Enumerator	conv
+type	System.Collections.Generic.Dictionary<TKey,TValue>	::cs::Dictionary<{T0}, {T1}>	conv
+type	System.Collections.Generic.Dictionary<TKey,TValue>.Enumerator	typename ::cs::Dictionary<{T0}, {T1}>::Enumerator	conv
+type	System.Collections.Generic.Dictionary<TKey,TValue>.KeyCollection	typename ::cs::Dictionary<{T0}, {T1}>::KeyCollection	conv
+type	System.Collections.Generic.Dictionary<TKey,TValue>.ValueCollection	typename ::cs::Dictionary<{T0}, {T1}>::ValueCollection	conv
+type	System.Collections.Generic.Dictionary<TKey,TValue>.KeyCollection.Enumerator	typename ::cs::Dictionary<{T0}, {T1}>::KeyCollection::Enumerator	conv
+type	System.Collections.Generic.Dictionary<TKey,TValue>.ValueCollection.Enumerator	typename ::cs::Dictionary<{T0}, {T1}>::ValueCollection::Enumerator	conv
+type	System.Collections.Generic.KeyValuePair<TKey,TValue>	::cs::KeyValuePair<{T0}, {T1}>	conv
+type	System.Collections.Generic.HashSet<T>	::cs::HashSet<{T0}>	conv
+type	System.Collections.Generic.HashSet<T>.Enumerator	typename ::cs::HashSet<{T0}>::Enumerator	conv
+type	System.Collections.IEnumerator	::cs::IEnumerator	conv
+type	System.Collections.IEnumerable	::cs::IEnumerable	conv
+type	System.IDisposable	::cs::IDisposable	conv
+type	System.Collections.Generic.IEnumerator<T>	::cs::IEnumerator_1<{T0}>	conv
+type	System.Collections.Generic.IEnumerable<T>	::cs::IEnumerable_1<{T0}>	conv
+type	System.Collections.Generic.ICollection<T>	::cs::ICollection_1<{T0}>	conv
+type	System.Collections.Generic.IList<T>	::cs::IList_1<{T0}>	conv
+type	System.Collections.Generic.IComparer<T>	::cs::IComparer_1<{T0}>	conv
+type	System.Collections.Generic.IEqualityComparer<T>	::cs::IEqualityComparer_1<{T0}>	conv
+type	System.IComparable	::cs::IComparable	conv
+type	System.IComparable<T>	::cs::IComparable_1<{T0}>	conv
+type	System.IEquatable<T>	::cs::IEquatable_1<{T0}>	conv
+# the primitives' members (keys name the type System.Int32, its parameters int)
+call	System.Int32.ToString()	::cs::ToString({this})	pure
+call	System.Int64.ToString()	::cs::ToString({this})	pure
+call	System.Single.ToString()	::cs::ToString({this})	pure
+call	System.Double.ToString()	::cs::ToString({this})	pure
+call	System.Boolean.ToString()	::cs::ToString({this})	pure
+call	System.Char.ToString()	::cs::ToString({this})	pure
+call	System.Int32.CompareTo(int)	::cs::CompareTo<int32_t>({this}, {0})	pure
+call	System.Single.CompareTo(float)	::cs::CompareTo<float>({this}, {0})	pure
+call	System.Int32.Parse(string)	::cs::ParseInt32({0})
+call	System.Int32.TryParse(string,out int)	::cs::TryParseInt32({0}, {1})
+call	System.Int64.Parse(string)	::cs::ParseInt64({0})
+call	System.Single.Parse(string)	::cs::ParseSingle({0})
+call	System.Single.TryParse(string,out float)	::cs::TryParseSingle({0}, {1})
+call	System.Double.Parse(string)	::cs::ParseDouble({0})
+call	System.Double.TryParse(string,out double)	::cs::TryParseDouble({0}, {1})
+call	System.Int64.TryParse(string,System.Globalization.NumberStyles,System.IFormatProvider,out long)	::cs::TryParseInt64({0}, {1}, {2}, {3})
+call	System.Double.TryParse(string,System.Globalization.NumberStyles,System.IFormatProvider,out double)	::cs::TryParseDouble({0}, {1}, {2}, {3})
+call	System.Single.IsNaN(float)	::std::isnan({0})	pure
+call	System.Double.IsNaN(double)	::std::isnan({0})	pure
+call	System.Single.IsInfinity(float)	::std::isinf({0})	pure
+call	System.Char.IsWhiteSpace(char)	::cs::Char::IsWhiteSpace({0})	pure
+call	System.Char.IsDigit(char)	::cs::Char::IsDigit({0})	pure
+call	System.Char.IsLetter(char)	::cs::Char::IsLetter({0})	pure
+call	System.Char.IsLetterOrDigit(char)	::cs::Char::IsLetterOrDigit({0})	pure
+call	System.Char.ToUpper(char)	::cs::Char::ToUpper({0})	pure
+call	System.Char.ToLower(char)	::cs::Char::ToLower({0})	pure
+get	System.Array.Length	{this}->get_Length()	pure
+get	System.Environment.NewLine	::cs::Environment::get_NewLine()	pure
+type	System.Text.StringBuilder	::cs::StringBuilder	conv
+type	System.Globalization.NumberStyles	::cs::NumberStyles
+type	System.Globalization.CultureInfo	::cs::CultureInfo	conv
+type	System.IFormatProvider	::cs::IFormatProvider
+type	System.StringComparer	::cs::StringComparer	conv
+type	System.Linq.Enumerable	::cs::Enumerable	conv
+
+# ---- UnityEngine: the Unity layer (recomp/src/unity) through its facade (recomp/src/bind) ----
+type	UnityEngine.Vector2	::unity::Vector2	include=bind/UnityEngine.h
+new	UnityEngine.Vector2.new(float,float)	::unity::Vector2({0}, {1})	pure
+field	UnityEngine.Vector2.x	{this}.x	pure
+field	UnityEngine.Vector2.y	{this}.y	pure
+get	UnityEngine.Vector2.zero	::unity::Vector2::zero()	pure
+get	UnityEngine.Vector2.one	::unity::Vector2(1.0f, 1.0f)	pure
+get	UnityEngine.Vector2.up	::unity::Vector2::up()	pure
+get	UnityEngine.Vector2.down	::unity::Vector2::down()	pure
+get	UnityEngine.Vector2.left	::unity::Vector2::left()	pure
+get	UnityEngine.Vector2.right	::unity::Vector2::right()	pure
+op	UnityEngine.Vector2.op_Addition(UnityEngine.Vector2,UnityEngine.Vector2)	({0} + {1})	pure
+op	UnityEngine.Vector2.op_Subtraction(UnityEngine.Vector2,UnityEngine.Vector2)	({0} - {1})	pure
+op	UnityEngine.Vector2.op_UnaryNegation(UnityEngine.Vector2)	(-{0})	pure
+op	UnityEngine.Vector2.op_Multiply(UnityEngine.Vector2,float)	({0} * {1})	pure
+op	UnityEngine.Vector2.op_Equality(UnityEngine.Vector2,UnityEngine.Vector2)	::UnityEngine::Vector2_op_Equality({0}, {1})	pure
+op	UnityEngine.Vector2.op_Inequality(UnityEngine.Vector2,UnityEngine.Vector2)	!::UnityEngine::Vector2_op_Equality({0}, {1})	pure
+op	UnityEngine.Vector2.op_Implicit(UnityEngine.Vector3)	::UnityEngine::Vector3_to_Vector2({0})	pure
+op	UnityEngine.Vector3.op_Implicit(UnityEngine.Vector2)	::UnityEngine::Vector2_to_Vector3({0})	pure
+call	UnityEngine.Vector2.Distance(UnityEngine.Vector2,UnityEngine.Vector2)	::unity::Distance({0}, {1})	pure
+type	UnityEngine.Vector3	::UnityEngine::Vector3	include=bind/UnityEngine.h
+new	UnityEngine.Vector3.new(float,float)	::UnityEngine::Vector3({0}, {1}, 0.0f)	pure
+new	UnityEngine.Vector3.new(float,float,float)	::UnityEngine::Vector3({0}, {1}, {2})	pure
+field	UnityEngine.Vector3.x	{this}.x	pure
+field	UnityEngine.Vector3.y	{this}.y	pure
+field	UnityEngine.Vector3.z	{this}.z	pure
+type	UnityEngine.Random	::unity::Random	include=unity/Random.h
+call	UnityEngine.Random.Range(float,float)	::unity::Random::Range({0}, {1})
+call	UnityEngine.Random.Range(int,int)	::unity::Random::Range({0}, {1})
+get	UnityEngine.Random.value	::unity::Random::value()
+type	UnityEngine.Debug	::UnityEngine::Debug	conv	include=bind/UnityEngine.h
+type	UnityEngine.Time	::UnityEngine::Time	conv	include=bind/UnityEngine.h
+type	UnityEngine.Mathf	::UnityEngine::Mathf	conv	include=bind/UnityEngine.h
+type	UnityEngine.Object	::UnityEngine::Object	conv	include=bind/UnityEngine.h
+op	UnityEngine.Object.op_Implicit(UnityEngine.Object)	::UnityEngine::Object::op_Implicit({0})	pure
+op	UnityEngine.Object.op_Equality(UnityEngine.Object,UnityEngine.Object)	::UnityEngine::Object::op_Equality({0}, {1})	pure
+op	UnityEngine.Object.op_Inequality(UnityEngine.Object,UnityEngine.Object)	!::UnityEngine::Object::op_Equality({0}, {1})	pure
+type	UnityEngine.ScriptableObject	::UnityEngine::ScriptableObject	conv	include=bind/UnityEngine.h
+type	UnityEngine.MonoBehaviour	::UnityEngine::MonoBehaviour	conv	include=bind/UnityEngine.h
+type	UnityEngine.Behaviour	::UnityEngine::Behaviour	conv	include=bind/UnityEngine.h
+type	UnityEngine.Component	::UnityEngine::Component	conv	include=bind/UnityEngine.h
+type	UnityEngine.TextAsset	::UnityEngine::TextAsset	conv	include=bind/UnityEngine.h
+type	UnityEngine.Resources	::UnityEngine::Resources	conv	include=bind/UnityEngine.h
+type	UnityEngine.Color	::UnityEngine::Color	conv	include=bind/UnityEngine.h
+# what the facade's convention-mapped types have (recomp/src/bind/UnityEngine.h)
+members	UnityEngine.Object	op_Implicit op_Equality op_Inequality get_name set_name Destroy DestroyImmediate .ctor
+members	UnityEngine.ScriptableObject	CreateInstance .ctor
+members	UnityEngine.MonoBehaviour	.ctor
+members	UnityEngine.Behaviour	get_enabled set_enabled .ctor
+members	UnityEngine.Component	.ctor
+members	UnityEngine.TextAsset	get_text .ctor
+members	UnityEngine.Resources	Load FindObjectsOfTypeAll
+members	UnityEngine.Debug	Log LogWarning LogError LogFormat LogErrorFormat
+members	UnityEngine.Time	get_realtimeSinceStartup get_time get_deltaTime get_fixedDeltaTime get_frameCount
+members	UnityEngine.Mathf	Min Max Abs Sign Clamp Clamp01 Lerp Floor FloorToInt Ceil CeilToInt Round RoundToInt Sqrt Pow Atan2 Sin Cos Repeat DeltaAngle MoveTowards PI Infinity Epsilon
+members	UnityEngine.Color	.ctor r g b a

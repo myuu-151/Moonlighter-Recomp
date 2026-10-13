@@ -1,6 +1,7 @@
 #include "unity/DelayedCalls.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace unity {
 
@@ -39,6 +40,32 @@ void DelayedCalls::Wait(const void* owner, float seconds, std::function<void()> 
 void DelayedCalls::Destroy(const void* owner, float seconds, std::function<void()> destroy)
 {
     Add(owner, "", Kind::Destroy, inFixedStep ? fixedNow : now, seconds, std::move(destroy), 0.0f);
+}
+
+void DelayedCalls::DestroyAtFrameEnd(const void* owner, std::function<void()> destroy)
+{
+    // (Kind::Destroy at an infinite time: no pass runs it; EndOfFrame does.)
+    Call c;
+    c.time = std::numeric_limits<double>::infinity();
+    c.seq = seq_++;
+    c.owner = owner;
+    c.kind = Kind::Destroy;
+    c.fn = std::move(destroy);
+    c.frameEnd = true;
+    calls_.push_back(std::move(c));
+}
+
+void DelayedCalls::EndOfFrame()
+{
+    std::vector<std::function<void()>> due;
+    for (Call& c : calls_)
+        if (c.frameEnd && !c.cancelled) {
+            c.cancelled = true;
+            due.push_back(c.fn);
+        }
+    calls_.erase(std::remove_if(calls_.begin(), calls_.end(), [](const Call& c) { return c.cancelled; }), calls_.end());
+    for (auto& fn : due)
+        if (fn) fn();
 }
 
 void DelayedCalls::CancelInvoke(const void* owner, const std::string& name)

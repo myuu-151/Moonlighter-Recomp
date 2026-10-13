@@ -144,6 +144,11 @@ void EnemyProjectiles::Activate(EnemyProjectile& p)
         p.synced_ = p.position();
     } else if (p.body) {
         p.body->Body()->SetActive(true);
+        // Unity makes the box's fixtures again as the object comes back on: Box2D's e_newFixture
+        // (the next step pairs the moved proxies before it collides), which b2Body::SetActive
+        // doesn't flag (the first activation's AddBody does, by CreateFixture). FixtureProbe's
+        // "made" (oracle: the shots count in "fxOwn", which a replay doesn't take this from).
+        if (world_) world_->FixtureMadeElsewhere();
         if (!keepVelocityInPool) p.body->SetVelocity(Vector2::zero());
     }
     // The Animator starts over (its default state, its parameters' defaults).
