@@ -732,7 +732,7 @@ int ReplayRecording(const std::string& file, const Data& data)
         // The fixed steps.
         for (size_t k = 0; k < f["steps"].size(); k++) {
             const Value& st = f["steps"][k];
-            fixedClock = fixedClock > 0.0 ? fixedClock + static_cast<double>(fixedDt) : static_cast<double>(Bits(st["ft"]));
+            fixedClock = fixedClock > 0.0 ? fixedClock + static_cast<double>(fixedDt) : EngineFixedTime(Bits(st["ft"]), fixedDt); // (enable_clock.h)
             if (std::fabs(fixedClock - static_cast<double>(Bits(st["ft"]))) > 1e-4)
                 std::printf("note: frame %lld step %zu: the fixed clock %.9f, the recording %.9f\n", fn, k, fixedClock, static_cast<double>(Bits(st["ft"])));
             calls.now = time;

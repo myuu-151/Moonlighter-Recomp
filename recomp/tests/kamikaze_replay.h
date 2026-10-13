@@ -6,7 +6,7 @@
 //   - each kamikaze from its recorded state ("kami": the Animator's Awake / Attacking / Jump
 //     triggers, MakeJump's end and time, its attack body's position and rest in the first frame)
 //     and its InvokeRepeating("MoveEnemy", 0.65, 0.65) made when its room was entered ("enter":
-//     Time.time, or Time.fixedTime if that was in a fixed step), on from the run after the
+//     from its Time.fixedTime, as every Invoke, on the replay's fixed clock), on from the run after the
 //     "moves" it has made already (each 0.65 after the last one was due);
 //   - each fixed step's start ("ksteps"): the AttackCollider's own body (position, awake);
 //   - each MoveEnemy ("kev" "move", in order per kamikaze): when it runs (the frame and the
@@ -44,13 +44,14 @@ struct KamikazeReplay : ReplayHooks {
     std::map<int, int> explosionsBefore; // per kamikaze: the port's explosions before this frame
     struct Enter {
         int id;
-        double base;
+        float base; // Time.fixedTime then
         bool fixed;
         int moves;      // MoveEnemy runs before the recording
         float lastMove; // the last one's Time.time (-1: none)
     };
     std::vector<Enter> enters;
     float startTime = 0.0f;
+    float fixedDt = 0.02f; // Time.fixedDeltaTime (the start line's)
     // The attack bodies as the recording starts ([x, y, awake]: "ab"), set in the first frame
     // (after the steps the replay runs before it, which sync them to the transform).
     struct StartBody {
@@ -88,6 +89,7 @@ struct KamikazeReplay : ReplayHooks {
         tally = &t;
         scene.queries = &roomColliders; // (Update's hole check: the holes are among them)
         if (const Value* tm = start.Find("time")) startTime = Bits(*tm);
+        fixedDt = Bits(start["fixedDeltaTime"]);
     }
 
     void OnEnemy(game::Enemy& e, int id, const Value& line, Tally& t) override
@@ -122,7 +124,7 @@ struct KamikazeReplay : ReplayHooks {
             // Time.time 191.755310, fixedTime 191.75, MoveEnemy in the steps at 192.4, 193.05...).
             const bool fixed = en->size() > 2 && (*en)[2].b;
             const Value* lm = ka->Find("lastMove");
-            enters.push_back({id, static_cast<double>(Bits((*en)[en->size() > 1 ? 1 : 0])), fixed,
+            enters.push_back({id, Bits((*en)[en->size() > 1 ? 1 : 0]), fixed,
                               ka->Find("moves") ? static_cast<int>((*ka)["moves"].AsInt()) : 0, lm && lm->IsArray() ? Bits((*lm)[0]) : -1.0f});
         } else {
             std::printf("note: enemy %d never entered its room (no EnemyRoom_OnRoomEnter): no MoveEnemy\n", id);
@@ -153,7 +155,10 @@ struct KamikazeReplay : ReplayHooks {
 
     void OnEnemiesBuilt(const Value&, Tally&) override
     {
-        // InvokeRepeating("MoveEnemy", 0.65, 0.65) as EnemyRoom_OnRoomEnter made it.
+        // InvokeRepeating("MoveEnemy", 0.65, 0.65) as EnemyRoom_OnRoomEnter made it, from its
+        // Time.fixedTime as the engine's double (enable_clock.h's EngineFixedTime: the recorded
+        // float can be 7.6e-6 off, while a repeat falls due 9.3e-9 before its step per period,
+        // 65 steps of 0.0099999998 against 0.65f).
         if (!calls) return;
         const double now = calls->now, fixedNow = calls->fixedNow;
         const bool inFixed = calls->inFixedStep;
@@ -161,7 +166,7 @@ struct KamikazeReplay : ReplayHooks {
             game::GolemKamikazeBehaviour* k = Kami(*enemies[en.id]);
             // The runs made before the recording: the next is due 0.65 after the last one was
             // (the repeat adds its rate to the due time, as unity/DelayedCalls has it).
-            double at = en.base;
+            double at = EngineFixedTime(en.base, fixedDt);
             for (int n = 0; n < en.moves; n++) at += static_cast<double>(0.65f);
             if (en.moves > 0 && std::fabs(static_cast<double>(en.lastMove) - at) > 0.02)
                 std::printf("note: enemy %d's last MoveEnemy before the recording ran at %.6f, due at %.6f (InvokeRepeating's period?)\n", en.id,

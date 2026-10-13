@@ -743,8 +743,9 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             const Value& st = f["steps"][k];
             // The fixed clock: the engine's double, a float fixedDeltaTime on per step from the
             // first recorded one (the recorded floats are 1.5e-5 coarse here, while what's due in
-            // which step can turn on 2e-9: a 0.07 s Invoke against seven steps of 0.0099999998).
-            fixedClock = fixedClock > 0.0 ? fixedClock + static_cast<double>(fixedDt) : static_cast<double>(Bits(st["ft"]));
+            // which step can turn on 2e-9: a 0.07 s Invoke against seven steps of 0.0099999998),
+            // which is a whole number of steps since the game started (EngineFixedTime).
+            fixedClock = fixedClock > 0.0 ? fixedClock + static_cast<double>(fixedDt) : EngineFixedTime(Bits(st["ft"]), fixedDt);
             if (std::fabs(fixedClock - static_cast<double>(Bits(st["ft"]))) > 1e-4)
                 std::printf("note: frame %lld step %zu: the fixed clock %.9f, the recording %.9f\n", fn, k, fixedClock, static_cast<double>(Bits(st["ft"])));
             calls.now = time;
