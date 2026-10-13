@@ -107,6 +107,11 @@ GameCube: the same sources compile with devkitPPC (`-mogc -mcpu=750 -meabi -mhar
 **Always build game code with `-ffp-contract=off`**: GCC otherwise fuses multiply-adds
 (it does in `Random::Range(float)`) and results drift from the original.
 
+**Strategy:** since 2026-10-13 the game's own C# is translated to C++ by a tool (`tools/translate`)
+instead of being ported class by class; the hand-written work is our replacement for the parts of
+Unity the game calls. Why and how, the exactness rules, the GameCube concerns and the roadmap:
+[`docs/translation_strategy.md`](docs/translation_strategy.md).
+
 ## Exactness notes (things the oracle caught or confirmed)
 
 - `UnityEngine.Random` is xorshift128 seeded MT-style (`s[i+1] = s[i]*1812433253+1`).
