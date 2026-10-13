@@ -98,6 +98,7 @@ PhysicsWorld::PhysicsWorld(const Physics2DSettings& settings, const Options& opt
     filter_ = new Filter(settings_);
     world_->SetContactFilter(filter_);
     world_->SetContinuousPhysics(options_.continuousPhysics);
+    world_->SetContinuousBulletsOnly(options_.continuousBulletsOnly);
     b2BodyDef ground;
     ground.type = b2_staticBody;
     ground_ = world_->CreateBody(&ground);
@@ -113,11 +114,18 @@ void PhysicsWorld::CreateFixtures(ColliderEntry& e)
 {
     const Collider2D& c = *e.collider;
     const Vector2 origin = e.body == ground_ ? Vector2{} : V2(e.body->GetPosition());
-    const size_t boxes = c.parts.empty() ? 1 : c.parts.size();
+    const size_t boxes = !c.shapes.empty() ? c.shapes.size() : c.parts.empty() ? 1 : c.parts.size();
     for (size_t i = 0; i < boxes; i++) {
         b2PolygonShape shape;
-        MakeBox(shape, c.parts.empty() ? c.Min() : c.parts[i].first, c.parts.empty() ? c.Max() : c.parts[i].second, origin,
-                options_.polygonSet);
+        if (!c.shapes.empty()) {
+            b2Vec2 v[b2_maxPolygonVertices];
+            const std::vector<Vector2>& poly = c.shapes[i];
+            const int n = static_cast<int>(poly.size() < b2_maxPolygonVertices ? poly.size() : b2_maxPolygonVertices);
+            for (int k = 0; k < n; k++) v[k] = b2Vec2(poly[static_cast<size_t>(k)].x - origin.x, poly[static_cast<size_t>(k)].y - origin.y);
+            shape.Set(v, n);
+        } else
+            MakeBox(shape, c.parts.empty() ? c.Min() : c.parts[i].first, c.parts.empty() ? c.Max() : c.parts[i].second, origin,
+                    options_.polygonSet);
         b2FixtureDef fd;
         fd.shape = &shape;
         fd.density = kDensity;

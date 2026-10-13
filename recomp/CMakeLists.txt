@@ -19,8 +19,19 @@ if(MSVC)
     set_source_files_properties(${BOX2D_SOURCES} PROPERTIES COMPILE_OPTIONS /wd4456) # its shadowed locals
 endif()
 
+# libtess2 (third_party/libtess2/README.md): how Unity cuts a PolygonCollider2D into Box2D's
+# convex polygons (unity/PolygonCollider2D.h). Plain C.
+enable_language(C)
+file(GLOB LIBTESS2_SOURCES CONFIGURE_DEPENDS third_party/libtess2/Source/*.c)
+if(MSVC)
+    set_source_files_properties(${LIBTESS2_SOURCES} PROPERTIES COMPILE_OPTIONS "/W0")
+else()
+    set_source_files_properties(${LIBTESS2_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
+endif()
+
 add_library(mlcore STATIC
     ${BOX2D_SOURCES}
+    ${LIBTESS2_SOURCES}
     src/cs/Object.cpp
     src/cs/String.cpp
     src/cs/Text.cpp
@@ -89,8 +100,10 @@ add_library(mlcore STATIC
     src/unity/Physics2DOverlap.cpp
     # EnemyBehaviour.MakeJump (shared with the chest mimics).
     src/game/EnemyJump.cpp
+    # A PolygonCollider2D's convex pieces in the physics world (libtess2).
+    src/unity/PolygonCollider2D.cpp
 )
-target_include_directories(mlcore PUBLIC src third_party/box2d)
+target_include_directories(mlcore PUBLIC src third_party/box2d third_party/libtess2/Include)
 
 add_executable(cave_oracle_test tests/cave_oracle_test.cpp)
 target_link_libraries(cave_oracle_test PRIVATE mlcore)
