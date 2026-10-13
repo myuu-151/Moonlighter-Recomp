@@ -235,9 +235,12 @@ protected:
     virtual void cs_EnabledChanged(bool enabled) { (void)enabled; }
 };
 
-class YieldInstruction : public Object {
+// A yield instruction is a plain managed object in Unity (not a UnityEngine.Object): no native
+// side, no `== null` of its own, collected as any object once nothing references it.
+class YieldInstruction : public cs::Object {
 public:
     const char* cs_typename() const override { return "UnityEngine.YieldInstruction"; }
+    bool cs_traced() const override { return true; }
 };
 class WaitForSeconds : public YieldInstruction {
 public:
@@ -383,6 +386,10 @@ private:
     std::vector<YieldNull> yieldNull_;
     std::vector<UnityEngine::Coroutine*> fixedWaits_;
     std::vector<UnityEngine::Coroutine*> coroutines_; // running (for StopCoroutine and the collector)
+    // Coroutines with a WaitForSeconds pending in `calls` (one entry per pending wait): the
+    // collector's roots until it resumes them or their owner's calls are dropped (a coroutine
+    // StopCoroutine took out of coroutines_ is still referenced by its pending wait).
+    std::vector<UnityEngine::Coroutine*> secondsWaits_;
     std::vector<UnityEngine::Object*> destroys_;
 
 public:

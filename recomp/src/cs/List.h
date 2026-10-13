@@ -415,6 +415,13 @@ public:
             index = 0;
             current = T{};
         }
+        // The collector: an enumerator a lowered foreach keeps in an iterator's state machine
+        // (or a boxed one) may be all that holds its list (`foreach (x in new List<T>(...))`).
+        friend void cs_trace_value(Tracer& t, const Enumerator& e)
+        {
+            t.Mark(e.list);
+            TraceField(t, e.current);
+        }
     };
     Enumerator GetEnumerator()
     {

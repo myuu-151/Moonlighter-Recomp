@@ -24,7 +24,7 @@
 //
 // Usage: enemy_translated_test [recording.jsonl] [prefab]   (default data/oracle/slime.jsonl
 //        BabySlime; ML_DATA: the extracted data, default data/extracted; ML_SLIME_DEBUG=1: every
-//        mismatch)
+//        mismatch; ML_GC_EVERY_FRAME=1: the collector at every frame boundary)
 
 #include <algorithm>
 #include <cmath>
@@ -871,6 +871,9 @@ int Replay(const std::string& file, Data& data)
     const bool entersRecorded = start.Find("attackEnters") != nullptr;
     const char* const enterKind = entersRecorded ? "attackEnter" : "attackHit";
     int unseenEnters = 0;
+    const bool gcEveryFrame = std::getenv("ML_GC_EVERY_FRAME") != nullptr;
+    int gcRuns = 0;
+    size_t gcFreed = 0;
     for (size_t fi = 0; fi < frames.size(); fi++) {
         const Value& f = frames[fi];
         const long long fn = f["f"].AsInt();
@@ -1245,9 +1248,17 @@ int Replay(const std::string& file, Data& data)
             }
             if (t.debug) std::printf("frame %lld enemy %d: %s %s | game %s\n", fn, id, Str(Position(s)).c_str(), SpriteOf(s).c_str(), Str(V2(v["pos"])).c_str());
         }
+        // ML_GC_EVERY_FRAME=1: the collector at every frame boundary (docs/translator_plan.md,
+        // "Memory"), where no translated code is running: what the roots don't reach is freed, so
+        // a live object the roots miss shows up as a crash or a mismatch in the frames after.
+        if (gcEveryFrame) {
+            gcFreed += cs::CurrentHeap().Collect();
+            gcRuns++;
+        }
     }
     std::printf("\n");
     t.Print();
+    if (gcEveryFrame) std::printf("collected at %d frame ends: %zu objects freed, %zu left\n", gcRuns, gcFreed, cs::CurrentHeap().Count());
     std::printf("Random drawn by the game's other scripts (resynced) %d times\n", rngElsewhere);
     if (roomExit.inferred) std::printf("the room's DisableEnemies placed from the enemies' rows (no event recorded) %d times\n", roomExit.inferred);
     if (unseenEnters)

@@ -83,3 +83,13 @@ add_test(NAME slime_bis_translated
 add_test(NAME enemy_golem_soldier_translated
          COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# The collector at every frame boundary on the translated scene (ML_GC_EVERY_FRAME), freed objects
+# poisoned (ML_GC_POISON): a live object the roots miss crashes the replay or makes it mismatch
+# (docs/translator_plan.md, "Memory").
+add_test(NAME slime_translated_gc
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl BabySlime
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME enemy_golem_soldier_translated_gc
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+set_tests_properties(slime_translated_gc enemy_golem_soldier_translated_gc PROPERTIES ENVIRONMENT "ML_GC_EVERY_FRAME=1;ML_GC_POISON=1")

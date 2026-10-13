@@ -175,6 +175,12 @@ public:
             index = 0;
             current = Pair();
         }
+        // The collector: it may be all that holds its dictionary (cs/List.h's Enumerator).
+        friend void cs_trace_value(Tracer& t, const Enumerator& e)
+        {
+            t.Mark(e.d);
+            TraceField(t, e.current);
+        }
     };
     Enumerator GetEnumerator()
     {
@@ -222,6 +228,11 @@ public:
                 if (version != d->version_) ThrowInvalidOperation("Collection was modified; enumeration operation may not execute.");
                 index = 0;
                 current = T{};
+            }
+            friend void cs_trace_value(Tracer& t, const Enumerator& e)
+            {
+                t.Mark(e.d);
+                TraceField(t, e.current);
             }
         };
         Enumerator GetEnumerator()

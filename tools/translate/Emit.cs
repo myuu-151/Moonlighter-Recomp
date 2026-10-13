@@ -33,6 +33,9 @@ public sealed class Emitter
         public List<IFieldSymbol> StaticFields = new();
         public List<IEventSymbol> Events = new();
         public bool Generic;
+        // The static fields the collector traces as roots: references and structs, and the
+        // delegates of static field-like events (a subscriber's handler is held only there).
+        public bool HasTracedStatics => StaticFields.Any(f => NeedsTrace(f.Type)) || Events.Any(e => e.IsStatic);
     }
 
     public void Write()
@@ -266,7 +269,9 @@ public sealed class Emitter
 
         // static initialization: __si() runs the static constructor once
         bool si = tr.StaticInitActive(t);
-        bool siGeneric = o.Generic && o.StaticFields.Any(f => NeedsTrace(f.Type));
+        // (a generic type's statics register as roots per instantiation, at its first static access:
+        // Translator.NeedsSiCall)
+        bool siGeneric = o.Generic && o.HasTracedStatics;
         if (si || siGeneric)
         {
             sb.Append("    static int8_t cs_cctor_state_;\n");
@@ -305,7 +310,7 @@ public sealed class Emitter
             sb.Append("    bool cs_traced() const override { return true; }\n");
             sb.Append("    void cs_trace(::cs::Tracer& t) override;\n");
         }
-        if (o.StaticFields.Any(f => NeedsTrace(f.Type)))
+        if (o.HasTracedStatics)
             sb.Append("    static void cs_trace_statics(::cs::Tracer& t);\n");
         sb.Append("};\n");
         if (isStruct)
@@ -333,7 +338,7 @@ public sealed class Emitter
         return false;
     }
 
-    static bool NeedsTrace(ITypeSymbol t) => Names.IsRef(t) || t.TypeKind == TypeKind.TypeParameter || t.IsValueType && t.SpecialType == SpecialType.None && t.TypeKind != TypeKind.Enum;
+    internal static bool NeedsTrace(ITypeSymbol t) => Names.IsRef(t) || t.TypeKind == TypeKind.TypeParameter || t.IsValueType && t.SpecialType == SpecialType.None && t.TypeKind != TypeKind.Enum;
 
     string TryType(ITypeSymbol t)
     {
@@ -362,7 +367,7 @@ public sealed class Emitter
         if (m.AssociatedSymbol is IPropertySymbol p && tr.IsAutoProperty(p) && !tr.IsHand(m))
         {
             string f = Names.Ident(p.Name);
-            string guard = p.IsStatic && tr.StaticInitActive(t) ? "__si(); " : "";
+            string guard = p.IsStatic && (tr.StaticInitActive(t) || o.Generic && o.HasTracedStatics) ? "__si(); " : "";
             string virt = AccessorVirtual(m);
             if (m.MethodKind == MethodKind.PropertyGet) return $"{(m.IsStatic ? "static " : virt)}{ret} {name}() {{ {guard}return {f}; }}{Override(m)}";
             return $"{(m.IsStatic ? "static " : virt)}void {name}({TypeOrGap(p.Type)} value) {{ {guard}{f} = value; }}{Override(m)}";
@@ -372,7 +377,10 @@ public sealed class Emitter
             string dt = N.Type(e.Type);
             string f = Names.Ident(e.Name);
             string op = m.MethodKind == MethodKind.EventAdd ? "Combine" : "Remove";
-            return $"{(m.IsStatic ? "static " : AccessorVirtual(m))}void {name}({dt}* value) {{ {f} = {dt}::{op}({f}, value); }}{Override(m)}";
+            // (a static event's accessor is a static method: its type's static initialization first,
+            // as for a static auto-property; a generic type's registers its static roots)
+            string guard = m.IsStatic && (tr.StaticInitActive(t) || o.Generic && o.HasTracedStatics) ? "__si(); " : "";
+            return $"{(m.IsStatic ? "static " : AccessorVirtual(m))}void {name}({dt}* value) {{ {guard}{f} = {dt}::{op}({f}, value); }}{Override(m)}";
         }
         if (m.IsGenericMethod && (m.IsVirtual || m.IsAbstract || m.IsOverride || t.TypeKind == TypeKind.Interface || m.ExplicitInterfaceImplementations.Length > 0))
         {
@@ -659,12 +667,13 @@ public sealed class Emitter
         foreach (var f in o.StaticFields)
             sb.Append($"{tmpl}{TypeOrGap(f.Type)} {cls}::{N.Field(f)}{{}};\n");
         bool si = tr.StaticInitActive(t);
-        bool siGeneric = o.Generic && o.StaticFields.Any(f => NeedsTrace(f.Type));
+        bool siGeneric = o.Generic && o.HasTracedStatics;
         if (si || siGeneric) sb.Append($"{tmpl}int8_t {cls}::cs_cctor_state_ = 0;\n");
-        if (o.StaticFields.Any(f => NeedsTrace(f.Type)))
+        if (o.HasTracedStatics)
         {
             sb.Append($"{tmpl}void {cls}::cs_trace_statics(::cs::Tracer& t) {{");
             foreach (var f in o.StaticFields.Where(f => NeedsTrace(f.Type))) sb.Append($" ::cs::TraceField(t, {N.Field(f)});");
+            foreach (var e in o.Events.Where(e => e.IsStatic)) sb.Append($" ::cs::TraceField(t, {Names.Ident(e.Name)});");
             sb.Append(" }\n");
             if (!o.Generic) sb.Append($"static const bool cs_roots_{N.FlatName(t)} = ::cs::RegisterRoots(&{cls}::cs_trace_statics);\n");
         }

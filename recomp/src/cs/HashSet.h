@@ -184,6 +184,12 @@ public:
             index = 0;
             current = T{};
         }
+        // The collector: it may be all that holds its set (cs/List.h's Enumerator).
+        friend void cs_trace_value(Tracer& t, const Enumerator& e)
+        {
+            t.Mark(e.set);
+            TraceField(t, e.current);
+        }
     };
     Enumerator GetEnumerator()
     {

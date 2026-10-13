@@ -377,7 +377,7 @@ bool Behaviour::get_isActiveAndEnabled() { return enabled_ && gameObject_ && gam
 
 void Coroutine::cs_trace(cs::Tracer& t)
 {
-    Object::cs_trace(t);
+    cs::Object::cs_trace(t);
     t.Mark(owner);
     t.Mark(cs::AsObject(routine));
     t.Mark(waitingFor);
@@ -438,7 +438,8 @@ void MonoBehaviour::cs_Destroyed()
 void MonoBehaviour::Invoke(cs::String* methodName, float time)
 {
     if (!S()) cs::NotTranslated("MonoBehaviour.Invoke without a scene");
-    cs::String* name = cs::nc(methodName);
+    // (the name interned: the pending call holds it where the collector doesn't look)
+    cs::String* name = cs::String::Intern(cs::nc(methodName));
     MonoBehaviour* self = this;
     S()->calls.Invoke(this, name->ToUtf8(), time, [self, name] {
         MessageArgs a;
@@ -449,7 +450,7 @@ void MonoBehaviour::Invoke(cs::String* methodName, float time)
 void MonoBehaviour::InvokeRepeating(cs::String* methodName, float time, float repeatRate)
 {
     if (!S()) cs::NotTranslated("MonoBehaviour.InvokeRepeating without a scene");
-    cs::String* name = cs::nc(methodName);
+    cs::String* name = cs::String::Intern(cs::nc(methodName));
     MonoBehaviour* self = this;
     S()->calls.Invoke(this, name->ToUtf8(), time, [self, name] {
         MessageArgs a;
@@ -550,6 +551,7 @@ void Scene::TraceRootsEntry(cs::Tracer& t)
     if (!current) return;
     for (GameObject* g : current->roots) t.Mark(g);
     for (Coroutine* c : current->coroutines_) t.Mark(c);
+    for (Coroutine* c : current->secondsWaits_) t.Mark(c);
     for (MonoBehaviour* m : current->pendingStarts_) t.Mark(m);
     for (Object* o : current->destroys_) t.Mark(o);
     for (Object* o : current->animators) t.Mark(o);
@@ -586,7 +588,12 @@ void Scene::Step(Coroutine* c)
     if (!cur) {
         yieldNull_.push_back({c, frame});
     } else if (auto* w = dynamic_cast<WaitForSeconds*>(cur)) {
-        calls.Wait(c->owner, w->m_Seconds, [this, c] { Step(c); });
+        secondsWaits_.push_back(c);
+        calls.Wait(c->owner, w->m_Seconds, [this, c] {
+            auto it = std::find(secondsWaits_.begin(), secondsWaits_.end(), c);
+            if (it != secondsWaits_.end()) secondsWaits_.erase(it);
+            Step(c);
+        });
     } else if (dynamic_cast<WaitForFixedUpdate*>(cur)) {
         fixedWaits_.push_back(c);
     } else if (auto* nested = dynamic_cast<Coroutine*>(cur)) {
@@ -643,6 +650,9 @@ void Scene::Forget(MonoBehaviour* owner, bool coroutinesOnly)
         if (c->owner == owner) StopCoroutine(c);
     if (coroutinesOnly) calls.StopCoroutines(owner);
     else calls.Forget(owner);
+    // (their pending waits went with the owner's calls)
+    secondsWaits_.erase(std::remove_if(secondsWaits_.begin(), secondsWaits_.end(), [owner](Coroutine* c) { return c->owner == owner; }),
+                        secondsWaits_.end());
 }
 
 void Scene::MarkDestroy(Object* o)

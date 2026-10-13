@@ -844,7 +844,8 @@ public sealed class Body
         if (fs.IsStatic)
         {
             string cls = N.Type(fs.ContainingType);
-            return new Ex(tr.NeedsStaticInit(fs.ContainingType) ? $"({cls}::__si(), {cls}::{N.Field(fs)})" : $"{cls}::{N.Field(fs)}");
+            bool si = tr.NeedsStaticInit(fs.ContainingType) || GenericStaticRoot(fs.ContainingType, Emitter.NeedsTrace(fs.Type));
+            return new Ex(si ? $"({cls}::__si(), {cls}::{N.Field(fs)})" : $"{cls}::{N.Field(fs)}");
         }
         {
             bool isThis = f.Instance is IInstanceReferenceOperation;
@@ -852,6 +853,11 @@ public sealed class Body
             return new Ex($"{recv}{(isValue ? "." : "->")}{N.Field(fs)}", pure: isThis);
         }
     }
+
+    // A generic type's static references are roots of the collector per instantiation, registered by
+    // its __si() (Emitter: siGeneric): an access to a traced static (a reference, a struct, an event)
+    // calls it even when the type has no static initialization to run.
+    static bool GenericStaticRoot(INamedTypeSymbol t, bool traced) => traced && Names.AllTypeParameters(t.OriginalDefinition).Count > 0;
 
     Ex EventField(IEventReferenceOperation ev)
     {
@@ -863,7 +869,8 @@ public sealed class Body
         if (es.IsStatic)
         {
             string cls = N.Type(es.ContainingType);
-            return new Ex(tr.NeedsStaticInit(es.ContainingType) ? $"({cls}::__si(), {cls}::{Names.Ident(es.Name)})" : $"{cls}::{Names.Ident(es.Name)}");
+            bool si = tr.NeedsStaticInit(es.ContainingType) || GenericStaticRoot(es.ContainingType, true);
+            return new Ex(si ? $"({cls}::__si(), {cls}::{Names.Ident(es.Name)})" : $"{cls}::{Names.Ident(es.Name)}");
         }
         string recv = Receiver(ev.Instance, out bool isValue);
         return new Ex($"{recv}{(isValue ? "." : "->")}{Names.Ident(es.Name)}");

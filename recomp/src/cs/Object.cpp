@@ -8,6 +8,10 @@
 #include <map>
 #include <string>
 
+#if defined(_WIN32)
+#include <malloc.h> // _msize (ML_GC_POISON)
+#endif
+
 #include "cs/Dictionary.h"
 #include "cs/String.h"
 #include "cs/Type.h"
@@ -113,12 +117,35 @@ void Heap::Clear()
     for (Object* d : dead) delete d;
 }
 
+namespace {
+// ML_GC_POISON=1 (a check, not for the game): what Collect frees is destroyed, overwritten with
+// 0xDD and never handed back to the allocator, so a reference the roots missed reads garbage (a
+// crash at its first virtual call, or a mismatch) instead of a block that happens to be intact.
+void Free(Object* o)
+{
+    static const bool poison = std::getenv("ML_GC_POISON") != nullptr;
+    if (!poison) {
+        delete o;
+        return;
+    }
+    void* start = dynamic_cast<void*>(o);
+#if defined(_WIN32)
+    const size_t size = _msize(start);
+#else
+    const size_t size = sizeof(Object);
+#endif
+    o->~Object();
+    std::memset(start, 0xDD, size);
+}
+} // namespace
+
 size_t Heap::Collect()
 {
     Tracer t;
     TraceRoots(t);
     // Objects without a generated cs_trace (the hand port's) can't say what they reference:
-    // they are kept, and so is everything they might reach.
+    // they are kept (and so is what they reference only if something traced reaches it too:
+    // hand-written code keeping a translated object holds it in a cs::Root).
     for (Object* o = head_; o; o = o->gc_next_)
         if (!o->cs_traced()) t.Mark(o);
     t.Drain();
@@ -129,7 +156,7 @@ size_t Heap::Collect()
             link = &o->gc_next_;
         } else {
             *link = o->gc_next_;
-            delete o;
+            Free(o);
             count_--;
             freed++;
         }
