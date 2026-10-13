@@ -650,8 +650,11 @@ void b2World::SolveTOI(const b2TimeStep& step)
 					continue;
 				}
 
-				// ML port: no TOI between two bodies without continuous detection (a Discrete
-				// Rigidbody2D and a static collider) when SetContinuousBulletsOnly.
+				// ML port: no TOI between two bodies without continuous detection when
+				// SetContinuousBulletsOnly: a Discrete Rigidbody2D (a non-bullet dynamic body) isn't
+				// swept against a static or kinematic collider either, only a Continuous one (a bullet)
+				// is. Stock Box2D 2.3.1 counts a static or kinematic body here too (collideA/collideB
+				// below). The recordings: README.md.
 				if (m_continuousBulletsOnly && bA->IsBullet() == false && bB->IsBullet() == false)
 				{
 					continue;

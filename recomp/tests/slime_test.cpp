@@ -69,6 +69,7 @@ void CheckDelayedCalls()
     std::string log;
     int owner = 0, other = 0;
     calls.now = 1.0;
+    calls.fixedNow = 1.0; // (Invoke counts from Time.fixedTime: unity/DelayedCalls.h)
     calls.Invoke(&owner, "B", 0.5f, [&] { log += "B"; });
     calls.Invoke(&owner, "A", 0.25f, [&] { log += "A"; });
     calls.Invoke(&other, "B", 0.5f, [&] { log += "b"; });
@@ -85,6 +86,7 @@ void CheckDelayedCalls()
     Check(log == "CDAbw", "delayed calls: earliest first, ties in order, a call made in a pass waits, CancelInvoke by owner and name (" +
                               log + ")");
     calls.now = 2.0;
+    calls.fixedNow = 2.0;
     calls.Invoke(&owner, "R", 0.1f, [&] { log += "r"; }, 0.1f);
     calls.Update(2.35);
     Check(log == "CDAbwr", "InvokeRepeating: once per pass (" + log + ")");

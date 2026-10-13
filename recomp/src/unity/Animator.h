@@ -116,6 +116,10 @@ struct AnimatorController {
     std::vector<AnimatedProperty> properties; // every property the clips animate
     int defaultState = 0;
     int updateMode = -1; // the Animator's: 0 normal, 1 animate physics, 2 unscaled time (-1 unknown)
+    // The Animator's applyRootMotion (m_ApplyRootMotion): 1 on, 0 off, -1 unknown (animators.py
+    // before it wrote it). On a Dynamic Rigidbody2D's object, its pass keeps the body awake
+    // (game/EnemyRootMotion.cpp).
+    int applyRootMotion = -1;
 
     static AnimatorController FromJson(const json::Value& v);
     int Param(const std::string& name) const; // -1 if none

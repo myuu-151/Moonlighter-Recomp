@@ -146,6 +146,7 @@ AnimatorController AnimatorController::FromJson(const json::Value& v)
     c.name = v["controller"].s;
     c.defaultState = static_cast<int>(v["defaultState"].AsInt());
     if (const json::Value* m = v.Find("updateMode"); m && !m->IsNull()) c.updateMode = static_cast<int>(m->AsInt());
+    if (const json::Value* r = v.Find("applyRootMotion"); r && r->kind == json::Value::Kind::Bool) c.applyRootMotion = r->b ? 1 : 0;
     for (const json::Value& p : v["params"].arr) {
         AnimatorParameter out;
         out.name = p["name"].s;

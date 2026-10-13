@@ -31,7 +31,8 @@ namespace MoonlighterOracle
     ///     NG+, the autoscale row), the hero's body and collider, PolyNavAgent.allAgents (enemy
     ///     ids), when EnableEnemies ran and the targeting delay, Time.fixedDeltaTime, the clocks
     ///     around EnableEnemies ("enableClock": EnableClockProbe), "attackEnters" (the events
-    ///     have "attackEnter");
+    ///     have "attackEnter", and "attackHit" only for AttackHit calls from elsewhere),
+    ///     MasterAudio's "maFollower", the room's "critters" (CritterOracle);
     ///   - "collider": every Collider2D in the scene (as the walk records them; a
     ///     PolygonCollider2D's pieces probed: PolygonProbe);
     ///   - "navMap": the PolyNav2D map (master and obstacle polygons, inflateRadius); again with
@@ -44,8 +45,8 @@ namespace MoonlighterOracle
     /// transform, body position and velocity, layer, awake; each enemy's transform and body,
     /// and its AttackCollider: the box's enabled flag, size and offset, the object's local
     /// position; "fx": the fixtures Unity made since the step before, FixtureProbe); what
-    /// happened in order ("events": EnemyBehaviour.AttackHit, the attack collider's
-    /// OnTriggerEnter2D/OnCollisionEnter2D ("attackEnter"),
+    /// happened in order ("events": the attack collider's OnTriggerEnter2D/OnCollisionEnter2D
+    /// ("attackEnter"), EnemyBehaviour.AttackHit called from elsewhere ("attackHit"),
     /// DealDamageToPlayer, DealDamageToEnemy and Weapon.PushEnemyBackwards with the step they
     /// landed in (-1: not in physics), StartTargetingPlayer, OnDeath, OnDestroy, the dead sprite,
     /// and "anim": each call of a method an enemy's clip events name, with the Random state
@@ -302,6 +303,7 @@ namespace MoonlighterOracle
         {
             private static void Prefix(EnemyBehaviour __instance, GameObject other)
             {
+                if (attackEnterDepth > 0) return; // (recorded as "attackEnter": AttackTriggerHook below)
                 int id = Id(__instance);
                 if (id >= 0) Add(new Ev { k = "attackHit", s = id, step = Step, player = other != null && other.CompareTag("Player"), other = other != null ? other.name : null });
             }
@@ -310,28 +312,49 @@ namespace MoonlighterOracle
         // The attack collider's own callbacks (EnemyAttackCollisionDetection: what it tells the
         // behaviour it advises, AttackHit), "attackEnter" ("how": "trigger" or "collision"; in
         // Ev.caller). "attackHit" above misses a behaviour whose AttackHit override doesn't call
-        // EnemyBehaviour's (HermitSlimeBehaviourNEW) and has the projectiles' calls too; the start
-        // line's "attackEnters" says a recording has these.
+        // EnemyBehaviour's (HermitSlimeBehaviourNEW: enemy_HermitSlime.jsonl of 2026-10-12 has no
+        // "attackHit" while its attack trigger entered the hero at frame 243 and
+        // IronChest(Clone)/Trigger at frame 287). Each enter is recorded once: the AttackHit it
+        // leads to isn't recorded again as "attackHit" (attackEnterDepth), which keeps AttackHit's
+        // calls from elsewhere (a SlimeTrap's scissors, which advise their paired slime; any other
+        // caller). The start line's "attackEnters" says a recording has these.
+        private static int attackEnterDepth; // inside an attack collider's callback (the main thread's)
+
         [HarmonyPatch(typeof(EnemyAttackCollisionDetection), "OnTriggerEnter2D")]
         private static class AttackTriggerHook
         {
-            private static void Prefix(EnemyAttackCollisionDetection __instance, Collider2D other) =>
-                AttackEnter(__instance, other != null ? other.gameObject : null, "trigger");
+            private static void Prefix(EnemyAttackCollisionDetection __instance, Collider2D other, out bool __state) =>
+                __state = AttackEnter(__instance, other != null ? other.gameObject : null, "trigger");
+
+            private static Exception Finalizer(Exception __exception, bool __state)
+            {
+                if (__state) attackEnterDepth--;
+                return __exception;
+            }
         }
 
         [HarmonyPatch(typeof(EnemyAttackCollisionDetection), "OnCollisionEnter2D")]
         private static class AttackCollisionHook
         {
-            private static void Prefix(EnemyAttackCollisionDetection __instance, Collision2D collision) =>
-                AttackEnter(__instance, collision != null ? collision.gameObject : null, "collision");
+            private static void Prefix(EnemyAttackCollisionDetection __instance, Collision2D collision, out bool __state) =>
+                __state = AttackEnter(__instance, collision != null ? collision.gameObject : null, "collision");
+
+            private static Exception Finalizer(Exception __exception, bool __state)
+            {
+                if (__state) attackEnterDepth--;
+                return __exception;
+            }
         }
 
-        private static void AttackEnter(EnemyAttackCollisionDetection d, GameObject o, string how)
+        // Whether it counts (attackEnterDepth raised: the caller's Finalizer lowers it).
+        private static bool AttackEnter(EnemyAttackCollisionDetection d, GameObject o, string how)
         {
-            if (d.gameObjectToAdvise == null || d.gameObjectToAdvise.name.Contains("SlimeTrap")) return;
+            if (d == null || d.gameObjectToAdvise == null || d.gameObjectToAdvise.name.Contains("SlimeTrap")) return false;
+            attackEnterDepth++;
             int id = Id(d.gameObjectToAdvise.GetComponent<EnemyBehaviour>());
             if (id >= 0)
                 Add(new Ev { k = "attackEnter", s = id, step = Step, player = o != null && o.CompareTag("Player"), other = o != null ? o.name : null, caller = how });
+            return true;
         }
 
         [HarmonyPatch(typeof(HeroMerchant), "DealDamageToPlayer")]
@@ -722,7 +745,12 @@ namespace MoonlighterOracle
             var independent = AccessTools.Field(typeof(DG.Tweening.DOTween), "defaultTimeScaleIndependent");
             if (independent != null) j.Prop("dotweenIndependent", (bool)independent.GetValue(null));
             j.Key("dotweenTimeScale").Bits(DG.Tweening.DOTween.timeScale);
+            // MasterAudio's variationFollowerType (0 LateUpdate, 1 FixedUpdate; -1 none): where a
+            // played variation's AudioSource starts (game/MasterAudio.h's "not playing yet").
+            var ma = DarkTonic.MasterAudio.MasterAudio.SafeInstance;
+            j.Prop("maFollower", ma != null ? (int)ma.variationFollowerType : -1);
             TurretOracle.WriteStart(j, room);
+            CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
             Emit(j);
         }
 
@@ -754,6 +782,7 @@ namespace MoonlighterOracle
             stepBoxes.Clear();
             TurretOracle.Clear();
             FlyKamiOracle.Clear();
+            CritterOracle.Clear();
             KamikazeOracle.Clear();
         }
 
@@ -822,7 +851,7 @@ namespace MoonlighterOracle
                         Rng.WriteState(j.Key("rng0"), e.rng0);
                         Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
                         break;
-                    default: WriteEventExtra(j, e); break;
+                    default: if (!WriteEventExtra(j, e)) WriteRoomEvent(j, e); break; // (EnemyOracleColliders.cs, EnemyOracleRoom.cs)
                 }
                 j.EndObj();
             }
@@ -850,6 +879,7 @@ namespace MoonlighterOracle
             j.EndArr();
             TurretOracle.WriteFrame(j);
             FlyKamiOracle.WriteFrame(j);
+            CritterOracle.WriteFrame(j);
             KamikazeOracle.WriteFrame(j);
             Emit(j);
         }
@@ -882,6 +912,7 @@ namespace MoonlighterOracle
                 StepBoxes();
                 TurretOracle.OnStep();
                 FlyKamiOracle.OnStep(slimes);
+                CritterOracle.OnStep();
                 KamikazeOracle.OnStep();
             }
         }
@@ -1003,6 +1034,7 @@ namespace MoonlighterOracle
             HookAnimationEvents();
             TurretOracle.Begin(prefab);
             FlyKamiOracle.Begin(prefab);
+            CritterOracle.Begin(room);
             KamikazeOracle.Begin(prefab);
             var rec = new GameObject("OracleEnemyRecorder").AddComponent<Recorder>();
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
@@ -1020,7 +1052,9 @@ namespace MoonlighterOracle
             }
             writer.Flush();
             ClearFrame();
-            FixtureProbe.Reset(() => slimes.Where(b => b != null).Select(b => b.transform));
+            // (What the replay makes itself counts as the enemies' own, "fxOwn": the turrets' shots
+            // too, pooled outside their hierarchies: TurretOracle.Held.)
+            FixtureProbe.Reset(() => slimes.Where(b => b != null).Select(b => b.transform).Concat(TurretOracle.Held()));
             frameStartRng = Rng.Get();
             startFrame = Time.frameCount + 1;
             recording = true;
@@ -1037,8 +1071,11 @@ namespace MoonlighterOracle
             }
             recording = false;
             Active = false;
+            // (The turret's root motion on a moving body: one line after the last frame.)
+            if (TurretOracle.Wants(prefab)) yield return TurretRootMotionProbe.Run(slimes, Emit);
             TurretOracle.End();
             FlyKamiOracle.End();
+            CritterOracle.End();
             KamikazeOracle.End();
             UnityEngine.Object.Destroy(rec.gameObject);
             writer.Flush();

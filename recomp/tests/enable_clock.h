@@ -1,7 +1,8 @@
 #pragma once
 // When the room's EnableEnemies ran, for the enemy replays (enemy_replay.h, tangle_test): the
-// fixed steps the enemies' bodies took before the recording's first, and the clock the
-// targeting's Invoke (StartTargetingPlayerAfterTime, a second on) counts from.
+// fixed steps the enemies' bodies took before the recording's first, and Time.fixedTime then,
+// which the targeting's Invoke (StartTargetingPlayerAfterTime, a second on) counts from as every
+// Invoke does (unity/DelayedCalls.h; the replays set DelayedCalls::fixedNow to it).
 //
 // EnableEnemies is itself an Invoke (half a second after EnterRoom). The recording has its
 // Time.time ("enableTime") and frame; the fixed steps are on a grid the replay runs back from
@@ -28,8 +29,10 @@
 // settles it: the start line's "enableClock" has the clocks at the first EnableEnemies ("enable":
 // time, fixedTime, inFixedStep) and two Invokes made there; the second, due fixedDeltaTime less
 // half the gap from Time.fixedTime to Time.time later, runs in the pass after the next fixed step
-// only if Invokes count from the fixed clock. With it, the replay takes those clocks and that
-// answer; without it, the rule above.
+// only if Invokes count from the fixed clock. With it, the replay takes those clocks and checks
+// that answer against unity/DelayedCalls.h's rule on a row of its own (a recording that
+// contradicts it fails there, rather than the targeting alone counting from another clock);
+// without it, the rule above.
 
 #include <cstdint>
 #include <cstdio>
@@ -44,7 +47,10 @@ struct EnableClock {
     double time = 0.0;      // Time.time at EnableEnemies
     double fixedTime = 0.0; // the last fixed step at or before it
     int stepsBefore = 0;    // fixed steps after it and before the first recorded one
-    // The targeting's Invoke counts from fixedTime (else from time).
+    // The probe's answer, where it gave one (probed: EnableEnemies ran in a frame and the probe's
+    // second Invoke ran): an Invoke made in a frame counts from fixedTime (unity/DelayedCalls.h's
+    // rule), else from time.
+    bool probed = false;
     bool invokeOnFixedClock = true;
 };
 
@@ -99,6 +105,7 @@ inline EnableClock EnableEnemiesClock(const json::Value& start, const json::Valu
             // Due fixedDeltaTime less half the gap after the first EnableEnemies: in the pass after
             // the next fixed step only if it counted from the fixed clock.
             const json::Value& fired = (*probes)[1]["fired"];
+            c.probed = true;
             c.invokeOnFixedClock = fired["inFixedStep"].b && EnableClockBits(fired["fixedTime"]) == static_cast<float>(c.fixedTime + static_cast<double>(fixedDt));
             how = c.invokeOnFixedClock ? "the probe ran in the next fixed step's pass" : "the probe didn't run in the next fixed step's pass";
         } else
@@ -106,7 +113,7 @@ inline EnableClock EnableEnemiesClock(const json::Value& start, const json::Valu
     }
     std::printf("EnableEnemies at %.7f: after the fixed step at %.7f (%s), %d steps before the first recorded; its Invokes count from %s (%s)\n",
                 c.time, c.fixedTime, static_cast<float>(c.fixedTime) == enabled ? "in its pass" : "in a frame", c.stepsBefore,
-                c.invokeOnFixedClock ? "that step" : "its Time.time", how);
+                c.invokeOnFixedClock ? "that step" : "that step all the same, which the probe contradicts: a failed row", how);
     return c;
 }
 
