@@ -226,6 +226,21 @@ namespace MoonlighterOracle
         // at its end; Golem_Chest_17's one died to his first swing, frame 272). The start line
         // says "heroNoAttacks".
         internal static bool NoAttacks;
+        // `-oracle-enemy-fewest`: the room with the fewest of the enemy (one at least; ties: the
+        // fewest other enemies) instead of the most: one BrokenGolemTurret, whose shots never meet
+        // another turret's in a step (the order of OnCollisionEnter2D calls that start in one step
+        // follows Box2D's broad-phase proxies, which the replay can't know: ContactOrderProbe.cs).
+        internal static bool Fewest;
+
+        // A run that can't record: the reason in FAILED (the recording queue's "oracle-failed",
+        // retried at once instead of at its timeout), and the game quit when asked.
+        private static void Fail(string message, bool quit)
+        {
+            OraclePlugin.Log.LogError(Tag + ": " + message);
+            try { File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "FAILED"), DateTime.Now.ToString("o") + " " + Tag + ": " + message); }
+            catch (Exception e) { OraclePlugin.Log.LogError(Tag + ": FAILED not written: " + e.Message); }
+            if (quit) Application.Quit();
+        }
         private static int stickHeldUntil = -1; // (Time.frameCount)
 
         // The first frame after the current segment.
@@ -789,6 +804,7 @@ namespace MoonlighterOracle
             var ma = DarkTonic.MasterAudio.MasterAudio.SafeInstance;
             j.Prop("maFollower", ma != null ? (int)ma.variationFollowerType : -1);
             if (OffHoles) j.Prop("heroOffHoles", true); // (-oracle-hero-off-holes)
+            if (Fewest) j.Prop("roomFewest", true); // (-oracle-enemy-fewest)
             if (NoAttacks) j.Prop("heroNoAttacks", true); // (-oracle-hero-no-attacks)
             TurretOracle.WriteStart(j, room);
             CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
@@ -987,7 +1003,8 @@ namespace MoonlighterOracle
                         foreach (var d in other.roomDoors)
                             if (d != null && d.destinationRoom == r && into == null) into = d;
                 if (into == null) continue;
-                if (n > bestSlimes || (n == bestSlimes && others < bestOthers))
+                bool better = Fewest ? room == null || n < bestSlimes : n > bestSlimes;
+                if (better || (n == bestSlimes && others < bestOthers))
                 {
                     bestSlimes = n;
                     bestOthers = others;
@@ -1026,7 +1043,7 @@ namespace MoonlighterOracle
                 float start = Time.realtimeSinceStartup;
                 while (!generated && Time.realtimeSinceStartup - start < 120f) yield return null;
                 DungeonGenerator.OnGeneratedDungeon -= done;
-                if (!generated) { log.LogError(Tag + ": floor timed out"); yield break; }
+                if (!generated) { Fail("floor timed out", quit); yield break; }
                 yield return new WaitForSecondsRealtime(3f);
                 for (int tries = 0; tries < 5 && GUIManager.Instance.currentInventory != null; tries++)
                 {
@@ -1040,7 +1057,7 @@ namespace MoonlighterOracle
                 if (PickRoom(roomArg, out room, out door)) break;
                 if (roomArg != "" || floor >= 2)
                 {
-                    log.LogError(Tag + ": no room with a " + prefab + " and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""));
+                    Fail("no room with a " + prefab + " and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""), quit);
                     yield break;
                 }
                 log.LogInfo(Tag + ": no " + prefab + " on floor " + (floor + 1) + ": the next floor");
@@ -1076,7 +1093,7 @@ namespace MoonlighterOracle
             log.LogInfo($"{Tag}: {room.name} ({(room.roomInfo != null ? room.roomInfo.name : "")}), {slimes.Count} of {prefab}");
             float wait = Time.realtimeSinceStartup;
             while ((enableTime < 0f || !mapRegenerated) && Time.realtimeSinceStartup - wait < 10f) yield return null;
-            if (enableTime < 0f) { log.LogError(Tag + ": EnableEnemies never came"); yield break; }
+            if (enableTime < 0f) { Fail("EnableEnemies never came", quit); yield break; }
             yield return null;
             yield return null;
 
