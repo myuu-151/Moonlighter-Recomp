@@ -668,8 +668,6 @@ struct b2PositionSolverManifold
 };
 
 // Sequential solver.
-int g_b2Debug = 0;
-#include <cstdio>
 bool b2ContactSolver::SolvePositionConstraints()
 {
 	float32 minSeparation = 0.0f;
@@ -715,7 +713,6 @@ bool b2ContactSolver::SolvePositionConstraints()
 
 			// Track max constraint error.
 			minSeparation = b2Min(minSeparation, separation);
-			if (g_b2Debug) printf("    pc %d pt %d n (%g,%g) point (%.6f,%.6f) sep %.7f  cB (%.6f,%.6f) cA (%.6f,%.6f)\n", i, j, normal.x, normal.y, point.x, point.y, separation, cB.x, cB.y, cA.x, cA.y);
 
 			// Prevent large corrections and allow slop.
 			float32 C = b2Clamp(b2_baumgarte * (separation + b2_linearSlop), -b2_maxLinearCorrection, 0.0f);

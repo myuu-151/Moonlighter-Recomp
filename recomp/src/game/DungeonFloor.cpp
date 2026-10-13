@@ -61,6 +61,9 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
         CaveRoom* caveRoom = (*cave->rooms)[i];
         int x = static_cast<int>(caveRoom->position.x - cave->minPos.x);
         int y = static_cast<int>(caveRoom->position.y - cave->minPos.y);
+        // The bundles' loading frames before the first room; the frame each earlier room's
+        // WaitForEndOfFrame ended with.
+        engine.FramePasses();
         if (cs::Is<BossCaveRoom>(caveRoom)) {
             // The room the boss enter door goes in: per unit the last of S, N, W, E that's
             // connected, from the first unit with any.
@@ -118,6 +121,7 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
         else if (corrupted) {
             int pick = GetRandomIndex(corruptedRooms->Count()); // corruptedRooms.GetRandom()
             info = pick >= 0 ? (*corruptedRooms)[pick] : nullptr;
+            engine.FramePasses(); // (its culture's bundles: EnemiesPrefabRegister.LoadBundle, ...)
         } else if (secretHost) {
             info = sel.GetRandomRoom(holesOnly, desired);
         } else {
@@ -184,6 +188,7 @@ void DungeonFloor::Generate(FloorGenerationSaveInfo& fi, FloorEngine& engine)
         }
         cells.push_back(cell);
     }
+    if (cave->rooms->Count() > 0) engine.FramePasses(); // (the last room's WaitForEndOfFrame)
     engine.BeforeSpecialRooms();
     SpawnSpecialRoomsAfterGeneration(fi, bossEnterRoom);
     engine.SpecialRoomsAfterGeneration();

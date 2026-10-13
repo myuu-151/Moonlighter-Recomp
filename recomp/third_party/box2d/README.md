@@ -16,6 +16,10 @@ Unity 2019.2's 2D physics is a fork of Box2D. This is stock Box2D 2.3.1, which
   outside. Unity's `Physics2DSettings.maxTranslationSpeed` is 100 in Moonlighter's project;
   this takes it as per second over the 0.01 s fixed step. Whether Unity's fork applies it per
   second or per step is not known.
+- `Dynamics/b2World.h`, `b2World.cpp`: `SetContinuousBulletsOnly` (default off, as stock).
+  On, `SolveTOI` skips contacts between two non-bullet bodies: a Discrete Rigidbody2D isn't
+  swept against static colliders either, only Continuous ones (bullets) are. `PhysicsWorld`
+  turns it on (`PhysicsWorld::Options::continuousBulletsOnly`, with the recording that shows it).
 
 Every other tuning constant already matches the project's Physics2DSettings
 (`data/extracted/physics2d.json`): linear slop 0.005 (polygon radius 0.01 = the default contact

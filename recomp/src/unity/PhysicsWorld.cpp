@@ -1,7 +1,6 @@
 #include "unity/PhysicsWorld.h"
 
 #include <Box2D/Box2D.h>
-#include <cstdlib>
 
 #include "util/Json.h"
 
@@ -99,7 +98,7 @@ PhysicsWorld::PhysicsWorld(const Physics2DSettings& settings, const Options& opt
     filter_ = new Filter(settings_);
     world_->SetContactFilter(filter_);
     world_->SetContinuousPhysics(options_.continuousPhysics);
-    world_->SetContinuousBulletsOnly(options_.continuousBulletsOnly && !std::getenv("ML_TOI_STOCK")); // EXPERIMENT env
+    world_->SetContinuousBulletsOnly(options_.continuousBulletsOnly);
     b2BodyDef ground;
     ground.type = b2_staticBody;
     ground_ = world_->CreateBody(&ground);
@@ -229,8 +228,6 @@ void PhysicsWorld::SetLayer(Rigidbody2D& body, int layer)
     if (body.layer_ == layer) return;
     body.layer_ = layer;
     for (b2Fixture* f = body.body_->GetFixtureList(); f; f = f->GetNext()) f->Refilter();
-    if (std::getenv("ML_LAYER_NEWCONTACTS")) newContacts_ = true; // EXPERIMENT
-    if (std::getenv("ML_LAYER_PAIRNOW")) const_cast<b2ContactManager&>(world_->GetContactManager()).FindNewContacts(); // EXPERIMENT
 }
 
 void PhysicsWorld::FixtureMadeElsewhere() { newContacts_ = true; }

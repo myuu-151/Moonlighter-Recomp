@@ -3,9 +3,9 @@
 // the end of SpawnSpecialRoomsAfterGeneration, and requires every room to start exactly where
 // the game's did and the floor to end in the game's state. Engine answers come from the trace.
 // Resyncs are only allowed where the trace lacks inputs (older sessions without chest
-// generation data; the draws of other scripts in frames of asset loading between the cave and
-// the first room, in traces from before FrameProbe's "loading" window); they are counted and
-// listed. Then the Wanderer DLC post-process (after
+// generation data; other scripts' draws in the frames the generation yields to, before the
+// first room and between rooms, in traces from before FrameProbe's "generation" window: see
+// TraceEngine::FramePasses); they are counted and listed. Then the Wanderer DLC post-process (after
 // frame-timed asset loading, so its start is searched for) must pick the game's host room and
 // end, with the intermediate room and its advisor, in the floor's final state.
 //
@@ -259,15 +259,17 @@ public:
     TraceEngine(const std::vector<const Value*>& events, const std::map<std::pair<int, int>, DetailsData>& details, const ChestTables* tables)
         : ev_(events), details_(details), tables_(tables)
     {
+        for (const Value* e : ev_)
+            if ((*e)["ev"].s == "frameWindow" && (*e)["window"].s == "generation") generationWindow_ = true;
     }
 
     std::vector<std::string> resyncs;
     std::string divergence; // first room whose start state differs
-    // The cave's end ("stateAfter", GeneratChestRooms): the generation draws nothing more
-    // before the first room, but it yields to asset loading there (LoadCommonResources,
-    // LoadResources, dungeon_common), and in frames that pass other scripts draw.
+    // The cave's end ("stateAfter", GeneratChestRooms): the generation's state when its
+    // coroutine first yields (to the bundles' loading) before the first room.
     Random::State caveEnd{};
-    bool firstRoom = true;
+    // Other scripts' draws in the generation's frames that the trace has ("frameDraw"), taken.
+    long long frameDraws = 0;
 
     void BeginRoom(DungeonRoomInfo* info, int x, int y, bool secret) override
     {
@@ -304,34 +306,69 @@ public:
             else if (t == "stage" && p["name"].s == "DungeonRoom.SpawnRoomPrefabs") inPrefabs = p["phase"].s == "pre";
         }
         if (room["name"].s != info->name) fail("room " + std::to_string(room["room"].i) + ": port placed " + info->name + ", game " + room["name"].s);
-        else if (!Same(Random::GetState(), StateFrom(room["state"])) && divergence.empty() && !LoadingFrames(room))
+        else if (!Same(Random::GetState(), StateFrom(room["state"])) && divergence.empty())
             fail("room " + std::to_string(room["room"].i) + " (" + info->name + ") starts from a different RNG state");
+        anchorFrom_ = i + 1;
     }
 
-    // The first room after frames of asset loading (see caveEnd): the draws other scripts made
-    // in them. Where the trace has them (FrameProbe's "loading" window) they must add up to
-    // the gap; older traces don't, and then the port, which has drawn nothing since the cave,
-    // takes the game's state (a resync: the trace lacks the input).
-    bool LoadingFrames(const Value& room)
+    // Frames passed in the generation coroutine (FloorEngine::FramePasses): other scripts'
+    // Updates ran and may have drawn. Where the trace has those draws (FrameProbe's "generation"
+    // window: "frameDraw" events made outside the coroutine, depth 0), the port takes each one
+    // that starts from its state (the engine's input), and nothing else: such a trace says where
+    // the window opened ("frameWindow"). Traces from before the window don't have them (session
+    // 20261012-215722, floor 1, generated with the town's scene still loaded: its scripts drew 104
+    // times before the first room and 1 to 59 times in nine of the frames after it). There, if
+    // the trace's next step (a getRandomRoom, a room placed without a pick, the boss room, the
+    // special rooms) starts after draws the port didn't make while the port stands exactly where
+    // the game's last traced step left it, those draws were the frames': the port takes the
+    // game's state there, a resync (the trace lacks the input), counted.
+    void FramePasses() override
     {
-        if (!firstRoom) return false;
-        firstRoom = false;
-        const Random::State port = Random::GetState(), game = StateFrom(room["state"]);
-        if (!Same(port, caveEnd)) return false; // the port drew since the cave: a real difference
-        const int gap = Random::DrawsBetween(port, game, 1000000);
-        if (gap < 0) return false;
-        int recorded = 0;
-        bool any = false;
-        for (size_t m = 0; m < roomStart_; m++) {
-            const Value& p = *ev_[m];
-            if (p["ev"].s != "frameDraw" || p["window"].s != "loading") continue;
-            any = true;
-            if (p["depth"].i == 0) recorded += static_cast<int>(p["draws"].i);
+        size_t a = anchorFrom_;
+        for (; a < ev_.size(); a++) {
+            const Value& p = *ev_[a];
+            const std::string& t = p["ev"].s;
+            if (t == "getRandomRoom" || t == "room") break;
+            if (t == "stage" && p["phase"].s == "pre" &&
+                (p["name"].s == "DungeonGenerator.AddBossRoom" || p["name"].s == "DungeonGenerator.SpawnSpecialRoomsAfterGeneration"))
+                break;
         }
-        if (any && recorded != gap) return false;
+        for (size_t m = anchorFrom_; m < a; m++) {
+            const Value& p = *ev_[m];
+            if (p["ev"].s != "frameDraw" || p["depth"].i != 0 || (p.Find("gen") && p["gen"].b)) continue;
+            if (!Same(Random::GetState(), StateFrom(p["before"]))) continue;
+            Random::SetState(StateFrom(p["after"]));
+            frameDraws += p["draws"].i;
+        }
+        // (A trace with the window has every other script's draw there: what's left is the port's.)
+        if (a >= ev_.size() || generationWindow_) return;
+        const Value& next = *ev_[a];
+        // (A room whose "room" comes first was placed without GetRandomRoom: a fixed one (Init,
+        // Healing, Camp: not in the database), placed without a draw, or a corrupted one, whose
+        // pick (corruptedRooms.GetRandom: one draw) comes between the frame its iteration
+        // starts with and its bundles' frames: the port has made it when it gets here again.)
+        const bool picked = next["ev"].s == "room" && next["dbIndex"].i != -1;
+        const Random::State game = StateFrom(next["ev"].s == "getRandomRoom" ? next["before"] : next["state"]);
+        if (Same(Random::GetState(), game)) return;
+        // The game's state where its generation last left it before the frame.
+        Random::State last = caveEnd;
+        for (size_t m = a; m-- > 0;) {
+            const Value& p = *ev_[m];
+            const std::string& t = p["ev"].s;
+            if (t == "floorBegin") break;
+            if (t == "frameDraw") continue;
+            if (t == "getRandomRoom") {
+                last = StateFrom(p["after"]);
+                break;
+            }
+            if (const Value* st = p.Find("state")) {
+                last = StateFrom(*st);
+                break;
+            }
+        }
+        if (Random::DrawsBetween(last, Random::GetState(), 64) != (picked ? 1 : 0) || Random::DrawsBetween(Random::GetState(), game, 1000000) <= 0) return;
         Random::SetState(game);
-        if (!any) resyncs.push_back("frames of asset loading before the first room (" + std::to_string(gap) + " draws, not in the trace)");
-        return true;
+        resyncs.push_back("other scripts' draws in a frame of the generation (not in the trace)");
     }
 
     ChestConfig NextChest(bool& ngp) override
@@ -414,6 +451,7 @@ public:
                 if (p["phase"].s == "pre") {
                     if (!Same(Random::GetState(), StateFrom(p["state"]))) fail("state differs before the boss room");
                     inside = true;
+                    if (anchorFrom_ <= m) anchorFrom_ = m + 1;
                     continue;
                 }
                 break;
@@ -546,6 +584,8 @@ private:
     const std::map<std::pair<int, int>, DetailsData>& details_;
     const ChestTables* tables_;
     size_t cursor_ = 0, roomStart_ = 0, roomEnd_ = 0;
+    size_t anchorFrom_ = 0; // where FramePasses looks for the trace's next generation step
+    bool generationWindow_ = false; // the trace has FrameProbe's "generation" window ("frameWindow")
     std::vector<size_t> chests_;
     size_t nextChest_ = 0, currentChest_ = 0;
     const Value* skeleton_ = nullptr;
@@ -718,6 +758,7 @@ int main(int argc, char** argv)
     int inSync = 0, differ = 0, checked = 0;
     std::map<std::string, int> resyncKinds;
     int floorsWithoutResync = 0;
+    long long generationFrameDraws = 0; // other scripts' draws in the generation's frames, from the trace
     int shrinesMatch = 0, shrinesDiffer = 0;
     int wndPinned = 0, wndAmbiguous = 0, wndNoSolution = 0, wndRoomOk = 0, wndRoomDiffer = 0;
     std::map<std::string, int> sceneMatch, sceneDiffer; // rooms, per object category
@@ -1033,6 +1074,7 @@ int main(int argc, char** argv)
             inSync++;
             if (engine.resyncs.empty()) floorsWithoutResync++;
             for (const std::string& r : engine.resyncs) resyncKinds[r.substr(0, r.find(" ("))]++;
+            generationFrameDraws += engine.frameDraws;
         } else {
             differ++;
             if (notes.size() < 8)
@@ -1045,6 +1087,7 @@ int main(int argc, char** argv)
     std::printf("floors in sync (layout to last room)  %4d match  %4d differ   (of %d recorded with every hook)\n", inSync, differ, checked);
     std::printf("  with no resync at all                %4d\n", floorsWithoutResync);
     for (const auto& kv : resyncKinds) std::printf("  resynced at: %-40s %d times\n", kv.first.c_str(), kv.second);
+    if (generationFrameDraws) std::printf("  other scripts' draws in the generation's frames, from the trace: %lld\n", generationFrameDraws);
     std::printf("Desert shrines (room and tile)         %4d match  %4d differ\n", shrinesMatch, shrinesDiffer);
     std::printf("Wanderer DLC host room (shuffle)       %4d match  %4d differ   (%d pinned to a unique start)\n", wndPinned + wndAmbiguous, wndNoSolution, wndPinned);
     std::printf("Wanderer intermediate room + advisor   %4d match  %4d differ\n", wndRoomOk, wndRoomDiffer);

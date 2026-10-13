@@ -13,6 +13,10 @@
 //     targeting a second after an EnableEnemies run in a fixed step's pass starts in the frame);
 //   - a coroutine's WaitForSeconds counts from the frame's Time.time even when it's started in
 //     a fixed step, and resumes in the frame's pass only.
+// (The tangle.jsonl, slime.jsonl and slime_bis.jsonl cited were replaced on 2026-10-12; in the
+// new ones the targeting after an EnableEnemies whose Time.time is a frame's counts from the
+// fixed step before it, as if made there: recomp/tests/enable_clock.h, and the oracle's
+// EnableClockProbe that settles which.)
 // Due ones run earliest first, ties in the order they were made; one made during a pass waits
 // for the next pass even if it's already due. Times are doubles, as the engine keeps them; the
 // driver sets the clocks (now, fixedNow, inFixedStep).

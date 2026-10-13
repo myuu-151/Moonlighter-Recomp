@@ -1,4 +1,3 @@
-#include <cstdio>
 /*
 * Copyright (c) 2006-2011 Erin Catto http://www.box2d.org
 *
@@ -308,11 +307,8 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 	// Solve position constraints
 	timer.Reset();
 	bool positionSolved = false;
-	extern int g_b2Debug;
-	if (g_b2Debug) for (int32 k = 0; k < m_bodyCount; ++k) printf("  island body %d c (%.6f,%.6f) v (%.6f,%.6f) contacts %d\n", k, m_positions[k].c.x, m_positions[k].c.y, m_velocities[k].v.x, m_velocities[k].v.y, m_contactCount);
 	for (int32 i = 0; i < step.positionIterations; ++i)
 	{
-		if (g_b2Debug) printf("   iteration %d\n", i);
 		bool contactsOkay = contactSolver.SolvePositionConstraints();
 
 		bool jointsOkay = true;

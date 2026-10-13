@@ -103,8 +103,10 @@ public:
         bool continuousPhysics = true;  // b2World's TOI pass
         // Only bodies with continuous detection (Rigidbody2D.collisionDetectionMode Continuous: Box2D's
         // bullets) take the TOI pass; a Discrete one isn't swept even against static colliders
-        // (tangle.jsonl, frame 205: a Tangle pushed out of a hole's inside corner ends where the
-        // island's position iterations left it; stock Box2D's TOI would push it on to -slop).
+        // (Unity: Discrete "only detects collisions at the new position"). tangle.jsonl, frames
+        // 205-492: Tangle 5 pushed into a hole's inside corner ends where the island's position
+        // iterations left it; stock Box2D's TOI pushes it on to the slop (y 342.985016 against the
+        // game's 342.989410 at frame 205), and the replay differs from there.
         bool continuousBulletsOnly = true;
     };
 

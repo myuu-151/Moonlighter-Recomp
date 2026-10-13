@@ -49,13 +49,15 @@
 #include "unity/Mathf.h"
 #include "unity/Physics2D.h"
 #include "unity/PhysicsWorld.h"
+#include "unity/PolygonCollider2D.h"
 #include "unity/Random.h"
 #include "unity/Tween.h"
 #include "util/Json.h"
 
 #include "enable_clock.h"
+#include "fixture_probe.h"
+#include "polygon_probe.h"
 
-extern int g_b2Debug; // (EXPERIMENT)
 using json::Value;
 using unity::Vector2;
 
@@ -374,7 +376,8 @@ unity::Collider2D ColliderFrom(const Value& v)
     return c;
 }
 
-// A hole region's outline back to the tiles it covers (as slime_test and player_walk_test do it).
+// A hole region's outline back to the tiles it covers (as slime_test and player_walk_test do it),
+// and its convex pieces in the physics world (unity/PolygonCollider2D.h).
 unity::Collider2D HoleFrom(const Value& v)
 {
     std::vector<std::vector<Vector2>> paths;
@@ -401,21 +404,9 @@ unity::Collider2D HoleFrom(const Value& v)
             if (j == 10) y1 += 10.0f;
             c.parts.emplace_back(Vector2{c.position.x + x0, c.position.y + y0}, Vector2{c.position.x + x1, c.position.y + y1});
         }
-    if (const char* file = std::getenv("ML_HOLE_POLYS")) {
-        // EXPERIMENT: each line "path|x y x y ...;x y ..." (local), the collider's shapes.
-        std::ifstream in(file);
-        for (std::string line; std::getline(in, line);) {
-            const size_t bar = line.find('|');
-            if (bar == std::string::npos || line.substr(0, bar) != c.path) continue;
-            std::stringstream polys(line.substr(bar + 1));
-            for (std::string poly; std::getline(polys, poly, ';');) {
-                std::stringstream xs(poly);
-                std::vector<Vector2> pts;
-                for (float x, y; xs >> x >> y;) pts.push_back({c.position.x + x, c.position.y + y});
-                if (!pts.empty()) c.shapes.push_back(pts);
-            }
-        }
-    }
+    // In the physics world: the paths cut as Unity cuts a PolygonCollider2D (the tiles above stay
+    // for the queries, which only meet its outline).
+    unity::SetPolygonColliderShapes(c, paths);
     return c;
 }
 
@@ -496,7 +487,11 @@ int ReplayRecording(const std::string& file, const Data& data)
             if (c["type"].s == "BoxCollider2D") queries.Add(ColliderFrom(c));
             else if (!hole) std::printf("note: a %s on the weave's layers (%s): not in the queries\n", c["type"].s.c_str(), c["path"].s.c_str());
         }
-        if (hole && c["enabled"].b) queries.Add(HoleFrom(c));
+        if (hole && c["enabled"].b) {
+            const unity::Collider2D h = HoleFrom(c);
+            CheckPolygonProbe(t, c, h); // (the oracle's probe of Unity's cut, where recorded)
+            queries.Add(h);
+        }
         if (body == "Dynamic" || c["trigger"].b || !c["enabled"].b) continue;
         if (c["type"].s == "BoxCollider2D") roomColliders.Add(ColliderFrom(c));
         else if (hole) roomColliders.Add(HoleFrom(c));
@@ -668,12 +663,13 @@ int ReplayRecording(const std::string& file, const Data& data)
 
     const float fixedDt = Bits(start["fixedDeltaTime"]);
     double fixedClock = 0.0;
-    // EnableEnemies (an Invoke itself) on the fixed clock: the steps it came after, and the
-    // targeting it starts a second later, if that hasn't come yet (EnableEnemiesClock).
+    // EnableEnemies (an Invoke itself): the fixed steps it came after, and the targeting it
+    // starts a second later, if that hasn't come yet, on the clock its Invokes count from
+    // (EnableEnemiesClock).
     const EnableClock enable = EnableEnemiesClock(start, f0, fixedDt);
     if (enable.known) {
         calls.now = enable.time;
-        calls.inFixedStep = true;
+        calls.inFixedStep = enable.invokeOnFixedClock;
         calls.fixedNow = enable.fixedTime;
         for (TangleObj& s : tangles)
             if (!s.enemy->enemyBehaviour->targetPlayer) s.enemy->enemyBehaviour->StartTargetingPlayerAfterTime(Bits(start["targetDelay"]));
@@ -693,6 +689,16 @@ int ReplayRecording(const std::string& file, const Data& data)
         std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", enable.stepsBefore);
     }
     int rngElsewhere = 0;
+    // Whether the recording has the fixtures Unity made per step (fixture_probe.h).
+    bool fixturesRecorded = false;
+    for (const Value& fr : frames)
+        if (!fr["steps"].arr.empty()) {
+            fixturesRecorded = RecordsFixtures(fr);
+            break;
+        }
+    if (!fixturesRecorded)
+        std::printf("note: no \"fx\" in the steps (recorded before the oracle's FixtureProbe): the fixtures Unity made for objects "
+                    "this replay doesn't hold are guessed from the weapon's hits\n");
     // The script order: per frame and Tangle with both LateUpdates, which ran first.
     int tangleFirst = 0, agentFirst = 0;
     int weaves = 0, weaveHits = 0;
@@ -712,16 +718,13 @@ int ReplayRecording(const std::string& file, const Data& data)
         nav.BeginFrame();
         const Value& events = f["events"];
         for (const Value& ev : events.arr) {
+            if (fixturesRecorded) break; // (the steps' "fx" tell: fixture_probe.h)
             const std::string& kind = ev["k"].s;
             if (ev["step"].AsInt() == 0 &&
                 (kind == "push" || kind == "dmgToEnemy" || (kind == "attackHit" && !ev["player"].b && ev["other"].IsString() && ev["other"].s == "Collider"))) {
                 world.FixtureMadeElsewhere();
                 break;
             }
-        }
-        if (const char* nf = std::getenv("ML_NEWFIXTURE_FRAMES")) { // EXPERIMENT: "406,..."
-            const std::string list = std::string(",") + nf + ",";
-            if (list.find("," + std::to_string(fn) + ",") != std::string::npos) world.FixtureMadeElsewhere();
         }
         // The fixed steps.
         for (size_t k = 0; k < f["steps"].size(); k++) {
@@ -744,10 +747,10 @@ int ReplayRecording(const std::string& file, const Data& data)
                           Str(e->position()) + " body " + Str(e->body->position()) + " v " + Str(e->body->velocity()) + "; game " +
                           Str({Bits(ss[1]), Bits(ss[2])}) + " body " + Str({Bits(ss[3]), Bits(ss[4])}) + " v " + Str({Bits(ss[5]), Bits(ss[6])}));
             }
+            // Fixtures Unity made since the step before that this world doesn't hold (fixture_probe.h).
+            if (fixturesRecorded && StepMadeFixtures(st)) world.FixtureMadeElsewhere();
             portDamage.clear();
-            { const char* dbf = std::getenv("ML_B2DEBUG_FRAME"); g_b2Debug = dbf && std::atoll(dbf) == fn; if (g_b2Debug) std::printf("frame %lld step %zu\n", fn, k); }
             physics.Step(fixedDt);
-            { g_b2Debug = 0; }
             std::vector<std::pair<int, float>> gameDamage;
             for (const Value& ev : events.arr) {
                 if (ev["step"].AsInt() != static_cast<long long>(k)) continue;
