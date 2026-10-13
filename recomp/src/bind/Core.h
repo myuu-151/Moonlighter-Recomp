@@ -54,6 +54,28 @@ struct Color {
 
 class GameObject;
 class Sprite;
+class Object;
+
+// Instantiate's remap: the original tree's objects (GameObjects, components) to their copies.
+struct Remap {
+    std::vector<std::pair<const Object*, Object*>> map;
+    Object* Find(const Object* o) const
+    {
+        for (const auto& [from, to] : map)
+            if (from == o) return to;
+        return nullptr;
+    }
+    template <typename T>
+    void Field(T*& p) const
+    {
+        if constexpr (std::is_base_of<Object, T>::value) {
+            if (!p) return;
+            if (Object* to = Find(p)) p = dynamic_cast<T*>(to);
+        } else {
+            (void)p; // (a type the facade doesn't have: not an object of the tree)
+        }
+    }
+};
 
 // A serialized value a prefab or an asset gives a field (bind/Prefabs.cpp reads them from
 // prefabs.json); the generated cs_SetField reads it as the field's type.
@@ -87,6 +109,8 @@ public:
     // A copy of this object for Instantiate (generated for translated classes; the facade's
     // components have theirs): the fields as they are, not yet on an object (bind/Engine.cpp).
     virtual Object* cs_Clone();
+    // A copy's references into the copied tree made its own (generated for translated classes).
+    virtual void cs_Remap(const Remap& r) { (void)r; }
     bool cs_traced() const override { return true; }
     void cs_trace(cs::Tracer& t) override { t.Mark(name_); }
     // A serialized field by its C# name (generated for translated classes); false: no such field here.

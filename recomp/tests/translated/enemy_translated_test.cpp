@@ -1,6 +1,8 @@
 // The Golem enemies' recordings (data/oracle/slime.jsonl, slime_bis.jsonl, enemy_<prefab>.jsonl)
 // replayed against the game's own code translated (tools/translate: BabySlimeBehaviour,
-// GolemSoldierBehaviour, EnemyBehaviour, Enemy, EnemyStats, EnemyAttackCollisionDetection,
+// GolemSoldierBehaviour, HermitSlimeBehaviourNEW, GolemKamikazeBehaviour,
+// FlyingKamikazeGolemBehaviour, BrokenGolemTurretBehaviour and its shots (BrokenGolemTurretProjectile,
+// PoolManager), EnemyBehaviour, Enemy, EnemyStats, EnemyAttackCollisionDetection,
 // EnemyDamageReceiver, PolyNavAgent, PolyNav2D, AStar, the stats' JSON reader...), running on the
 // Unity facade (recomp/src/bind) over the hand-written Unity layer.
 //
@@ -10,17 +12,24 @@
 // (prefabs.json, animators/<prefab>.json) under the room's objects, Init'ed by the game's code
 // (EnemyStats.Init from enemy_stats.json through EnemyStatManager), their recorded state put back
 // into the translated fields, then every frame as the game ran it: the fixed steps (the hero's
-// body as each found it, the physics with its trigger messages to EnemyAttackCollisionDetection,
-// the weapon's hits and pushes where they landed: Enemy.DealDamageToEnemy, or a hurtbox's
+// body as each found it, the physics with its trigger and collision messages, the weapon's hits
+// and pushes where they landed: Enemy.DealDamageToEnemy, or a hurtbox's
 // EnemyDamageReceiver.DealDamageToEnemy, Weapon.PushEnemyBackwards), DOTween, the enemies'
 // Updates in the game's order (each from the Random state and the hero position it had), the
 // delayed calls (Invoke, WaitForSeconds, Destroy(obj, t)), the coroutines on yield null (the
-// paths), the Animators, PolyNav2D's and the agents' LateUpdates. Compared bit for bit per frame
-// and enemy as the hand port compares them. The scene's other services are the stand-ins of
-// recomp/tests/translated/scene/Standins.cpp. The probes newer recordings carry are read by the
-// hand port's own helpers (tests/enable_clock.h, fixture_probe.h, polygon_probe.h,
+// paths), the Animators, PolyNav2D's and the agents' LateUpdates, MasterAudio's. Compared bit for
+// bit per frame and enemy as the hand port compares them. The scene's other services are the
+// stand-ins of recomp/tests/translated/scene/Standins.cpp. The probes newer recordings carry are
+// read by the hand port's own helpers (tests/enable_clock.h, fixture_probe.h, polygon_probe.h,
 // enemy_replay_critters.h); the room's DisableEnemies (the hero leaving it, placed as
 // enemy_replay_room.h places it) runs the game's own DungeonRoom.DisableEnemies.
+//
+// What one enemy brings beyond the common replay is a Hooks of its own, as the hand port's
+// ReplayHooks (tests/translated/turret_translated.h, kamikaze_translated.h,
+// flykami_translated.h); the HermitSlime's rows (its patrol, ItemDrain) are the common replay's,
+// as enemy_replay_colliders.h has them. Where a hook needs to see a translated method run (the
+// turret's look, the kamikaze's MoveEnemy), the prefab's script is a probe: the translated class
+// with that virtual method wrapped (Hooks::AddScript), the game's code unchanged.
 //
 // Usage: enemy_translated_test [recording.jsonl] [prefab]   (default data/oracle/slime.jsonl
 //        BabySlime; ML_DATA: the extracted data, default data/extracted; ML_SLIME_DEBUG=1: every
@@ -44,8 +53,10 @@
 #include "bind/Prefabs.h"
 #include "bind/UnityEngine.h"
 #include "game.h"
+#include "game/HeroDamage.h"
 #include "game/MasterAudio.h"
 #include "game/Prefabs.h"
+#include "game/RoomPhysics.h"
 #include "scene/Standins.h"
 #include "unity/Animator.h"
 #include "unity/Physics2D.h"
@@ -160,6 +171,15 @@ unity::Collider2D ColliderFrom(const Value& v)
     c.hasWorldBox = c.enabled;
     c.worldMin = V2(v["min"]);
     c.worldMax = V2(v["max"]);
+    // Its turn, which the oracle's rows don't carry: a dungeon room's ("Dungeon/<room>/<path>")
+    // as the DungeonRoom prefab has it (game::DungeonRoomTurn: the turned door boundaries).
+    const size_t room = c.path.rfind("Dungeon/", 0) == 0 ? c.path.find('/', 8) : std::string::npos;
+    game::Turn turn;
+    if (room != std::string::npos && game::DungeonRoomTurn(c.path.substr(room + 1), turn)) {
+        c.rotZ = turn.z;
+        c.rotW = turn.w;
+        c.matrixScale = turn.scale;
+    }
     return c;
 }
 
@@ -223,6 +243,7 @@ struct Replayed {
     UnityEngine::Animator* animator = nullptr;
     GameObject* attack = nullptr; // its AttackCollider (none: the turret's)
     UnityEngine::BoxCollider2D* attackBox = nullptr;
+    UnityEngine::Rigidbody2D* attackRb = nullptr; // the AttackCollider's own (the KamikazeGolem's)
     bool Gone() const { return !go || go->destroyed_; }
 };
 
@@ -253,7 +274,7 @@ std::string AttackStr(const Replayed& s)
 }
 
 // ---- the colliders' rows (tests/enemy_replay_colliders.h's: the root box, the body's centre of mass,
-// the hurtboxes, the damage types; the HermitSlime's patrol and drain aren't in the translation yet) ----
+// the hurtboxes, the damage types, the HermitSlime's patrol and ItemDrain) ---------------------------------
 
 // The hurtboxes as the oracle lists them: GetComponentsInChildren<EnemyDamageReceiver>(true) of
 // the behaviour, each by its object's name ("" the enemy's own).
@@ -292,6 +313,8 @@ void ReceiverRows(Tally& t, const Replayed& s, const Value& list, const std::str
     }
     t.Add(what, ok, at + ": port " + std::to_string(mine.size()) + " game " + list.Dump());
 }
+
+gen::HermitSlimeBehaviourNEW* Hermit(const Replayed& s) { return dynamic_cast<gen::HermitSlimeBehaviourNEW*>(s.behaviour); }
 
 // The room's DisableEnemies where the game ran it (enemy_replay_room.h's RoomExitReplay, on the
 // translated enemies): the hero leaving the room is his doing, fed from the recording as his hits
@@ -348,7 +371,6 @@ struct RoomExit {
         updatesBefore = f["updates"].size();
         inferred++;
     }
-    static void Run(gen::DungeonRoom* room) { room->DisableEnemies(); }
 };
 
 // Animator.GetCurrentAnimatorStateInfo(0): zeros while the object is inactive.
@@ -364,6 +386,79 @@ struct Data {
     std::unique_ptr<unity::AnimatorController> controller;
     const game::Prefab* prefab = nullptr;
 };
+
+// ---- what one enemy adds (tests/enemy_replay.h's ReplayHooks) ---------------------------------------------
+
+struct Ctx {
+    bind::Scene* scene = nullptr;
+    bind::PhysicsScene* physics = nullptr;
+    unity::PhysicsWorld* world = nullptr;
+    unity::Physics2D* roomColliders = nullptr;
+    unity::Rigidbody2D* heroBody = nullptr;
+    UnityEngine::BoxCollider2D* heroCollider = nullptr;
+    game::MasterAudio* audio = nullptr;
+    gen::DungeonRoom* room = nullptr;
+    gen::HeroMerchant* hero = nullptr;
+    const Data* data = nullptr;
+    std::vector<Replayed>* enemies = nullptr;
+    std::function<void(Vector2)> setHeroPosition;
+    Replayed* ById(int id) const
+    {
+        for (Replayed& s : *enemies)
+            if (s.id == id) return &s;
+        return nullptr;
+    }
+    int IdOf(const UnityEngine::Object* o) const
+    {
+        for (const Replayed& s : *enemies)
+            if (s.enemy == o || s.behaviour == o || s.go == o) return s.id;
+        return -1;
+    }
+};
+
+struct Hooks {
+    virtual ~Hooks() = default;
+    // The script to add for a prefab's class (a probe of the translated class), or nullptr.
+    virtual UnityEngine::Component* AddScript(GameObject* go, const char* cls)
+    {
+        (void)go, (void)cls;
+        return nullptr;
+    }
+    // The scene is made, before the enemies.
+    virtual void OnScene(const Value& start, Ctx& c, Tally& t) { (void)start, (void)c, (void)t; }
+    // An enemy made and set as its recorded line has it; then all of them.
+    virtual void OnEnemy(Replayed& e, const Value& line, Tally& t) { (void)e, (void)line, (void)t; }
+    virtual void OnEnemiesBuilt(const Value& start, Tally& t) { (void)start, (void)t; }
+    virtual void BeginFrame(long long frame, const Value& f) { (void)frame, (void)f; }
+    virtual void BeforeStep(long long frame, size_t k, const Value& f, Tally& t) { (void)frame, (void)k, (void)f, (void)t; }
+    virtual void AfterStep(long long frame, size_t k, const Value& f, Tally& t) { (void)frame, (void)k, (void)f, (void)t; }
+    // Each clip event of an enemy's Animator, before (after the common replay's resync) and after
+    // the scripts got it (before the common replay compares its draws).
+    virtual void OnAnimEvent(Replayed& e, const unity::AnimationEvent& ev, bool after) { (void)e, (void)ev, (void)after; }
+    // The room's DisableEnemies, before and after (the frame's part or a step: `step`).
+    virtual void AroundRoomExit(bool after, int step) { (void)after, (void)step; }
+    virtual void AtFrameEnd(long long frame, const Value& f, Tally& t) { (void)frame, (void)f, (void)t; }
+    virtual void AfterFrames(const std::vector<Value>& otherLines, Tally& t) { (void)otherLines, (void)t; }
+    virtual void Summary() const {}
+};
+
+Hooks* gHooks = nullptr;
+
+// The prefabs' scripts: a hook's probe, else the translation's.
+UnityEngine::Component* AddScript(GameObject* go, const char* cls)
+{
+    if (gHooks)
+        if (UnityEngine::Component* c = gHooks->AddScript(go, cls)) return c;
+    return gen::cs_AddComponent(go, cls);
+}
+
+} // namespace
+
+#include "turret_translated.h"   // (the BrokenGolemTurret's shots, looks and pool)
+#include "kamikaze_translated.h" // (the KamikazeGolem's MoveEnemy, jump and explosion)
+#include "flykami_translated.h"  // (the FlyingKamikazeGolem's charge)
+
+namespace {
 
 bool LoadData(Data& d)
 {
@@ -393,7 +488,7 @@ int Replay(const std::string& file, Data& data)
         return 0;
     }
     Value start;
-    std::vector<Value> enemyLines, frames, maps, probes, colliders;
+    std::vector<Value> enemyLines, frames, maps, probes, colliders, otherLines;
     for (std::string line; std::getline(in, line);) {
         if (line.empty()) continue;
         Value v = json::Parse(line);
@@ -404,6 +499,7 @@ int Replay(const std::string& file, Data& data)
         else if (ev == "navMap") maps.push_back(std::move(v));
         else if (ev == "rngProbe") probes.push_back(std::move(v));
         else if (ev == "collider") colliders.push_back(std::move(v));
+        else otherLines.push_back(std::move(v)); // (Hooks::AfterFrames)
     }
     if (start.IsNull() || enemyLines.empty() || frames.empty() || maps.empty()) {
         std::printf("%s: no start, enemies, frames or map\n", file.c_str());
@@ -413,6 +509,15 @@ int Replay(const std::string& file, Data& data)
         std::printf("%s records %s, not %s\n", file.c_str(), start["enemy"].s.c_str(), data.name.c_str());
         return 1;
     }
+    TurretHooks turretHooks;
+    KamikazeHooks kamikazeHooks;
+    FlyKamiHooks flykamiHooks;
+    Hooks none;
+    Hooks* hooks = data.name == "BrokenGolemTurret" ? static_cast<Hooks*>(&turretHooks)
+                   : data.name == "KamikazeGolem"   ? static_cast<Hooks*>(&kamikazeHooks)
+                   : data.name == "FlyingKamikazeGolem" ? static_cast<Hooks*>(&flykamiHooks)
+                                                        : &none;
+    gHooks = hooks;
     Tally t;
     t.debug = std::getenv("ML_SLIME_DEBUG") != nullptr;
     RoomExit roomExit;
@@ -477,6 +582,22 @@ int Replay(const std::string& file, Data& data)
         roomTriggers.Add(ColliderFrom(c));
     }
     for (const unity::Collider2D& c : roomTriggers.Colliders()) world.AddCollider(c);
+    // The room's PolygonCollider2D triggers without a body (its slime puddles), cut into convex
+    // pieces as Unity cuts them (enemy_replay.h's: the KamikazeGolem's explosion box enters them).
+    unity::Physics2D roomPolygonTriggers;
+    for (const Value& c : colliders) {
+        const std::string body = c.Find("body") ? c["body"].s : "none";
+        if (body != "none" || !c["trigger"].b || !c["enabled"].b || c["type"].s != "PolygonCollider2D") continue;
+        std::vector<std::vector<Vector2>> paths;
+        for (const Value& path : c["paths"].arr) {
+            paths.emplace_back();
+            for (size_t k = 0; k + 1 < path.arr.size(); k += 2) paths.back().push_back({Bits(path[k]), Bits(path[k + 1])});
+        }
+        unity::Collider2D polygon = ColliderFrom(c);
+        unity::SetPolygonColliderShapes(polygon, paths);
+        roomPolygonTriggers.Add(polygon);
+    }
+    for (const unity::Collider2D& c : roomPolygonTriggers.Colliders()) world.AddCollider(c);
     std::vector<std::string> triggerNames;
     for (const unity::Collider2D& c : roomTriggers.Colliders()) triggerNames.push_back(Leaf(c.path));
     auto RoomTrigger = [&](const std::string& name) { return std::find(triggerNames.begin(), triggerNames.end(), name) != triggerNames.end(); };
@@ -498,8 +619,9 @@ int Replay(const std::string& file, Data& data)
     bind::PhysicsScene physics(world, scene);
     physics.queries = &roomColliders;
 
-    // The objects the colliders' messages name: the room's (by their objects' names, tags and
-    // layers) and the hero's body (the "Player").
+    // The objects the colliders' messages name: the room's (one per collider, by its object's
+    // name, tag and layer; Physics2D's room queries answer with them too) and the hero's body (the
+    // "Player").
     auto standIn = [&](const std::string& name, const std::string& tag, int layer, bool trigger) {
         GameObject* g = GameObject::Create(name);
         if (!tag.empty()) g->tag_ = S(tag);
@@ -511,14 +633,20 @@ int Replay(const std::string& file, Data& data)
     };
     // (Which of them are the room's body-less triggers: a hit on one is on the breakables' row.)
     std::vector<UnityEngine::Collider2D*> roomTriggerObjects;
+    std::map<const unity::Collider2D*, UnityEngine::BoxCollider2D*> objectOf;
     for (b2Body* b = world.World().GetBodyList(); b; b = b->GetNext())
         for (b2Fixture* f = b->GetFixtureList(); f; f = f->GetNext())
             if (const unity::Collider2D* c = world.ColliderOf(f)) {
-                UnityEngine::BoxCollider2D* object = standIn(Leaf(c->path), c->tag, c->layer, c->trigger);
+                UnityEngine::BoxCollider2D*& object = objectOf[c];
+                if (!object) {
+                    object = standIn(Leaf(c->path), c->tag, c->layer, c->trigger);
+                    for (const unity::Collider2D& rt : roomTriggers.Colliders())
+                        if (c == &rt) roomTriggerObjects.push_back(object);
+                }
                 physics.Register(f, object);
-                for (const unity::Collider2D& rt : roomTriggers.Colliders())
-                    if (c == &rt) roomTriggerObjects.push_back(object);
             }
+    for (const unity::Collider2D& c : roomColliders.Colliders())
+        if (objectOf.count(&c)) physics.RegisterQuery(&c, objectOf[&c]);
     // The critters' boxes (enemy_replay_critters.h, where recorded).
     for (const CritterReplay::Critter& k : critterRows.critters)
         if (k.body)
@@ -546,6 +674,7 @@ int Replay(const std::string& file, Data& data)
     physics.Register(heroBody.Body()->GetFixtureList(), heroCollider);
     auto setHeroPosition = [&](Vector2 p) { heroGo->transform_->set_position(UnityEngine::Vector3{p.x, p.y, 0.0f}); };
     setHeroPosition(V2(h["pos"]));
+    if (const Value* off = h.Find("getColliderOffset")) standins::S().heroColliderOffset = V2(*off);
 
     // ---- the game's services the enemies reach ----
     const Value& sc = start["stats"];
@@ -560,8 +689,10 @@ int Replay(const std::string& file, Data& data)
     gen::CameraManager::_instance = cs::gcnew<gen::CameraManager>();
     gen::HUDManager::Instance = cs::gcnew<gen::HUDManager>();
     gen::HUDManager::Instance->minimap = cs::gcnew<gen::MinimapPanel>();
+    // MasterAudio's groups: the first scene's permanent creators' ("Sounds - Will" has the chests'
+    // "dungeon_chest_unlock"), then the Golem dungeon's, then the general ones' (enemy_replay.h's).
     game::MasterAudio audio;
-    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - GolemDungeon", "Sounds - GeneralDungeons"}))
+    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - Will", "Sounds - interface", "Sounds - GolemDungeon", "Sounds - GeneralDungeons"}))
         DarkTonic::MasterAudio::MasterAudio::engine = &audio;
     else std::printf("(no sound_groups.json: MasterAudio's draws not made)\n");
 
@@ -582,6 +713,10 @@ int Replay(const std::string& file, Data& data)
     room->roomFloorWidth = static_cast<int32_t>(start["roomFloor"][0].AsInt());
     room->roomFloorHeight = static_cast<int32_t>(start["roomFloor"][1].AsInt());
     room->roomCenterYOffset = static_cast<int32_t>(start["roomFloor"][2].AsInt());
+    if (const Value* rp = start.Find("roomPos"))
+        if (!Same(XY(roomGo->transform_->get_position()), V2(*rp)))
+            std::printf("note: the room's transform %s isn't the recording's roomPos %s\n", Str(XY(roomGo->transform_->get_position())).c_str(),
+                        Str(V2(*rp)).c_str());
     GameObject* levelEnemies = GameObject::Create("DungeonLevelEnemies", roomGo->transform_);
     at(levelEnemies, V2(chain0[2]));
     auto* dungeonManager = cs::New<gen::DungeonManager>();
@@ -590,6 +725,9 @@ int Replay(const std::string& file, Data& data)
     dungeonManager->intermediateInfo.dungeonLevel = static_cast<int32_t>(sc["level"].AsInt());
     dungeonManager->currentDungeonRoom = room;
     gen::DungeonManager::_instance = dungeonManager;
+    // Its PoolManager (DungeonManager.Awake's AddComponent: the turrets' shots).
+    GameObject* managerGo = GameObject::Create("DungeonManager");
+    dungeonManager->poolManager = managerGo->AddComponent<gen::PoolManager*>();
 
     // The map: PolyNav2D with the recorded polygons (its Awake builds them from the room's
     // colliders, which the recording gives already made).
@@ -619,6 +757,7 @@ int Replay(const std::string& file, Data& data)
 
     // ---- the enemies ----
     std::vector<Replayed> enemies;
+    enemies.reserve(enemyLines.size());
     auto byId = [&](int id) -> Replayed* {
         for (Replayed& s : enemies)
             if (s.id == id) return &s;
@@ -629,6 +768,19 @@ int Replay(const std::string& file, Data& data)
             if (s.enemy == e) return s.id;
         return -1;
     };
+    Ctx ctx;
+    ctx.scene = &scene;
+    ctx.physics = &physics;
+    ctx.world = &world;
+    ctx.roomColliders = &roomColliders;
+    ctx.heroBody = &heroBody;
+    ctx.heroCollider = heroCollider;
+    ctx.audio = &audio;
+    ctx.room = room;
+    ctx.hero = heroMerchant;
+    ctx.data = &data;
+    ctx.enemies = &enemies;
+    ctx.setHeroPosition = setHeroPosition;
     std::vector<std::pair<int, float>> portDamage;   // (enemy, strength) this step
     std::vector<std::pair<int, int>> portDamageTypes; // (enemy, HeroMerchant.DamageType) this step
     std::vector<Vector2> portDeadSprites;
@@ -637,13 +789,15 @@ int Replay(const std::string& file, Data& data)
         portDamageTypes.emplace_back(idOf(e), type);
     };
     standins::S().spawnEnemyDeadSprite = [&](gen::DungeonRoom*, UnityEngine::Sprite*, UnityEngine::Vector3 p) { portDeadSprites.push_back(XY(p)); };
+    hooks->OnScene(start, ctx, t);
     std::map<int, std::vector<std::string>> portAnim;
     std::map<int, std::vector<const Value*>> gameAnim;
     long long animFrame = -1;
     int animResynced = 0;
     std::vector<std::string> skipped;
     for (const Value& v : enemyLines) {
-        Replayed s;
+        enemies.emplace_back();
+        Replayed& s = enemies.back();
         s.id = static_cast<int>(v["s"].AsInt());
         const Value& chain = v["chain"];
         GameObject* spawn = GameObject::Create("EnemySpawn", levelEnemies->transform_);
@@ -651,7 +805,7 @@ int Replay(const std::string& file, Data& data)
         bind::PrefabOptions options;
         options.controller = data.controller.get();
         skipped.clear();
-        s.go = bind::InstantiatePrefab(*data.prefab, spawn->transform_, options, &gen::cs_AddComponent, &skipped);
+        s.go = bind::InstantiatePrefab(*data.prefab, spawn->transform_, options, &AddScript, &skipped);
         s.go->transform_->localPosition_ = UnityEngine::Vector3{Bits(chain[0][0]), Bits(chain[0][1]), 0.0f};
         s.enemy = s.go->GetComponent<gen::Enemy*>();
         s.behaviour = s.go->GetComponent<gen::EnemyBehaviour*>();
@@ -661,31 +815,35 @@ int Replay(const std::string& file, Data& data)
         s.animator = s.go->GetComponent<UnityEngine::Animator*>();
         s.attack = bind::FindBelow(s.go, "AttackCollider");
         s.attackBox = s.attack ? s.attack->GetComponent<UnityEngine::BoxCollider2D*>() : nullptr;
+        s.attackRb = s.attack ? s.attack->GetComponent<UnityEngine::Rigidbody2D*>() : nullptr;
         if (!s.enemy || !s.behaviour || !s.agent || !s.rb || !s.box || !s.animator) {
             std::printf("the %s prefab didn't make its Enemy, behaviour, agent, body, box and Animator (a script not translated?)\n", data.name.c_str());
             return 1;
         }
         const int id = s.id;
         s.animator->onEvent = [&, id](UnityEngine::Animator&, const unity::AnimationEvent& ev, bool after) {
+            Replayed* self = byId(id);
             std::vector<std::string>& mine = portAnim[id];
             if (!after) mine.push_back(ev.function);
             const size_t k = mine.size() - 1;
             const auto g = gameAnim.find(id);
-            if (g == gameAnim.end() || k >= g->second.size()) return;
-            const Value& game = *g->second[k];
-            if (game["fn"].s != ev.function || !game.Find("rng0")) return;
+            const Value* game = g == gameAnim.end() || k >= g->second.size() ? nullptr : g->second[k];
+            const bool same = game && (*game)["fn"].s == ev.function && game->Find("rng0");
             if (!after) {
-                if (!SameState(unity::Random::GetState(), State(game["rng0"]))) {
+                if (same && !SameState(unity::Random::GetState(), State((*game)["rng0"]))) {
                     animResynced++;
-                    unity::Random::SetState(State(game["rng0"]));
+                    unity::Random::SetState(State((*game)["rng0"]));
                 }
+                if (self) hooks->OnAnimEvent(*self, ev, false);
                 return;
             }
-            t.Add("Random draws in animation events (" + ev.function + ")", SameState(unity::Random::GetState(), State(game["rng1"])),
+            if (self) hooks->OnAnimEvent(*self, ev, true);
+            if (!same) return;
+            t.Add("Random draws in animation events (" + ev.function + ")", SameState(unity::Random::GetState(), State((*game)["rng1"])),
                   "frame " + std::to_string(animFrame) + " enemy " + std::to_string(id) + ": " +
-                      std::to_string(unity::Random::DrawsBetween(State(game["rng0"]), unity::Random::GetState(), 64)) + " draws, the game " +
-                      std::to_string(unity::Random::DrawsBetween(State(game["rng0"]), State(game["rng1"]), 64)));
-            unity::Random::SetState(State(game["rng1"]));
+                      std::to_string(unity::Random::DrawsBetween(State((*game)["rng0"]), unity::Random::GetState(), 64)) + " draws, the game " +
+                      std::to_string(unity::Random::DrawsBetween(State((*game)["rng0"]), State((*game)["rng1"]), 64)));
+            unity::Random::SetState(State((*game)["rng1"]));
         };
         // What spawned it set: its room, its dead sprite; a champion's flag (SpawnEnemies' draw).
         s.enemy->enemyRoom = room;
@@ -773,29 +931,35 @@ int Replay(const std::string& file, Data& data)
             }
         }
         // The root box (its trigger flag against the prefab's; offset and size as the clips have
-        // them now) and the hurtboxes against the prefab's (enemy_replay_colliders.h's Restore).
+        // them now) and the hurtboxes against the prefab's (enemy_replay_colliders.h's Restore);
+        // a HermitSlimeBehaviourNEW's patrol and look lock.
         const std::string who = "enemy " + std::to_string(s.id);
         if (const Value* trig = v.Find("rootTrigger")) t.Add("root box trigger (prefab)", s.box->isTrigger_ == trig->b, who);
         if (const Value* rbx = v.Find("rootBox")) {
-            const Vector2 off{Bits((*rbx)[0]), Bits((*rbx)[1])}, size{Bits((*rbx)[2]), Bits((*rbx)[3])};
-            if (!Same(off, s.box->offset_) || !Same(size, s.box->size_))
-                std::printf("note: enemy %d's root box starts as the clips have it, not the prefab's (bind/Physics doesn't remake the body's own fixture)\n", s.id);
-            s.box->set_offset(off);
-            s.box->set_size(size);
+            s.box->set_offset(Vector2{Bits((*rbx)[0]), Bits((*rbx)[1])});
+            s.box->set_size(Vector2{Bits((*rbx)[2]), Bits((*rbx)[3])});
         }
         if (const Value* list = v.Find("receivers")) ReceiverRows(t, s, *list, "hurtboxes (prefab: path, box, layer, tag, advise)", who);
+        if (gen::HermitSlimeBehaviourNEW* hs = Hermit(s)) {
+            if (const Value* locked = be.Find("locked")) hs->iDirectionLocked = locked->b;
+            if (const Value* p = be.Find("patrol")) hs->patrolLapse = Bits(*p);
+            if (const Value* d = be.Find("dest")) hs->destinyPosition = UnityEngine::Vector3{Bits((*d)[0]), Bits((*d)[1]), 0.0f};
+            if (const Value* o = be.Find("gridOrigin")) hs->roomGridOrigin = V2(*o);
+            if (const Value* gs = be.Find("gridSize")) hs->roomGridSize = V2(*gs);
+        }
         s.enemy->enemySprite->sprite_ = an["sprite"].IsString() ? UnityEngine::Sprite::Named(an["sprite"].s) : nullptr;
         MaterialOf(s)->SetFloat(std::string("_FlashAmount"), Bits(v["flash"]));
         MaterialOf(s)->SetColor(std::string("_Color"),
                                 UnityEngine::Color{Bits(v["color"][0]), Bits(v["color"][1]), Bits(v["color"][2]), Bits(v["color"][3])});
         s.agent->OnDisable(); // (re-enabled below in allAgents' order)
-        enemies.push_back(s);
+        hooks->OnEnemy(s, v, t);
     }
     if (!skipped.empty()) {
         std::printf("the prefab's scripts not in the translation (presentation):");
         for (const std::string& k : skipped) std::printf(" %s", k.c_str());
         std::printf("\n");
     }
+    hooks->OnEnemiesBuilt(start, t);
     for (const Value& name : start["agents"].arr) {
         bool found = false;
         for (Replayed& s : enemies)
@@ -810,10 +974,13 @@ int Replay(const std::string& file, Data& data)
         for (const Value& l : enemyLines)
             if (l["s"].AsInt() == s.id) v = &l;
         physics.SyncColliders(s.rb);
+        if (s.attackRb) physics.SyncColliders(s.attackRb);
         physics.PlaceBody(s.rb, V2((*v)["rb"]["pos"]));
         s.rb->body_->SetVelocity({Bits((*v)["rb"]["vel"][0]), Bits((*v)["rb"]["vel"][1])});
         if (!(*v)["rb"]["awake"].b) s.rb->body_->Body()->SetAwake(false);
     }
+    // (What the setup made is as the game made it, long before: not remade.)
+    physics.Settle();
     unity::Random::SetState(State(f0["rng"]));
 
     const float fixedDt = Bits(start["fixedDeltaTime"]);
@@ -853,6 +1020,7 @@ int Replay(const std::string& file, Data& data)
 
     // The weapon's push (Weapon.PushEnemyBackwards, the hero's code, translated).
     auto* weapon = cs::gcnew<gen::Weapon>();
+    cs::Root<gen::Weapon> weaponRoot(weapon);
 
     int rngElsewhere = 0;
     // Whether the recording has the fixtures Unity made per step (fixture_probe.h).
@@ -874,6 +1042,11 @@ int Replay(const std::string& file, Data& data)
     const bool gcEveryFrame = std::getenv("ML_GC_EVERY_FRAME") != nullptr;
     int gcRuns = 0;
     size_t gcFreed = 0;
+    auto runRoomExit = [&](int step) {
+        hooks->AroundRoomExit(false, step);
+        room->DisableEnemies();
+        hooks->AroundRoomExit(true, step);
+    };
     for (size_t fi = 0; fi < frames.size(); fi++) {
         const Value& f = frames[fi];
         const long long fn = f["f"].AsInt();
@@ -892,6 +1065,7 @@ int Replay(const std::string& file, Data& data)
         // variation played there isn't playing yet in the frame's Update: game/MasterAudio.h).
         audio.frameCount = f.Find("fc") ? static_cast<int>(f["fc"].AsInt()) : static_cast<int>(fn);
         UnityEngine::Time::frameCount = audio.frameCount;
+        hooks->BeginFrame(fn, f);
         roomExit.Plan(f, fi > 0 ? &frames[fi - 1] : nullptr, enemies, room);
         const Value& events = f["events"];
         // The hero's weapon hitbox (not in this world) came on since the last step if its first
@@ -917,6 +1091,9 @@ int Replay(const std::string& file, Data& data)
             calls.inFixedStep = true;
             UnityEngine::Time::deltaTime = fixedDt;
             UnityEngine::Time::time = static_cast<float>(fixedClock);
+            // Start for the behaviours enabled since (a pooled shot taken out), before their first
+            // FixedUpdate or Update (Unity's).
+            scene.RunStarts();
             setHero(st["hero"]);
             for (const Value& ss : st["s"].arr) {
                 Replayed* s = byId(static_cast<int>(ss[0].AsInt()));
@@ -946,6 +1123,7 @@ int Replay(const std::string& file, Data& data)
                     t.Add("Rigidbody2D centre of mass at a fixed step's start", Same({c.x, c.y}, {Bits(bx[5]), Bits(bx[6])}),
                           where + ": port " + Str({c.x, c.y}) + " game " + Str({Bits(bx[5]), Bits(bx[6])}));
                 }
+            hooks->BeforeStep(fn, k, f, t);
             // Fixtures Unity made since the step before that this world doesn't hold (fixture_probe.h).
             if (fixturesRecorded && StepMadeFixtures(st)) world.FixtureMadeElsewhere();
             portDamage.clear();
@@ -1001,8 +1179,8 @@ int Replay(const std::string& file, Data& data)
                 else if (triggers) t.Info("attack trigger: OnTriggerEnter2D on the room's triggers (breakables)", mine == theirs, which);
                 else t.Add("attack trigger: OnTriggerEnter2D (whose, on the hero or a collider)", mine == theirs, which);
             }
-            // The attack collider's OnCollisionEnter2D ("attackEnter", "how" "collision"): bind's
-            // physics sends no collision messages yet, so each one the game had fails.
+            // The attack collider's OnCollisionEnter2D ("attackEnter", "how" "collision"): the
+            // attack colliders are triggers (sensors make no collisions), so each one the game had fails.
             if (entersRecorded)
                 for (const Value& ev : events.arr) {
                     if (ev["k"].s != "attackEnter" || ev["step"].AsInt() != static_cast<long long>(k) || ev["how"].s == "trigger") continue;
@@ -1018,6 +1196,7 @@ int Replay(const std::string& file, Data& data)
                 Replayed* s = byId(static_cast<int>(ev["s"].AsInt()));
                 if (kind == "dmgToPlayer") gameDamage.emplace_back(static_cast<int>(ev["s"].AsInt()), Bits(ev["str"]));
                 if (!s) continue;
+                if (kind == "dmgToEnemy" && ev.Find("by")) continue; // (an enemy's hit: the translated code deals it itself)
                 if (kind == "dmgToEnemy") {
                     setHeroPosition(V2(ev["hero"]));
                     t.Add("health before a weapon hit", Same(Health(*s), Bits(ev["hp0"])), "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt()));
@@ -1058,10 +1237,11 @@ int Replay(const std::string& file, Data& data)
                     t.Add("DealDamageToPlayer's damage type (ItemDrain: 1)", mine == theirs, which);
                 }
             }
-            if (roomExit.step == static_cast<int>(k)) RoomExit::Run(room);
+            if (roomExit.step == static_cast<int>(k)) runRoomExit(static_cast<int>(k));
             calls.UpdateFixed(fixedClock);
             scene.ResumeFixed();
             calls.inFixedStep = false;
+            hooks->AfterStep(fn, k, f, t);
             if (!portDamage.empty() || !gameDamage.empty()) {
                 auto sorted = [](std::vector<std::pair<int, float>> v) {
                     std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
@@ -1089,9 +1269,10 @@ int Replay(const std::string& file, Data& data)
         const Value* tweenUdt = f.Find("dotweenUdt");
         scene.tweens.Update(dt, tweenUdt ? Bits(*tweenUdt) : f.Find("udt") ? Bits(f["udt"]) : dt);
         DG::Tweening::Running::Prune();
+        scene.RunStarts();
         size_t updateIndex = 0;
         for (const Value& u : f["updates"].arr) {
-            if (roomExit.step == -1 && roomExit.updatesBefore == updateIndex++) RoomExit::Run(room);
+            if (roomExit.step == -1 && roomExit.updatesBefore == updateIndex++) runRoomExit(-1);
             Replayed* s = byId(static_cast<int>(u["s"].AsInt()));
             if (!s) continue;
             setHeroPosition(V2(u["hero"]));
@@ -1105,25 +1286,59 @@ int Replay(const std::string& file, Data& data)
                   "frame " + std::to_string(fn) + " enemy " + std::to_string(u["s"].AsInt()));
             unity::Random::SetState(State(u["rng1"]));
         }
-        if (roomExit.step == -1 && roomExit.updatesBefore >= f["updates"].size()) RoomExit::Run(room);
-        // The frame's events that need no step (enemy_replay_colliders.h's FrameEvents): the hurtbox
-        // and weapon hits; the HermitSlime's patrol and drain aren't in the translation yet.
-        for (const Value& ev : events.arr) {
-            const std::string& kind = ev["k"].s;
-            Replayed* s = byId(static_cast<int>(ev["s"].AsInt()));
-            const std::string where = "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt());
-            if (kind == "recvHit" && s) {
-                gen::EnemyDamageReceiver* r = Receiver(*s, ev["path"].s);
-                t.Add("weapon hit through a hurtbox: the port's, advising as the game's", r && (r->gameObjectToAdvise != nullptr) == ev["advise"].b,
-                      where + ": " + ev["path"].s + (ev["advise"].b ? " advises" : " advises nobody"));
-            } else if (kind == "weaponHit" && s) {
-                const std::string& other = ev["other"].s;
-                gen::EnemyDamageReceiver* r = Receiver(*s, other);
-                const std::string tag = Utf8(r ? r->gameObject_->get_tag() : s->go->get_tag());
-                t.Info("weapon hit: the tag of what it hit (root or hurtbox)", tag == ev["tag"].s, where + ": " + other + " port " + tag + " game " + ev["tag"].s);
-            } else if (kind == "patrol" || kind == "drain") {
-                t.Add("the HermitSlime's " + kind + " (not in the translation)", false, where);
+        if (roomExit.step == -1 && roomExit.updatesBefore >= f["updates"].size()) runRoomExit(-1);
+        // The frame's events that need no step (enemy_replay_colliders.h's FrameEvents): the
+        // HermitSlime's patrol and ItemDrain from the game's Random states (the state put back
+        // after), the hurtbox and weapon hits.
+        {
+            const unity::Random::State saved = unity::Random::GetState();
+            for (const Value& ev : events.arr) {
+                const std::string& kind = ev["k"].s;
+                Replayed* s = byId(static_cast<int>(ev["s"].AsInt()));
+                const std::string where = "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt());
+                if (kind == "patrol" && s) {
+                    gen::HermitSlimeBehaviourNEW* hs = Hermit(*s);
+                    if (!hs) continue;
+                    // ChooseNewDestination from the game's state, the grid as the translated code has it now.
+                    unity::Random::SetState(State(ev["rng0"]));
+                    Vector2 origin = hs->roomGridOrigin, size = hs->roomGridSize;
+                    if (size.x == 0.0f) {
+                        size = {static_cast<float>(room->roomFloorWidth), static_cast<float>(room->roomFloorHeight)};
+                        const Vector2 rp = XY(roomGo->transform_->get_position());
+                        origin = (rp + Vector2{0.0f, static_cast<float>(room->roomCenterYOffset)}) - size * 0.5f;
+                    }
+                    const int x = unity::Random::Range(0, static_cast<int>(size.x));
+                    const int y = unity::Random::Range(0, static_cast<int>(size.y));
+                    const Vector2 dest = Vector2{static_cast<float>(x), static_cast<float>(y)} + origin;
+                    t.Add("patrol: ChooseNewDestination from the game's Random state (destination, draws)",
+                          Same(dest, V2(ev["dest"])) && SameState(unity::Random::GetState(), State(ev["rng1"])),
+                          where + ": port " + Str(dest) + " game " + Str(V2(ev["dest"])));
+                    t.Add("patrol: the port's lapse and destination after the Update",
+                          Same(hs->patrolLapse, Bits(ev["lapse"])) && Same(XY(hs->destinyPosition), V2(ev["dest"])),
+                          where + ": port " + std::to_string(hs->patrolLapse) + " " + Str(XY(hs->destinyPosition)) + " game " + std::to_string(Bits(ev["lapse"])) +
+                              " " + Str(V2(ev["dest"])));
+                } else if (kind == "drain") {
+                    // HeroMerchantInventory.DropRandomItems (the hero's: game/HeroDamage.h's model)
+                    // from the game's state and its count of droppable slots.
+                    unity::Random::SetState(State(ev["rng0"]));
+                    std::vector<int> slots;
+                    for (int i = 0; i < static_cast<int>(ev["eligible"].AsInt()); i++) slots.push_back(i);
+                    game::DropRandomItemsDraws(slots, static_cast<int>(ev["number"].AsInt()));
+                    t.Add("ItemDrain: DropRandomItems' draws (the game's droppable slots)", SameState(unity::Random::GetState(), State(ev["rng1"])),
+                          "frame " + std::to_string(fn) + ": " + std::to_string(ev["eligible"].AsInt()) + " slots, the game drew " +
+                              std::to_string(unity::Random::DrawsBetween(State(ev["rng0"]), State(ev["rng1"]), 64)));
+                } else if (kind == "recvHit" && s) {
+                    gen::EnemyDamageReceiver* r = Receiver(*s, ev["path"].s);
+                    t.Add("weapon hit through a hurtbox: the port's, advising as the game's", r && (r->gameObjectToAdvise != nullptr) == ev["advise"].b,
+                          where + ": " + ev["path"].s + (ev["advise"].b ? " advises" : " advises nobody"));
+                } else if (kind == "weaponHit" && s) {
+                    const std::string& other = ev["other"].s;
+                    gen::EnemyDamageReceiver* r = Receiver(*s, other);
+                    const std::string tag = Utf8(r ? r->gameObject_->get_tag() : s->go->get_tag());
+                    t.Info("weapon hit: the tag of what it hit (root or hurtbox)", tag == ev["tag"].s, where + ": " + other + " port " + tag + " game " + ev["tag"].s);
+                }
             }
+            unity::Random::SetState(saved);
         }
         calls.Update(time);
         scene.ResumeYieldNull();
@@ -1153,6 +1368,11 @@ int Replay(const std::string& file, Data& data)
             Replayed* s = byId(static_cast<int>(id.AsInt()));
             if (s && !s->Gone() && s->agent->get_isActiveAndEnabled()) s->agent->cs_LateUpdate();
         }
+        // MasterAudio's LateUpdate: the updaters of this frame's plays start (game/MasterAudio.h:
+        // the intro silence's draws).
+        audio.LateUpdate();
+        // Object.Destroy(gameObject) made this frame (the KamikazeGolem's SelfDestroy): gone now.
+        scene.ProcessDestroys();
         std::vector<Vector2> gameDead;
         for (const Value& ev : events.arr)
             if (ev["k"].s == "deadSprite") gameDead.push_back(V2(ev["pos"]));
@@ -1163,7 +1383,6 @@ int Replay(const std::string& file, Data& data)
                   "frame " + std::to_string(fn) + ": port " + std::to_string(portDeadSprites.size()) + " game " + std::to_string(gameDead.size()));
         }
         portDeadSprites.clear();
-        scene.ProcessDestroys();
 
         // The frame's end, per enemy.
         for (const Value& v : (f.Find("enemies") ? f["enemies"] : f["slimes"]).arr) {
@@ -1219,7 +1438,7 @@ int Replay(const std::string& file, Data& data)
                       at2 + ": port " + AttackStr(s) + "; game " + ac->Dump());
             if (const Value* locked = be.Find("locked"))
                 if (auto* soldier = dynamic_cast<gen::GolemSoldierBehaviour*>(b)) t.Add("look locked (iDirectionLocked)", soldier->iDirectionLocked == locked->b, at2);
-            // The root box, the body's mass and centre, the hurtboxes (enemy_replay_colliders.h's End).
+            // The root box, the body's mass and centre, the hurtboxes, the patrol (enemy_replay_colliders.h's End).
             if (const Value* rbx = v.Find("rootBox"))
                 t.Add("root box (offset, size)", Same(s.box->offset_, {Bits((*rbx)[0]), Bits((*rbx)[1])}) && Same(s.box->size_, {Bits((*rbx)[2]), Bits((*rbx)[3])}),
                       at2 + ": port " + Str(s.box->offset_) + " " + Str(s.box->size_) + " game " + rbx->Dump());
@@ -1230,6 +1449,13 @@ int Replay(const std::string& file, Data& data)
                           std::to_string(Bits(v["mass"])));
             }
             if (const Value* list = v.Find("receivers")) ReceiverRows(t, s, *list, "hurtboxes (box, active, layer, position)", at2);
+            if (gen::HermitSlimeBehaviourNEW* hs = Hermit(s))
+                if (be.Find("patrol"))
+                    t.Add("HermitSlime (patrolLapse, destinyPosition, grid, look lock)",
+                          Same(hs->patrolLapse, Bits(be["patrol"])) && Same(XY(hs->destinyPosition), V2(be["dest"])) && Same(hs->roomGridOrigin, V2(be["gridOrigin"])) &&
+                              Same(hs->roomGridSize, V2(be["gridSize"])) && hs->iDirectionLocked == be["locked"].b,
+                          at2 + ": port lapse " + std::to_string(hs->patrolLapse) + " dest " + Str(XY(hs->destinyPosition)) + " game " +
+                              std::to_string(Bits(be["patrol"])) + " " + Str(V2(be["dest"])));
             UnityEngine::Material* mat = MaterialOf(s);
             const float flash = mat->Float("_FlashAmount");
             const UnityEngine::Color c = mat->ColorOf("_Color");
@@ -1248,6 +1474,7 @@ int Replay(const std::string& file, Data& data)
             }
             if (t.debug) std::printf("frame %lld enemy %d: %s %s | game %s\n", fn, id, Str(Position(s)).c_str(), SpriteOf(s).c_str(), Str(V2(v["pos"])).c_str());
         }
+        hooks->AtFrameEnd(fn, f, t);
         // ML_GC_EVERY_FRAME=1: the collector at every frame boundary (docs/translator_plan.md,
         // "Memory"), where no translated code is running: what the roots don't reach is freed, so
         // a live object the roots miss shows up as a crash or a mismatch in the frames after.
@@ -1256,6 +1483,7 @@ int Replay(const std::string& file, Data& data)
             gcRuns++;
         }
     }
+    hooks->AfterFrames(otherLines, t);
     std::printf("\n");
     t.Print();
     if (gcEveryFrame) std::printf("collected at %d frame ends: %zu objects freed, %zu left\n", gcRuns, gcFreed, cs::CurrentHeap().Count());
@@ -1267,6 +1495,8 @@ int Replay(const std::string& file, Data& data)
                     unseenEnters);
     if (animResynced) std::printf("Random resynced before an animation event %d times\n", animResynced);
     std::printf("\n%s\n", t.Ok() ? "ALL MATCH" : "MISMATCHES");
+    hooks->Summary();
+    gHooks = nullptr;
     return t.Ok() ? 0 : 1;
 }
 

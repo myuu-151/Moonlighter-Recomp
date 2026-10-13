@@ -86,6 +86,9 @@ public:
     // Contacts touching another non-trigger collider now (manifolds with points).
     int TouchingCount() const;
     b2Body* Body() const { return body_; }
+    // What its fixtures' userData points at (the layer SetLayer refilters by), for a fixture made
+    // on it elsewhere (bind/Physics.cpp: a collider that comes and goes on a body made without one).
+    void* LayerData() { return &layer_; }
 
 private:
     friend class PhysicsWorld;

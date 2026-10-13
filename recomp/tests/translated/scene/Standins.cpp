@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "game/EnemyRoom.h"
 #include "unity/Tween.h"
 #include "util/Json.h"
 
@@ -45,12 +46,16 @@ bool HeroMerchantController::CheckIfPlayerIsShieldProtected(UnityEngine::GameObj
     return false;
 }
 
-bool HeroMerchantController::CheckForHolesAfterPush() { cs::NotTranslated("HeroMerchantController.CheckForHolesAfterPush (the hero's fall: not stood in for)"); }
+// The hero's hole check after a push (EnemyBehaviour.PushPlayerBackwards' WaitAndCheckForHoles): his
+// fall is his own doing, in the recording: none here.
+bool HeroMerchantController::CheckForHolesAfterPush() { return false; }
 
 void HeroMerchantController::AddForce(unity::Vector2 p_force)
 {
     if (S().heroAddForce) S().heroAddForce(p_force);
 }
+
+unity::Vector2 HeroMerchantController::GetColliderOffsset() { return S().heroColliderOffset; }
 
 // The pad's rumble (GolemSoldierBehaviour.PlayHitOnGroundSound): presentation.
 void HeroMerchantController::VibrateForTime(float p_intensity, float p_time) { (void)p_intensity, (void)p_time; }
@@ -74,6 +79,12 @@ void HeroStatistics::RegisterForestBabySlimeDeath() {}
 void HeroStatistics::RegisterDesertBabySlimeDeath() {}
 void HeroStatistics::RegisterTechBabySlimeDeath() {}
 void HeroStatistics::RegisterGolemSoldierDeath() {}
+void HeroStatistics::RegisterGolemHermitDeath() {}
+void HeroStatistics::RegisterGolemKamikazeDeath() {}
+void HeroStatistics::RegisterFlyingKamikazeDeath() {}
+void HeroStatistics::RegisterGolemTurretDeath() {}
+void HeroStatistics::RegisterGolemTangleDeath() {}
+void HeroStatistics::RegisterForestTangleDeath() {}
 
 void MoonlighterAnalytics::EnemySpawnLogEvent(cs::String* p_enemyName) { (void)p_enemyName; }
 void MoonlighterAnalytics::EnemyKilledLogEvent(cs::String* p_enemyName) { (void)p_enemyName; }
@@ -148,6 +159,17 @@ void DungeonRoom::SpawnEnemyDeadSprite(UnityEngine::Sprite* p_s, UnityEngine::Ve
     if (S().spawnEnemyDeadSprite) S().spawnEnemyDeadSprite(this, p_s, p_position);
 }
 void DungeonRoom::AddDropItems(cs::List<ItemStack*>* p_items) { (void)p_items; }
+
+// UnLockRoomChests: each of roomChests unlocked (isLocked = false: its Animator's trigger, the
+// analytics) and its PlayUnlockChestSound: the chests are the room's, not the replays' (game/EnemyRoom.h's
+// UnLockRoomChests: the sounds' MasterAudio draws, by the chests' types).
+void DungeonRoom::UnLockRoomChests() { game::UnLockRoomChests(S().roomChestTypes, DarkTonic::MasterAudio::MasterAudio::engine); }
+
+void DungeonManager::SpawnWanderer()
+{
+    if (S().spawnWanderer) S().spawnWanderer();
+    else cs::NotTranslated("DungeonManager.SpawnWanderer (the Wanderer's arrival: not stood in for)");
+}
 
 void HUDManager::__ctor() {}
 void MinimapPanel::__ctor() {}

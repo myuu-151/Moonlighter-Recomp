@@ -94,7 +94,37 @@ void Animator::cs_Attached()
 
 void Animator::cs_ActiveChanged(bool active)
 {
-    if (active && enabled_ && anim_ && !bound_) Bind();
+    if (!enabled_ || !anim_) return;
+    if (!active) {
+        if (ran_) WriteDefaults();
+        return;
+    }
+    if (ran_) Restart();
+    if (!bound_) Bind();
+}
+
+void Animator::WriteDefaults()
+{
+    if (!bound_ || !controller_) return;
+    const auto& props = controller_->properties;
+    for (size_t i = 0; i < props.size() && i < targets_.size(); i++) {
+        GameObject* g = targets_[i];
+        if (!g || g->destroyed_) continue;
+        if (props[i].sprite) {
+            if (auto* r = g->GetComponent<SpriteRenderer*>()) r->sprite_ = defaultSprites_[i].empty() ? nullptr : Sprite::Named(defaultSprites_[i]);
+            continue;
+        }
+        Write(g, props[i], defaults_[i]);
+    }
+}
+
+void Animator::Restart()
+{
+    // From its default state, its parameters' defaults (a new state machine), bound again.
+    anim_.reset();
+    const unity::AnimatorController* c = controller_;
+    SetController(c);
+    ran_ = false;
 }
 
 void Animator::cs_EnabledChanged(bool enabled)
@@ -228,6 +258,10 @@ float Animator::Read(GameObject* g, const unity::AnimatedProperty& p)
         auto* r = g->GetComponent<SpriteRenderer*>();
         if (r && a == "m_Enabled") return r->enabled_ ? 1.0f : 0.0f;
         if (r && a == "m_FlipX") return r->flipX_ ? 1.0f : 0.0f;
+        if (r && a == "m_Color.r") return r->color_.r;
+        if (r && a == "m_Color.g") return r->color_.g;
+        if (r && a == "m_Color.b") return r->color_.b;
+        if (r && a == "m_Color.a") return r->color_.a;
     }
     if (a == "m_Enabled")
         for (Component* c : g->components_)
@@ -268,6 +302,10 @@ void Animator::Write(GameObject* g, const unity::AnimatedProperty& p, float v)
         auto* r = g->GetComponent<SpriteRenderer*>();
         if (r && a == "m_Enabled") r->enabled_ = v > 0.5f;
         if (r && a == "m_FlipX") r->flipX_ = v > 0.5f;
+        if (r && a == "m_Color.r") r->color_.r = v;
+        if (r && a == "m_Color.g") r->color_.g = v;
+        if (r && a == "m_Color.b") r->color_.b = v;
+        if (r && a == "m_Color.a") r->color_.a = v;
         return;
     }
     if (a == "m_Enabled")
@@ -282,18 +320,24 @@ void Animator::Bind()
 {
     bound_ = true;
     targets_.clear();
+    defaults_.clear();
+    defaultSprites_.clear();
     spriteRenderer_ = nullptr;
     if (!anim_ || !gameObject_) return;
     const auto& props = controller_->properties;
     for (const unity::AnimatedProperty& p : props) {
         GameObject* g = Below(gameObject_, p.path);
         targets_.push_back(g);
+        defaults_.push_back(0.0f);
+        defaultSprites_.emplace_back();
         if (!g) continue;
         if (p.sprite) {
             auto* r = g->GetComponent<SpriteRenderer*>();
-            anim_->SetDefaultSprite(p.path, r ? r->SpriteName() : std::string());
+            defaultSprites_.back() = r ? r->SpriteName() : std::string();
+            anim_->SetDefaultSprite(p.path, defaultSprites_.back());
         } else {
-            anim_->SetDefault(p.path, p.attribute, Read(g, p));
+            defaults_.back() = Read(g, p);
+            anim_->SetDefault(p.path, p.attribute, defaults_.back());
         }
     }
     if (props.empty()) spriteRenderer_ = gameObject_->GetComponentInChildren<SpriteRenderer*>(true);
@@ -331,13 +375,22 @@ void Animator::UpdatePass(float deltaTime)
     if (!anim_ || destroyed_ || !enabled_ || !gameObject_ || !gameObject_->get_activeInHierarchy()) return;
     if (!bound_) Bind();
     anim_->Update(deltaTime);
-    // Its root motion (applyRootMotion on, the BrokenGolemTurret's): the clips move nothing, but a
-    // Dynamic body on its object starts its rest over every pass (game/EnemyRootMotion.cpp).
-    if (controller_->applyRootMotion == 1 && S() && S()->physics)
-        if (auto* rb = gameObject_->GetComponent<Rigidbody2D*>())
-            if (rb->body_ && !rb->destroyed_ && rb->body_->bodyType() == unity::RigidbodyType2D::Dynamic && rb->body_->Body()->IsActive())
-                S()->physics->world.RestartRest(*rb->body_);
+    ran_ = true;
+    if (controller_->applyRootMotion == 1) ApplyRootMotion();
     Apply();
+}
+
+// Its root motion (applyRootMotion on, the BrokenGolemTurret's): the clips have no root curves, so
+// the body on its object gets their zero motion as its velocity (deltaPosition / deltaTime), and its
+// rest starts over, every pass (game/EnemyRootMotion.cpp: the oracle's rootMotionProbe).
+void Animator::ApplyRootMotion()
+{
+    if (!S() || !S()->physics || !gameObject_) return;
+    if (auto* rb = gameObject_->GetComponent<Rigidbody2D*>())
+        if (rb->body_ && !rb->destroyed_ && rb->body_->bodyType() == unity::RigidbodyType2D::Dynamic && rb->body_->Body()->IsActive()) {
+            rb->body_->SetVelocity(Vector2{0.0f, 0.0f});
+            S()->physics->world.RestartRest(*rb->body_);
+        }
 }
 
 } // namespace UnityEngine
@@ -346,7 +399,11 @@ namespace bind {
 
 void Scene::UpdateAnimators(float deltaTime)
 {
-    std::vector<UnityEngine::Animator*> list = animators;
+    // The Animators running as the pass starts: one its object came on during the pass (a pooled
+    // shot a clip event took out) first runs in the next one (game/EnemyProjectile.h).
+    std::vector<UnityEngine::Animator*> list;
+    for (UnityEngine::Animator* a : animators)
+        if (!a->destroyed_ && a->enabled_ && a->gameObject_ && a->gameObject_->get_activeInHierarchy()) list.push_back(a);
     for (UnityEngine::Animator* a : list) a->UpdatePass(deltaTime);
     animators.erase(std::remove_if(animators.begin(), animators.end(), [](UnityEngine::Animator* a) { return a->destroyed_; }), animators.end());
 }

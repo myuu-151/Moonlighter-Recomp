@@ -84,8 +84,21 @@ int Tweens::DelayedCall(float delay, std::function<void()> callback, bool ignore
 bool Tweens::IsPlaying(int id) const
 {
     for (const Tween& t : tweens_)
+        if (t.id == id) return !t.paused;
+    return false;
+}
+
+bool Tweens::Exists(int id) const
+{
+    for (const Tween& t : tweens_)
         if (t.id == id) return true;
     return false;
+}
+
+void Tweens::Pause(int id)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id) t.paused = true;
 }
 
 void Tweens::Complete(int id)
@@ -195,6 +208,7 @@ void Tweens::Update(float deltaTime, float unscaledDeltaTime)
     std::vector<size_t> done;
     for (size_t i = 0; i < count; i++) {
         Tween& t = tweens_[i];
+        if (t.paused) continue;
         float dt = t.unscaled ? unscaledDeltaTime : deltaTime;
         if (!t.delayComplete) {
             t.elapsedDelay += dt;

@@ -312,6 +312,12 @@ void Transform::set_localRotation(Quaternion q)
 }
 Quaternion Transform::get_rotation() { return ZRotation(get_eulerAngles().z); }
 void Transform::set_rotation(Quaternion q) { set_eulerAngles({0.0f, 0.0f, ZAngle(q)}); }
+void Transform::Rotate(Vector3 eulers)
+{
+    if (eulers.x != 0.0f || eulers.y != 0.0f) cs::NotTranslated("Transform.Rotate about x or y");
+    rotationZ_ = rotationZ_ + eulers.z;
+    Changed();
+}
 Vector3 Transform::get_up() { return QRotate(get_rotation(), V3Up()); }
 Vector3 Transform::get_right() { return QRotate(get_rotation(), V3Right()); }
 
@@ -333,8 +339,10 @@ void Transform::SetParent(Transform* p, bool worldPositionStays)
     else if (S()) S()->roots.push_back(go);
     if (worldPositionStays) set_position(world);
     Changed();
+    // Under a parent of another activeInHierarchy (a pool's inactive one): the tree is switched on
+    // or off (Awake, OnEnable, OnDisable; the bodies come and go).
     const bool after = go->get_activeInHierarchy();
-    (void)before, (void)after; // (a reparent across inactive parents: not needed yet)
+    if (before != after) go->HierarchyActiveChanged(after);
 }
 
 Transform* Transform::GetChild(int32_t i)
@@ -381,6 +389,7 @@ void Coroutine::cs_trace(cs::Tracer& t)
     t.Mark(owner);
     t.Mark(cs::AsObject(routine));
     t.Mark(waitingFor);
+    t.Mark(methodName);
     for (Coroutine* w : waiters) t.Mark(w);
 }
 
@@ -443,7 +452,11 @@ void MonoBehaviour::Invoke(cs::String* methodName, float time)
     MonoBehaviour* self = this;
     S()->calls.Invoke(this, name->ToUtf8(), time, [self, name] {
         MessageArgs a;
-        if (!self->cs_Message(name, a)) std::fprintf(stderr, "[unity] Trying to Invoke method: %s couldn't be called.\n", name->ToUtf8().c_str());
+        bind::Scene* s = S();
+        if (s && s->onInvoke) s->onInvoke(self, name, false);
+        const bool found = self->cs_Message(name, a);
+        if (s && s->onInvoke) s->onInvoke(self, name, true);
+        if (!found) std::fprintf(stderr, "[unity] Trying to Invoke method: %s couldn't be called.\n", name->ToUtf8().c_str());
     });
 }
 
@@ -454,7 +467,10 @@ void MonoBehaviour::InvokeRepeating(cs::String* methodName, float time, float re
     MonoBehaviour* self = this;
     S()->calls.Invoke(this, name->ToUtf8(), time, [self, name] {
         MessageArgs a;
+        bind::Scene* s = S();
+        if (s && s->onInvoke) s->onInvoke(self, name, false);
         self->cs_Message(name, a);
+        if (s && s->onInvoke) s->onInvoke(self, name, true);
     }, repeatRate);
 }
 
@@ -485,10 +501,18 @@ Coroutine* MonoBehaviour::StartCoroutine(cs::IEnumerator* routine)
     return c;
 }
 
+// StartCoroutine(string): the behaviour's IEnumerator method of that name, without parameters
+// (Unity logs an error and starts nothing when there's none).
 Coroutine* MonoBehaviour::StartCoroutine(cs::String* methodName)
 {
-    (void)methodName;
-    cs::NotTranslated("MonoBehaviour.StartCoroutine(string) (a coroutine by name)");
+    cs::IEnumerator* routine = cs_Coroutine(cs::nc(methodName));
+    if (!routine) {
+        std::fprintf(stderr, "[unity] Coroutine '%s' couldn't be started!\n", methodName->ToUtf8().c_str());
+        return nullptr;
+    }
+    Coroutine* c = StartCoroutine(routine);
+    if (c) c->methodName = methodName;
+    return c;
 }
 
 void MonoBehaviour::StopCoroutine(Coroutine* routine)
@@ -503,10 +527,12 @@ void MonoBehaviour::StopCoroutine(cs::IEnumerator* routine)
         if (c->owner == this && c->routine == routine) S()->StopCoroutine(c);
 }
 
+// StopCoroutine(string): the coroutines of this behaviour StartCoroutine(string) started by that name.
 void MonoBehaviour::StopCoroutine(cs::String* methodName)
 {
-    (void)methodName;
-    cs::NotTranslated("MonoBehaviour.StopCoroutine(string)");
+    if (!methodName || !S()) return;
+    for (Coroutine* c : std::vector<Coroutine*>(S()->Coroutines()))
+        if (c->owner == this && c->methodName && c->methodName->str() == methodName->str()) S()->StopCoroutine(c);
 }
 
 void MonoBehaviour::StopAllCoroutines()

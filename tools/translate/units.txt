@@ -57,6 +57,21 @@ type DungeonManager .ctor Instance culture level
 type DungeonRoom .ctor EnemyDefeated AreAllEnemiesDefeated areAllEnemiesDefeated TranslatePositionToTile DisableEnemies
 type DungeonRoomInfo .ctor
 type DungeonRoomDetailsGenerationInfo .ctor
+# the other Golem enemies (enemy_hermit_slime_translated, enemy_kamikazegolem_translated,
+# enemy_flyingkamikazegolem_translated, enemy_broken_turret_translated, tangle_translated) and the
+# turret's shots' pool (DungeonManager.poolManager)
+file HermitSlimeBehaviourNEW.cs
+file GolemKamikazeBehaviour.cs
+file SoundsKamikaze.cs
+file FlyingKamikazeGolemBehaviour.cs
+file BrokenGolemTurretBehaviour.cs
+file BrokenGolemTurretProjectile.cs
+file PoolManager.cs
+file TangleBehaviour.cs
+# the hero's Wanderer Amulet on the enemies' hits (the KamikazeGolem's recording has it on)
+type WandererAmuletEffect .ctor Enemy_OnEnemyRecivesDamage probToCallWanderer
+type AmuletMoonlighterEffect .ctor
+type MoonlighterEffect .ctor
 # the hero's weapon push (the replays drive it where the recording has it)
 type Weapon PushEnemyBackwards
 # the prefab's drops (Enemy.itemDrops, [Serializable]: made by the prefab's loader; DropItem stood in for)
@@ -64,14 +79,15 @@ type ItemDrop .ctor
 # ... and stood in for (the hero's own code, the camera, the HUD, the save's statistics and
 # analytics, the items: what the enemy replays don't compare, or take from the recording)
 hand HeroMerchant DealDamageToPlayer
-hand HeroMerchantController CheckIfPlayerIsShieldProtected CheckForHolesAfterPush AddForce VibrateForTime
-hand HeroStatistics Instance RegisterGolemBabySlimeDeath RegisterForestBabySlimeDeath RegisterDesertBabySlimeDeath RegisterTechBabySlimeDeath RegisterGolemSoldierDeath
+hand HeroMerchantController CheckIfPlayerIsShieldProtected CheckForHolesAfterPush AddForce VibrateForTime GetColliderOffsset
+hand HeroStatistics Instance RegisterGolemBabySlimeDeath RegisterForestBabySlimeDeath RegisterDesertBabySlimeDeath RegisterTechBabySlimeDeath RegisterGolemSoldierDeath RegisterGolemHermitDeath RegisterGolemKamikazeDeath RegisterFlyingKamikazeDeath RegisterGolemTurretDeath RegisterGolemTangleDeath RegisterForestTangleDeath
 hand MoonlighterAnalytics EnemySpawnLogEvent EnemyKilledLogEvent
 hand CameraManager Rumble
 hand GameManager Instance SetGameSpeedForTime
 hand OptionsManager Get
 hand TimeManagerV2 Instance CurrrentDayTime
-hand DungeonRoom SpawnEnemyDeadSprite AddDropItems
+hand DungeonRoom SpawnEnemyDeadSprite AddDropItems UnLockRoomChests
+hand DungeonManager SpawnWanderer
 hand HUDManager .ctor
 hand MinimapPanel .ctor UpdateRoom
 hand ItemDrop DropItem

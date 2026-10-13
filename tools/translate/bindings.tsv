@@ -239,7 +239,7 @@ type	UnityEngine.Resources	::UnityEngine::Resources	conv	include=bind/UnityEngin
 type	UnityEngine.Color	::UnityEngine::Color	conv	include=bind/UnityEngine.h
 # what the facade's convention-mapped types have (recomp/src/bind/UnityEngine.h)
 members	UnityEngine.GameObject	.ctor get_transform get_layer set_layer get_tag set_tag CompareTag get_activeSelf get_activeInHierarchy SetActive get_gameObject GetComponent GetComponentInChildren GetComponentsInChildren GetComponentInParent GetComponents AddComponent SendMessage Find
-members	UnityEngine.Transform	get_position set_position get_localPosition set_localPosition get_localScale set_localScale get_lossyScale get_localEulerAngles set_localEulerAngles get_eulerAngles set_eulerAngles get_localRotation set_localRotation get_rotation set_rotation get_up get_right TransformPoint InverseTransformPoint get_parent set_parent SetParent get_childCount GetChild Find get_root GetSiblingIndex
+members	UnityEngine.Transform	get_position set_position get_localPosition set_localPosition get_localScale set_localScale get_lossyScale get_localEulerAngles set_localEulerAngles get_eulerAngles set_eulerAngles get_localRotation set_localRotation get_rotation set_rotation get_up get_right TransformPoint InverseTransformPoint get_parent set_parent SetParent get_childCount GetChild Find get_root GetSiblingIndex Rotate
 members	UnityEngine.Coroutine	
 members	UnityEngine.YieldInstruction	
 members	UnityEngine.WaitForSeconds	.ctor
@@ -251,7 +251,7 @@ members	UnityEngine.CircleCollider2D	get_radius set_radius
 members	UnityEngine.PolygonCollider2D	get_pathCount GetPath SetPath
 members	UnityEngine.Rigidbody2D	get_velocity set_velocity AddForce get_mass set_mass get_isKinematic set_isKinematic get_bodyType set_bodyType get_position get_simulated set_simulated IsAwake IsSleeping WakeUp Sleep get_drag set_drag
 members	UnityEngine.Collision2D	get_gameObject get_collider get_otherCollider get_rigidbody get_transform
-members	UnityEngine.Physics2D	OverlapBox
+members	UnityEngine.Physics2D	OverlapBox Raycast OverlapCircleAll
 members	UnityEngine.Animator	SetFloat SetBool SetInteger SetTrigger ResetTrigger GetFloat GetBool GetInteger get_speed set_speed Play GetCurrentAnimatorStateInfo IsInTransition StringToHash get_runtimeAnimatorController set_runtimeAnimatorController
 members	UnityEngine.RuntimeAnimatorController	
 members	UnityEngine.AnimatorStateInfo	get_shortNameHash get_fullPathHash get_tagHash get_normalizedTime get_length get_loop IsName IsTag
@@ -263,7 +263,7 @@ members	UnityEngine.Sprite
 members	UnityEngine.ParticleSystem	Play Stop Clear get_isPlaying
 members	UnityEngine.Application	get_isPlaying get_isEditor
 members	UnityEngine.Gizmos	DrawLine DrawWireSphere DrawSphere DrawWireCube DrawCube get_color set_color
-members	UnityEngine.Object	op_Implicit op_Equality op_Inequality get_name set_name Destroy DestroyImmediate .ctor Instantiate FindObjectOfType FindObjectsOfType
+members	UnityEngine.Object	op_Implicit op_Equality op_Inequality get_name set_name Destroy DestroyImmediate .ctor Instantiate FindObjectOfType FindObjectsOfType ToString
 members	UnityEngine.ScriptableObject	CreateInstance .ctor
 members	UnityEngine.MonoBehaviour	.ctor Invoke InvokeRepeating CancelInvoke IsInvoking StartCoroutine StopCoroutine StopAllCoroutines print
 members	UnityEngine.Behaviour	get_enabled set_enabled .ctor get_isActiveAndEnabled
@@ -317,7 +317,7 @@ members	DG.Tweening.ShortcutExtensions	DOMoveX DOMoveY DOMove DOLocalMoveX DOLoc
 type	DG.Tweening.TweenSettingsExtensions	::DG::Tweening::TweenSettingsExtensions	conv	include=bind/UnityEngine.h
 members	DG.Tweening.TweenSettingsExtensions	SetEase SetUpdate OnComplete SetDelay
 type	DG.Tweening.TweenExtensions	::DG::Tweening::TweenExtensions	conv	include=bind/UnityEngine.h
-members	DG.Tweening.TweenExtensions	Kill Complete IsPlaying IsActive
+members	DG.Tweening.TweenExtensions	Kill Complete IsPlaying IsActive Pause
 type	DG.Tweening.Tween	::DG::Tweening::Tween	conv	include=bind/UnityEngine.h
 members	DG.Tweening.Tween	
 type	DG.Tweening.Tweener	::DG::Tweening::Tweener	conv	include=bind/UnityEngine.h
@@ -358,6 +358,20 @@ get	UnityEngine.Rect.x	{this}.x	pure
 get	UnityEngine.Rect.y	{this}.y	pure
 get	UnityEngine.Rect.width	{this}.width	pure
 get	UnityEngine.Rect.height	{this}.height	pure
+get	UnityEngine.Rect.xMin	{this}.x	pure
+get	UnityEngine.Rect.yMin	{this}.y	pure
+get	UnityEngine.Rect.xMax	::UnityEngine::RectXMax({this})	pure
+get	UnityEngine.Rect.yMax	::UnityEngine::RectYMax({this})	pure
+call	UnityEngine.Rect.Contains(UnityEngine.Vector3)	::UnityEngine::RectContains({this}, {0})	pure
+call	UnityEngine.Rect.Contains(UnityEngine.Vector2)	::UnityEngine::RectContains({this}, {0})	pure
+type	UnityEngine.RaycastHit2D	::UnityEngine::RaycastHit2D	include=bind/UnityEngine.h
+get	UnityEngine.RaycastHit2D.collider	{this}.collider	pure
+get	UnityEngine.RaycastHit2D.point	{this}.point	pure
+get	UnityEngine.RaycastHit2D.normal	{this}.normal	pure
+get	UnityEngine.RaycastHit2D.centroid	{this}.centroid	pure
+get	UnityEngine.RaycastHit2D.distance	{this}.distance	pure
+get	UnityEngine.RaycastHit2D.fraction	{this}.fraction	pure
+op	UnityEngine.RaycastHit2D.op_Implicit(UnityEngine.RaycastHit2D)	::UnityEngine::RaycastHit2D::op_Implicit({0})	pure
 type	UnityEngine.Texture	::UnityEngine::Texture	conv	include=bind/UnityEngine.h
 members	UnityEngine.Texture	get_width get_height
 type	UnityEngine.Texture2D	::UnityEngine::Texture2D	conv	include=bind/UnityEngine.h

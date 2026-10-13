@@ -48,7 +48,7 @@ void Running::Add(Tween* t)
 void Running::Prune()
 {
     auto& l = List();
-    l.erase(std::remove_if(l.begin(), l.end(), [](Tween* t) { return !t->IsPlaying(); }), l.end());
+    l.erase(std::remove_if(l.begin(), l.end(), [](Tween* t) { return !t->Alive(); }), l.end());
 }
 
 void Tween::cs_trace(cs::Tracer& t)
@@ -72,6 +72,20 @@ void Tween::Kill(bool complete)
         if (complete) bind::Scene::current->tweens.Complete(id);
         else bind::Scene::current->tweens.Kill(id);
     }
+}
+
+void Tween::Pause()
+{
+    if (!bind::Scene::current) return;
+    for (int id : ids) bind::Scene::current->tweens.Pause(id);
+}
+
+bool Tween::Alive()
+{
+    if (!bind::Scene::current) return false;
+    for (int id : ids)
+        if (bind::Scene::current->tweens.Exists(id)) return true;
+    return false;
 }
 
 void Tween::Complete()
@@ -111,10 +125,21 @@ Tweener* DOTween::To(cs::Delegate<float()>* getter, cs::Delegate<void(float)>* s
     return t;
 }
 
+Tweener* DOTween::To(cs::Delegate<Vector2()>* getter, cs::Delegate<void(Vector2)>* setter, Vector2 endValue, float duration)
+{
+    auto* t = Make<Tweener>();
+    t->keep = {getter, setter};
+    (void)cs::nc(getter);
+    (void)cs::nc(setter);
+    t->ids.push_back(Tw()->To([getter] { return getter->Invoke(); }, [setter](Vector2 v) { setter->Invoke(v); }, endValue, duration, kEase, 0.0f, kIndependent));
+    return t;
+}
+
 int32_t DOTween::Kill(cs::Object* targetOrId, bool complete)
 {
-    (void)targetOrId, (void)complete;
-    cs::NotTranslated("DOTween.Kill(target): tweens by target");
+    if (complete) cs::NotTranslated("DOTween.Kill(target, complete: true)");
+    if (!targetOrId) return 0;
+    return Tw()->KillTarget(targetOrId);
 }
 
 Tween* DOVirtual::DelayedCall(float delay, TweenCallback* callback, bool ignoreTimeScale)
@@ -132,6 +157,12 @@ namespace {
 // The setter of a transform's tween: nothing once the object is gone (DOTween's safe mode
 // kills a tween whose target was destroyed).
 bool Alive(UnityEngine::Transform* t) { return t && !t->destroyed_ && t->gameObject_ && !t->gameObject_->destroyed_; }
+
+// A shortcut's tween's target (Tween.target: what DOKill / DOTween.Kill(target) finds it by).
+void Targets(Tween* t, const void* target)
+{
+    for (int id : t->ids) Tw()->SetTarget(id, target);
+}
 
 Tweener* MoveAxis(UnityEngine::Transform* target, float endValue, float duration, int axis, bool local)
 {
@@ -152,6 +183,7 @@ Tweener* MoveAxis(UnityEngine::Transform* target, float endValue, float duration
     // Vector3Plugin with an axis constraint: the one component as `startValue.x + changeValue.x
     // * easeVal` (one expression), the others as the getter reads them now.
     t->ids.push_back(Tw()->To(get, set, Vector2{endValue, 0.0f}, duration, kEase, 0.0f, kIndependent));
+    Targets(t, target);
     return t;
 }
 
@@ -200,6 +232,7 @@ Tweener* ShortcutExtensions::DOMove(UnityEngine::Transform* target, Vector3 endV
                                     target->set_position(Vector3{p.x, p.y, v.x});
                                 },
                                 Vector2{endValue.z, 0.0f}, duration, kEase, 0.0f, kIndependent));
+    Targets(t, target);
     return t;
 }
 
@@ -225,6 +258,7 @@ Tweener* ShortcutExtensions::DOScale(UnityEngine::Transform* target, Vector3 end
                                     target->set_localScale(Vector3{target->localScale_.x, target->localScale_.y, v.x});
                                 },
                                 Vector2{endValue.z, 0.0f}, duration, kEase, 0.0f, kIndependent));
+    Targets(t, target);
     return t;
 }
 
@@ -257,6 +291,7 @@ Tweener* ShortcutExtensions::DOColor(UnityEngine::Material* target, UnityEngine:
                                   target->SetColor("_Color", c);
                               },
                               Vector2{endValue.b, endValue.a}, duration, kEase, 0.0f, kIndependent));
+    Targets(t, target);
     return t;
 }
 
@@ -268,6 +303,7 @@ Tweener* ShortcutExtensions::DOFloat(UnityEngine::Material* target, float endVal
     t->keep = {target};
     t->ids.push_back(Tw()->To([target, name] { return Vector2{target->Float(name), 0.0f}; }, [target, name](Vector2 v) { target->SetFloat(name, v.x); },
                               Vector2{endValue, 0.0f}, duration, kEase, 0.0f, kIndependent));
+    Targets(t, target);
     return t;
 }
 
@@ -281,13 +317,17 @@ Tweener* ShortcutExtensions::DOFade(UnityEngine::SpriteRenderer* target, float e
                                   if (!target->destroyed_) target->color_.a = v.x;
                               },
                               Vector2{endValue, 0.0f}, duration, kEase, 0.0f, kIndependent));
+    Targets(t, target);
     return t;
 }
 
+// target.DOKill(complete): every tween whose target it is (a shortcut's), killed (its OnComplete
+// not run); complete: run to its end first (not yet needed).
 int32_t ShortcutExtensions::DOKill(UnityEngine::Component* target, bool complete)
 {
-    (void)target, (void)complete;
-    cs::NotTranslated("DOTween DOKill(target): tweens by target");
+    if (complete) cs::NotTranslated("DOTween DOKill(target, complete: true)");
+    if (!target) return 0;
+    return Tw()->KillTarget(target);
 }
 
 void TweenSettingsExtensions::Ease_(Tween* t, Ease ease)
@@ -307,7 +347,11 @@ void TweenSettingsExtensions::OnComplete_(Tween* t, TweenCallback* action)
     t->onComplete = action;
     if (t->ids.empty()) return;
     Tw()->OnComplete(t->ids.back(), [action] {
+        bind::Scene* s = bind::Scene::current;
+        cs::Object* target = action ? action->get_Target() : nullptr;
+        if (s && s->onTweenComplete) s->onTweenComplete(target, false);
         if (action) action->Invoke();
+        if (s && s->onTweenComplete) s->onTweenComplete(target, true);
     });
 }
 

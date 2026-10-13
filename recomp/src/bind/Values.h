@@ -13,6 +13,7 @@
 #include "bind/Core.h"
 #include "unity/Mathf.h"
 #include "unity/Random.h"
+#include "unity/Rect.h"
 #include "unity/Vector2.h"
 
 namespace UnityEngine {
@@ -248,6 +249,15 @@ inline Color ColorOf(float r, float g, float b, float a)
 inline void cs_trace_value(cs::Tracer&, const Color&) {}
 inline bool cs_box_equals(const Color& a, const Color& b) { return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a; }
 inline const char* cs_box_typename(const Color*) { return "UnityEngine.Color"; }
+
+// ---- Rect (unity/Rect.h's fields) -------------------------------------------------------------------
+
+// xMax / yMax: m_Width + m_XMin (a float return: rounded once).
+inline float RectXMax(const unity::Rect& r) { return r.width + r.x; }
+inline float RectYMax(const unity::Rect& r) { return r.height + r.y; }
+// Contains(Vector3 / Vector2): xMin <= x < xMax and yMin <= y < yMax.
+inline bool RectContains(const unity::Rect& r, Vector3 p) { return p.x >= r.x && p.x < RectXMax(r) && p.y >= r.y && p.y < RectYMax(r); }
+inline bool RectContains(const unity::Rect& r, Vector2 p) { return p.x >= r.x && p.x < RectXMax(r) && p.y >= r.y && p.y < RectYMax(r); }
 
 // ---- Random's vectors ------------------------------------------------------------------------------
 

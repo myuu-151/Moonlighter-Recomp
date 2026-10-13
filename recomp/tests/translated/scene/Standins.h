@@ -10,6 +10,7 @@
 // expect to reach is NotTranslated (an error naming it) rather than a silent guess.
 
 #include <functional>
+#include <vector>
 
 #include "bind/UnityEngine.h"
 #include "game.h"
@@ -23,10 +24,16 @@ struct Services {
     std::function<void(unity::Vector2 force)> heroAddForce;
     // DungeonRoom.SpawnEnemyDeadSprite(sprite, position).
     std::function<void(gen::DungeonRoom* room, UnityEngine::Sprite* sprite, UnityEngine::Vector3 position)> spawnEnemyDeadSprite;
+    // The room's chests (Chest.chestType as ints, in roomChests' order): DungeonRoom.UnLockRoomChests'.
+    std::vector<int> roomChestTypes;
+    // DungeonManager.SpawnWanderer (the Wanderer's arrival: not stood in for; a driver's check).
+    std::function<void()> spawnWanderer;
     // OptionsManager.Get("GAME", "Difficulty", -1).
     int difficulty = -1;
     // TimeManagerV2.CurrrentDayTime == Afternoon.
     bool afternoon = false;
+    // HeroMerchantController.GetColliderOffsset() (his feet: the collider's offset, the recording's).
+    unity::Vector2 heroColliderOffset;
     // TimeManagerV2.Instance / GameManager.Instance (none: null, as in a scene without them).
     gen::TimeManagerV2* timeManager = nullptr;
     gen::GameManager* gameManager = nullptr;

@@ -27,7 +27,15 @@ unity::Vector2 JsonSerialValue::AsVector2() const { return {Num("x"), Num("y")};
 Vector3 JsonSerialValue::AsVector3() const { return {Num("x"), Num("y"), Num("z")}; }
 Color JsonSerialValue::AsColor() const { return {Num("r"), Num("g"), Num("b"), Num("a")}; }
 
-GameObject* JsonSerialValue::AsGameObject() const { return v_.IsString() && root_ ? bind::FindBelow(root_, v_.s) : nullptr; }
+std::function<GameObject*(const std::string& name)> JsonSerialValue::assets;
+
+GameObject* JsonSerialValue::AsGameObject() const
+{
+    if (!v_.IsString()) return nullptr;
+    if (root_)
+        if (GameObject* g = bind::FindBelow(root_, v_.s)) return g;
+    return assets ? assets(v_.s) : nullptr;
+}
 
 void JsonSerialValue::Element(int32_t i, const std::function<void(const SerialValue&)>& f) const
 {
