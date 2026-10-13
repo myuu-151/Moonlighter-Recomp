@@ -47,13 +47,15 @@ namespace MoonlighterOracle
     /// (a Mask's showMaskGraphic, or "rect2d" for a RectMask2D).
     ///
     /// Saving and Steam stats stay blocked (Harvest.InstallSafety) and the news popup is
-    /// answered with "Later" (Disable), never "Read More". The scripts:
-    ///   title     the main menu: its doors opened, the selection moved down and up through the
-    ///             buttons (none pressed), the doors closed
+    /// answered with "Later" (Disable), never "Read More"; a submit names the object that must be
+    /// selected, and a run whose screen size changes fails. The scripts:
+    ///   title     the main menu: its doors opened, the selection moved through the buttons,
+    ///             Options and the slot panel opened, walked and closed, the stick's repeat, the
+    ///             doors closed
     ///   dungeon   the first save slot (Continue, as the harvest does it), the Golem dungeon's
     ///             first floor (as the walk takes it): the HUD idle and with the hero walking,
-    ///             then the bag opened, its slots walked through, and closed; the minimap's
-    ///             detail panel opened and closed
+    ///             the bag opened, its slots walked through and closed, the pause panel, the
+    ///             minimap's detail panel
     internal static class UIOracle
     {
         public static bool Active;
@@ -103,8 +105,8 @@ namespace MoonlighterOracle
         // options: blocked; its tabs aren't switched: showing the Graphics tab again sets the
         // screen's resolution from its list); NewGame's slot panel opened, its slots
         // walked, back with B; the stick held down (the input module's repeat, 0.2 s then every
-        // 0.2 s) down to Exit, never pressed; B closes the doors. Never X or the bumpers while
-        // the news viewer is up (its Read More and paging), never A on Continue, Exit or a slot,
+        // 0.2 s) down to Exit, never pressed; B closes the doors. Never X while the news viewer
+        // is up (its Read More; the hook refuses it), never A on Continue, Exit or a slot,
         // never left or right in Options (they change values) or on a slot (copy, erase).
         private static readonly Step[] TitleScript =
         {
