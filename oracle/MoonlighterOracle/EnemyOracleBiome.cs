@@ -34,7 +34,8 @@ namespace MoonlighterOracle
     ///     values in that order ("gv": per script the fields' values; "gc": per collider [enabled,
     ///     trigger, layer, offset x, y, size x, y (a circle: radius, 0; a polygon: paths, points),
     ///     position x, y, rotation z, lossy scale x, y]; "act": the objects' activeSelf as 0/1;
-    ///     "ga": per Animator [on, state, normalized time] ([false] when off); "gs": per renderer
+    ///     "ga": per Animator [on, state, normalized time] ([false] when off); and per fixed step "cb", the
+    ///     Rigidbody2Ds below its root (the FruitTree's roots: EnemyOracleBiome.BiomeOnStep); "gs": per renderer
     ///     its sprite's name (null: none or the renderer off)). Values: floats as bits, vectors as
     ///     arrays of bits, enums as ints, a UnityEngine.Object as its name (null when gone), a
     ///     tween as [active, playing, elapsed], a collection as "#<count>", a delegate as true,
@@ -156,6 +157,7 @@ namespace MoonlighterOracle
             public int scripts; // (MonoBehaviours below the object when made: a change remakes the shape)
             public Animator[] anims;
             public SpriteRenderer[] sprites;
+            public Rigidbody2D[] bodies; // (below the root: the FruitTree's roots)
         }
 
         private static readonly Dictionary<GameObject, Shape> shapes = new Dictionary<GameObject, Shape>();
@@ -210,6 +212,7 @@ namespace MoonlighterOracle
             s.nodes = go.GetComponentsInChildren<Transform>(true);
             s.anims = go.GetComponentsInChildren<Animator>(true).Where(a => a.gameObject != go).ToArray();
             s.sprites = go.GetComponentsInChildren<SpriteRenderer>(true);
+            s.bodies = go.GetComponentsInChildren<Rigidbody2D>(true).Where(r => r.gameObject != go).ToArray();
             shapes[go] = s;
             return s;
         }
@@ -385,6 +388,7 @@ namespace MoonlighterOracle
         private static readonly List<Tracked> tracked = new List<Tracked>();
         private static readonly Dictionary<GameObject, Tracked> trackedOf = new Dictionary<GameObject, Tracked>();
         private static readonly List<List<float[]>> stepObjects = new List<List<float[]>>();
+        private static readonly List<List<float[]>> stepChildBodies = new List<List<float[]>>();
         private static readonly List<GameObject> poolObjects = new List<GameObject>(); // (the spawnable pools')
         private static readonly HashSet<MethodBase> spawnPatched = new HashSet<MethodBase>();
         private static bool biome;            // the generic rows are on (every -oracle-enemy recording)
@@ -511,12 +515,17 @@ namespace MoonlighterOracle
         private static void BiomeBegin()
         {
             stepObjects.Clear();
+            stepChildBodies.Clear();
             ScanSpawned(-2);
         }
 
         private static void BiomeEnd() => biome = false;
 
-        private static void BiomeClear() => stepObjects.Clear();
+        private static void BiomeClear()
+        {
+            stepObjects.Clear();
+            stepChildBodies.Clear();
+        }
 
         /// The spawnable scripts' lifecycle, physics messages and clip-event methods, hooked.
         private static void HookSpawnScripts()
@@ -701,10 +710,36 @@ namespace MoonlighterOracle
                     : new[] { t.id, p.x, p.y });
             }
             stepObjects.Add(rows);
+            // The bodies below the enemies' roots ("cb": [enemy, its k-th such body, position x, y,
+            // velocity x, y, awake, active]), from the shapes the generic rows made.
+            var cb = new List<float[]>();
+            for (int i = 0; i < slimes.Count; i++)
+            {
+                var b = slimes[i];
+                if (b == null || !shapes.TryGetValue(b.gameObject, out var sh) || sh.bodies == null) continue;
+                for (int k = 0; k < sh.bodies.Length; k++)
+                {
+                    var rb = sh.bodies[k];
+                    if (rb == null) continue;
+                    cb.Add(new[] { i, k, rb.position.x, rb.position.y, rb.velocity.x, rb.velocity.y, rb.IsAwake() ? 1f : 0f, rb.gameObject.activeInHierarchy ? 1f : 0f });
+                }
+            }
+            stepChildBodies.Add(cb);
         }
 
         private static void WriteBiomeStep(Json j, int k)
         {
+            if (biome && k < stepChildBodies.Count && stepChildBodies[k].Count > 0)
+            {
+                j.Key("cb").Arr();
+                foreach (var r in stepChildBodies[k])
+                {
+                    j.Arr().Val((int)r[0]).Val((int)r[1]);
+                    for (int i = 2; i < 6; i++) j.Bits(r[i]);
+                    j.Val(r[6] != 0f).Val(r[7] != 0f).EndArr();
+                }
+                j.EndArr();
+            }
             if (!biome || k >= stepObjects.Count || stepObjects[k].Count == 0) return;
             j.Key("o").Arr();
             foreach (var r in stepObjects[k])
