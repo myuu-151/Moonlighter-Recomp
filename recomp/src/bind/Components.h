@@ -9,7 +9,10 @@
 // attribute): m_IsActive (GameObject.SetActive), m_Enabled (a Behaviour's or Collider2D's
 // enabled), m_Offset / m_Size (a BoxCollider2D's), m_LocalPosition (the Transform), m_Sprite
 // (the SpriteRenderer). The defaults those properties go back to (write defaults) are what the
-// objects have when the Animator binds them: its first update with a controller. A controller
+// objects have when the Animator binds them: when it's first enabled and active with a controller
+// (Unity's OnEnable: a prefab's own values, before a script or a driver changes them), else at
+// its first update (a controller given later). An applyRootMotion controller restarts a Dynamic
+// body's rest every pass (game/EnemyRootMotion.cpp). A controller
 // in the older extracted format (no property curves, no sprite path) drives the sprite of the
 // first SpriteRenderer below the Animator (what the game's sprite enemies have). Clip events
 // go to the Animator's object's scripts by name (GameObject::SendAnimationEvent).

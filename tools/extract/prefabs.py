@@ -89,7 +89,8 @@ FIELDS = {
 
 
 def item_drops(value, go_path, sprite):
-    return [{'item': d['item'], 'dropProbability': d['dropProbability'], 'min': d['minDropRate'], 'max': d['maxDropRate']}
+    # (Under the fields' own names: the translated code's prefab loader sets them by name.)
+    return [{'item': d['item'], 'dropProbability': d['dropProbability'], 'minDropRate': d['minDropRate'], 'maxDropRate': d['maxDropRate']}
             for d in value]
 
 

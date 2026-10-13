@@ -10,7 +10,12 @@ MasterAudio, ...). Oracle recordings then prove that layer and spot-check the wh
 
 Status (see the end for numbers): the pipeline runs on the whole game in 15 s; the cave
 generation, translated, matches the game on every recorded floor (`cave_oracle_translated`:
-3000 mirror layouts, 52 real-play layouts, 3000 floor-info resets, ALL MATCH).
+3000 mirror layouts, 52 real-play layouts, 3000 floor-info resets, ALL MATCH); the BabySlime
+and the GolemSoldier, their behaviours, Enemy, EnemyBehaviour, EnemyStats and PolyNav
+translated and running on the Unity facade, match their recordings frame by frame with every
+row the hand port compares (`slime_translated`, `enemy_golem_soldier_translated`: ALL MATCH,
+row tables identical to `slime` and `enemy_golem_soldier`). 67.9% of the counted lines
+translate today.
 
 ## The pipeline
 
@@ -62,7 +67,12 @@ translator sees what Mono runs and has fewer constructs to get right:
 
 `tools/translate/units.txt` names the seeds: `file <path>` (every type declared in a C# file,
 whole: all fields and members) or `type <metadata name> [members...]` (a type, only those
-members; fields can be named too). `all` is every type. The closure adds every game method a
+members; fields can be named too). `all` is every type. `hand <metadata name> <members...>`
+declares game methods a driver defines by hand (a scene's services the translated code calls
+but a test doesn't compare: the hero's own code, the camera's shake, the HUD, the save's
+statistics; `recomp/tests/translated/scene/Standins.cpp`). `stub-others`: what the seeds reach
+of a type no line names is declared, not translated (reaching it at run time is
+`cs::NotTranslated`, naming it), so a proof translates only what it means to. The closure adds every game method a
 translated body calls, the overridden declarations of translated overrides, the overrides of
 translated virtual methods in the types in use, the implementations of interface members
 (every member of a runtime interface a class declares: IEnumerator's MoveNext/Current/Reset,
@@ -189,6 +199,29 @@ which can run every N frames or when the heap passes a threshold. What it needs 
 of the port: hand-written code that keeps a translated object across frames holds it in a
 `cs::Root` or a registered root source.
 
+## The Unity facade (recomp/src/bind)
+
+What translated scripts run on: Unity's API with Unity 2019.2's semantics, on the hand-written
+Unity layer (`recomp/src/unity`) and the hand port's checked models. `bind/UnityEngine.h` is the
+umbrella:
+
+| header | what |
+|---|---|
+| `Core.h`, `Values.h` | UnityEngine.Object (`== null` of a destroyed object), the value types with Mono's float semantics, Resources, Debug, Time |
+| `Scene.h` | the scene graph (GameObject, Transform, Component, Behaviour, MonoBehaviour), the messages in Unity's order (Awake, OnEnable, Start, Update, LateUpdate, OnDisable, OnDestroy), Invoke / CancelInvoke on `unity::DelayedCalls`, coroutines (WaitForSeconds, yield null, WaitForFixedUpdate), SendMessage, Destroy; `bind::Scene` holds a scene's services and runs its passes |
+| `Physics.h` | Rigidbody2D and the Collider2Ds on the Box2D world (`unity::PhysicsWorld`): the fixed step as `game::EnemyPhysics` runs it (checked against the game), generalized to any body and the colliders below it, with OnTriggerEnter2D to both objects' scripts |
+| `Components.h` | the Animator on the hand-written Mecanim (clip events to the scripts, the clips' writes applied to the objects as Unity binds them, write defaults from the values at OnEnable), renderers, materials, sprites |
+| `DOTween.h` | DOTween on `unity::Tweens` |
+| `Engine.h` | Instantiate, FindObjectOfType, Application, Gizmos, layers |
+| `Plugins.h` | MasterAudio's draws (`game::MasterAudio`), AntiCheat's obscured values |
+| `Prefabs.h` | a prefab of `data/extracted/prefabs.json` made in the scene as Instantiate makes it: objects, engine components, the translated scripts by class name (`gen::cs_AddComponent`) with their serialized fields, then Awake/OnEnable |
+| `Serial.h` | serialized values into fields: the generated `cs_SetField` per class (numbers, strings, vectors, colours, references to the prefab's own objects, lists, arrays, `[Serializable]` objects) and `cs_SerialInit` (the empty strings and lists a loaded object never has null) |
+
+A driver (a replay, later the game's loop) owns a `bind::Scene` and calls its passes in Unity's
+order: the fixed steps (`PhysicsScene::Step`, the delayed calls' fixed pass, WaitForFixedUpdate),
+DOTween, the Updates, the delayed calls, the coroutines on yield null, `UpdateAnimators`, the
+LateUpdates, `ProcessDestroys`.
+
 ## Binding other assemblies (tools/translate/bindings.tsv)
 
 Everything the game calls outside its own assembly maps through one table: a type to its C++
@@ -209,6 +242,9 @@ use it; `progress/unity_api_gaps.tsv` lists every such API with the methods and 
   game copy found as above or `-DML_GAME=<folder>`), builds `mlgen` (the generated sources,
   the facade) and the oracle tests against the translated classes. Changing `units.txt`,
   `bindings.tsv` or the tool's sources re-runs it on the next build. Needs the .NET 9 SDK.
+- `-DML_TRANSLATED_DEBUG=ON` (MSVC): PDBs for the translated code and its tests, and
+  `ML_CS_STACK=1` prints the C++ stack (function, file, line) at every C# exception thrown:
+  where translated code met a null, an index out of range, a stub.
 - **the MLGC builder** (the GameCube build) runs the same command against the user's copy
   before compiling, and compiles `recomp/gen/cpp/*.cpp` (listed in `sources.cmake`) with the
   runtime and the facade; devkitPPC's GCC needs `-std=gnu++17 -fexceptions -frtti
@@ -230,26 +266,73 @@ DungeonGenerator (the coroutine around it builds the dungeon's scene, which need
 layer's GameObjects). Result: rng 130/130, floor info (ResetValues) 3000/3000, layouts
 (mirror) 3000/3000, layouts (real play) 52/52: ALL MATCH, identical to the hand port's run.
 
+### The enemies (enemy_translated_test)
+
+`-DML_TRANSLATED=ON` also builds `recomp/tests/translated/enemy_translated_test.cpp`: the enemy
+replays of `tests/enemy_replay.h` (slime_test's and enemy_test's: the same recordings, the same
+rows, the same pass criterion, with enemy_replay_colliders.h's rows and the newer probes read by
+the hand port's own helpers: enable_clock.h, fixture_probe.h, polygon_probe.h,
+enemy_replay_critters.h) with the game's own code in place of the hand port. Each enemy is its
+prefab made in the scene (`bind::InstantiatePrefab`: BabySlime or GolemSoldier from
+prefabs.json, its Animator from animators/<prefab>.json), Init'ed by the game's code
+(EnemyStats.Init from enemy_stats.json through the translated EnemyStatManager and Constants),
+its recorded state put back into the translated fields; then every frame as the game ran it,
+the hero's doings (his body per step, his weapon's hits through Enemy.DealDamageToEnemy or a
+hurtbox's EnemyDamageReceiver, Weapon.PushEnemyBackwards, the room's DisableEnemies when he
+leaves) fed from the recording. Translated: BabySlimeBehaviour, GolemSoldierBehaviour,
+EnemyBehaviour, Enemy, EnemyStats, EnemyStatManager, EnemyAttackCollisionDetection,
+EnemyDamageReceiver, PolyNavAgent, PolyNav2D, AStar, Weapon.PushEnemyBackwards,
+DungeonRoom.DisableEnemies/EnemyDefeated, with no gaps. Stood in for (units.txt `hand`): the
+hero's own code, the camera's shake (its Random draws made), the HUD and health bar, the save's
+statistics and analytics, the item drops (their draws resynced by the replay, as the hand port's).
+
+| ctest | recording | result |
+|---|---|---|
+| `slime_translated` | slime.jsonl (4 BabySlimes, 728 frames) | ALL MATCH: 2542 fixed-step starts, 1416 frame ends per row, the attack triggers, hits, pushes, deaths |
+| `slime_bis_translated` | slime_bis.jsonl | ALL MATCH (today the same recording as slime.jsonl, byte for byte) |
+| `enemy_golem_soldier_translated` | enemy_GolemSoldier.jsonl (re-recorded 2026-10-13 16:54) | ALL MATCH: 1778 fixed-step starts, 968 frame ends, the swing's clip events and their Random draws, the look lock, the enable-clock probe |
+
+The row tables (every row, every count) are identical to the hand port's on the same data.
+The translated code and the hand port never disagreed; what the proof found was in the facade:
+an attack trigger activated after its body was made wasn't attached (bind/Physics now rescans
+a body's colliders at each sync), the Animator took its write-defaults values at its first pass,
+after the replay had restored a mid-swing attack box (it now binds at OnEnable, as Unity does),
+and a [Serializable] class whose constructor the closure stubbed left the prefab's list null
+(Enemy.itemDrops: ItemDrop's constructor is now a unit).
+
 ## What translates today
 
 From `mltranslate survey` (progress/class_deps.tsv, progress/unity_api_gaps.tsv):
 
-- of the 160,682 counted lines (1,173 classes), **54,833 lines (34.1%) translate today**
-  (each class's lines times the share of its methods' lines that translate); 10,076 of 17,172
-  methods (58.7%); 270 classes translate whole (7,336 lines). "Translates" means: every
+- of the 160,682 counted lines (1,173 classes), **109,045 lines (67.9%) translate today**
+  (each class's lines times the share of its methods' lines that translate); 14,534 of 17,172
+  methods (84.6%); 601 classes translate whole (29,754 lines). "Translates" means: every
   construct supported and every API the method calls bound (to a member the runtime or the
-  facade has: `members` lines keep the convention-mapped types honest);
+  facade has: `members` lines keep the convention-mapped types honest). The scene facade
+  doubled it (34.1% before: GameObject, Transform, Component, the messages, coroutines, the 2D
+  physics, the Animator, DOTween's core);
 - the whole translated game (3,328 types, 21,660 methods, 270,000 lines of C++, the methods
   that don't translate stubbed) compiles with MSVC 2022 (PCH, unity build) and passes GCC 15's
   front end (`-std=gnu++17 -fsyntax-only`); the proof's build also runs under GCC: ALL MATCH;
 - the constructs are nearly done: 36 methods of the whole game hit an unsupported construct
   (22 of them calls to virtual generic methods);
-- the rest is bindings: about 1,300 APIs missing, Unity's first: Component.transform /
-  gameObject, Transform.position, GetComponent, SetActive, Vector3 arithmetic, coroutines;
-  then DOTween, Unity UI, mscorlib, MasterAudio.
+- the rest is bindings: 994 APIs missing (`progress/unity_api_gaps.tsv`). By lines blocked:
+  Unity UI first (Image, Text, Graphic.color, Selectable, EventSystem: 123 APIs), then
+  RectTransform, RaycastHit2D and Physics2D.Raycast, CanvasGroup, Camera, the scene manager,
+  Color32, Input, AnimationCurve; DOTween's loops, Pause, SetTarget, sequences (77 APIs); the
+  BCL's formatting (Int32.ToString(format)...: 157 APIs); MasterAudio's other calls (39).
 
-The GameObject/Transform/Component model alone unblocks most of it: the next step of the
-hand-written work, then the enemies' Rigidbody2D/Animator/coroutines (the BabySlime end to end).
+What's left, in order:
+
+1. the other Golem enemies on the translated code, each against its recording as the
+   BabySlime and the GolemSoldier are (HermitSlime: its patrol and drain rows; BrokenGolemTurret:
+   its shots' pool; the Kamikaze golems; Tangle), finding what the facade still lacks (the body's
+   own box remade when a clip drives it, OnCollisionEnter2D, Physics2D.Raycast);
+2. the player and the dungeon's runtime (DungeonRoom, the doors, the floor's scene) translated,
+   then the rooms' scenes built by the game's own GenerateDungeonCoroutine;
+3. Unity UI and the town: the facade's biggest gaps (the table above);
+4. the hand port's replays retired one by one as their classes run translated (the hand-written
+   Unity layer they verified stays).
 
 ## Known approximations (to verify or finish)
 
@@ -263,4 +346,12 @@ hand-written work, then the enemies' Rigidbody2D/Animator/coroutines (the BabySl
   compiles the method that makes it: earlier, never later);
 - an exception thrown from a `finally` while another unwinds ends the program (C++);
 - the evaluation order of a receiver's null check against side-effecting arguments follows
-  `callvirt` for calls, not yet for every field access through a temporary.
+  `callvirt` for calls, not yet for every field access through a temporary;
+- the facade: a body's own box (its object's first BoxCollider2D) isn't remade when changed
+  after the body was made (an Animator driving the root box: the HermitSlime's); no
+  OnCollisionEnter2D/Exit/Stay messages yet; Instantiate copies every field as is (Unity remaps
+  references into the copied tree); a prefab's component order is the extraction's (renderer,
+  colliders, body, Animator, scripts);
+- `data/extracted/prefabs.json` has Enemy.itemDrops' entries as "min"/"max" until it is
+  extracted again (tools/extract/prefabs.py now writes minDropRate/maxDropRate, the fields'
+  names): harmless while ItemDrop.DropItem is stood in.
