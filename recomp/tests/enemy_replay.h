@@ -68,6 +68,8 @@
 #include "enable_clock.h"
 #include "fixture_probe.h"
 #include "polygon_probe.h"
+#include "replay_frames.h"
+#include "replay_profile.h"
 
 namespace {
 
@@ -335,19 +337,21 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         return 0;
     }
     Value start;
-    std::vector<Value> enemyLines, frames, maps, probes, colliders, otherLines;
+    std::vector<Value> enemyLines, maps, probes, colliders, otherLines;
+    ReplayFrames frames; // (parsed as they're read: replay_frames.h)
     for (std::string line; std::getline(in, line);) {
         if (line.empty()) continue;
         Value v = json::Parse(line);
         const std::string& ev = v["ev"].s;
         if (ev == "slimeStart" || ev == "enemyStart") start = v;
         else if (ev == "slime" || ev == "enemy") enemyLines.push_back(std::move(v));
-        else if (ev == "frame") frames.push_back(std::move(v));
+        else if (ev == "frame") frames.push_back(std::move(line));
         else if (ev == "navMap") maps.push_back(std::move(v));
         else if (ev == "rngProbe") probes.push_back(std::move(v));
         else if (ev == "collider") colliders.push_back(std::move(v));
         else otherLines.push_back(std::move(v)); // (ReplayHooks::AfterFrames)
     }
+    in.close(); // (all read; the GameCube's test builds free the file's copy here)
     if (start.IsNull() || enemyLines.empty() || frames.empty() || maps.empty()) {
         std::printf("%s: no start, enemies, frames or map\n", file.c_str());
         return 1;
@@ -737,6 +741,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     const bool entersRecorded = start.Find("attackEnters") != nullptr;
     const char* const enterKind = entersRecorded ? "attackEnter" : "attackHit";
     int unseenEnters = 0;
+    using replay_profile::Scope;
+    replay_profile::Reset();
     for (size_t fi = 0; fi < frames.size(); fi++) {
         const Value& f = frames[fi];
         const long long fn = f["f"].AsInt();
@@ -807,7 +813,10 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             portDamage.clear();
             colliderRows.portTypes.clear();
             critterRows.BeforeStep(f, k, world);
-            physics.Step(fixedDt);
+            {
+                Scope p(replay_profile::Physics);
+                physics.Step(fixedDt);
+            }
             if (const char* cf = std::getenv(data.contactsEnv.c_str()); cf && std::atoll(cf) == fn)
                 for (ReplayEnemy& s : enemies) {
                     if (!s.enemy->body || s.enemy->destroyed) continue;
@@ -885,19 +894,26 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                     hero.position = V2(ev["hero"]);
                     t.Add("health before a weapon hit", Same(e->enemyStats.CurrentHealth(), Bits(ev["hp0"])),
                           "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt()));
-                    ColliderReplay::DealDamage(*e, ev); // (through the hurtbox it names, if any)
+                    {
+                        Scope p(replay_profile::FixedSteps);
+                        ColliderReplay::DealDamage(*e, ev); // (through the hurtbox it names, if any)
+                    }
                     t.Add("health after a weapon hit", Same(e->enemyStats.CurrentHealth(), Bits(ev["hp1"])),
                           "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt()) + ": " +
                               std::to_string(e->enemyStats.CurrentHealth()) + " vs " + std::to_string(Bits(ev["hp1"])));
                 } else if (kind == "push") {
                     t.Add("weapon push: the enemy where the game had it", Same(e->position(), V2(ev["pos"])),
                           Str(e->position()) + " vs " + Str(V2(ev["pos"])));
+                    Scope p(replay_profile::FixedSteps);
                     e->PushBackwards(V2(ev["hero"]), Bits(ev["force"]));
                 }
             }
             colliderRows.StepTypes(t, events, k, fn);
-            if (roomExit.step == static_cast<int>(k)) RoomExitReplay::Run(roomList);
-            calls.UpdateFixed(fixedClock);
+            {
+                Scope p(replay_profile::FixedSteps);
+                if (roomExit.step == static_cast<int>(k)) RoomExitReplay::Run(roomList);
+                calls.UpdateFixed(fixedClock);
+            }
             calls.inFixedStep = false;
             if (data.hooks) data.hooks->AfterStep(fn, k, f, t);
             // Which enemies hit him, how hard; then in which order. Two triggers that start in the
@@ -929,7 +945,10 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         // DOTween: the scaled tweens by deltaTime, the independent ones by its own unscaled clock
         // ("dotweenUdt" where the recording has it; else Time.unscaledDeltaTime, close to it).
         const Value* tweenUdt = f.Find("dotweenUdt");
-        tweens.Update(dt, tweenUdt ? Bits(*tweenUdt) : f.Find("udt") ? Bits(f["udt"]) : dt);
+        {
+            Scope p(replay_profile::Tweens);
+            tweens.Update(dt, tweenUdt ? Bits(*tweenUdt) : f.Find("udt") ? Bits(f["udt"]) : dt);
+        }
         size_t updateIndex = 0;
         for (const Value& u : f["updates"].arr) {
             if (roomExit.step == -1 && roomExit.updatesBefore == updateIndex++) RoomExitReplay::Run(roomList);
@@ -941,22 +960,31 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                 unity::Random::SetState(State(u["rng0"]));
             }
             t.Add("Update called on an enabled enemy", e->enemyBehaviour->enabled && !e->destroyed, "frame " + std::to_string(fn));
-            e->enemyBehaviour->Update(dt);
+            {
+                Scope p(replay_profile::Updates);
+                e->enemyBehaviour->Update(dt);
+            }
             t.Add("Random draws in the enemies' Update", SameState(unity::Random::GetState(), State(u["rng1"])),
                   "frame " + std::to_string(fn) + " enemy " + std::to_string(u["s"].AsInt()));
             unity::Random::SetState(State(u["rng1"]));
         }
         if (roomExit.step == -1 && roomExit.updatesBefore >= f["updates"].size()) RoomExitReplay::Run(roomList);
         ColliderReplay::FrameEvents(t, events, enemyById, fn);
-        calls.Update(time);
-        nav.ResumeCoroutines();
+        {
+            Scope p(replay_profile::Delayed);
+            calls.Update(time);
+            nav.ResumeCoroutines();
+        }
         portAnim.clear();
         gameAnim.clear();
         animFrame = fn;
         for (const Value& ev : events.arr)
             if (ev["k"].s == "anim" && !(ev.Find("caller") && ev["caller"].IsString())) gameAnim[static_cast<int>(ev["s"].AsInt())].push_back(&ev);
         if (data.hooks) data.hooks->BeforeAnimators(dt);
-        for (ReplayEnemy& s : enemies) s.enemy->UpdateAnimator(dt);
+        {
+            Scope p(replay_profile::Animators);
+            for (ReplayEnemy& s : enemies) s.enemy->UpdateAnimator(dt);
+        }
         for (ReplayEnemy& s : enemies) {
             const auto g = gameAnim.find(s.id);
             const auto m = portAnim.find(s.id);
@@ -972,15 +1000,21 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             }
             t.Add("Animator clip events (per enemy, in order)", same, list);
         }
-        nav.LateUpdate();
-        for (const Value& id : f["late"].arr) {
-            game::Enemy* e = enemyById(static_cast<int>(id.AsInt()));
-            if (e && !e->destroyed && e->active) e->navAgent.LateUpdate(dt);
+        {
+            Scope p(replay_profile::LateUpdates);
+            nav.LateUpdate();
+            for (const Value& id : f["late"].arr) {
+                game::Enemy* e = enemyById(static_cast<int>(id.AsInt()));
+                if (e && !e->destroyed && e->active) e->navAgent.LateUpdate(dt);
+            }
+            // MasterAudio's LateUpdate: the updaters of this frame's plays start (game/MasterAudio.h).
+            audio.LateUpdate();
         }
-        // MasterAudio's LateUpdate: the updaters of this frame's plays start (game/MasterAudio.h).
-        audio.LateUpdate();
-        // Object.Destroy(gameObject) made this frame (the KamikazeGolem's SelfDestroy): gone now.
-        calls.EndOfFrame();
+        {
+            // Object.Destroy(gameObject) made this frame (the KamikazeGolem's SelfDestroy): gone now.
+            Scope p(replay_profile::Destroys);
+            calls.EndOfFrame();
+        }
         // Dead sprites spawned this frame (in order, where).
         std::vector<Vector2> gameDead;
         for (const Value& ev : events.arr)
@@ -1068,6 +1102,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                 std::printf("frame %lld enemy %d: %s %s | game %s\n", fn, id, Str(e->position()).c_str(), e->sprite.c_str(), Str(V2(v["pos"])).c_str());
         }
         if (data.hooks) data.hooks->AtFrameEnd(fn, f, t);
+        replay_profile::EndFrame();
     }
     if (data.hooks) data.hooks->AfterFrames(otherLines, t);
     game::PolyNav2D::current = nullptr;
@@ -1080,6 +1115,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                     "EnemyBehaviour.AttackHit only, which an override like HermitSlimeBehaviourNEW's never calls): %d in the port\n",
                     unseenEnters);
     if (animResynced) std::printf("Random resynced before an animation event %d times\n", animResynced);
+    replay_profile::Print("hand-port");
     std::printf("\n%s\n", t.Ok() ? "ALL MATCH" : "MISMATCHES");
     return t.Ok() ? 0 : 1;
 }

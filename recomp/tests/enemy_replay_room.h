@@ -27,7 +27,8 @@ struct RoomExitReplay {
     int step = -2;
     size_t updatesBefore = 0;
 
-    void Scan(const std::vector<json::Value>& frames)
+    template <typename Frames>
+    void Scan(Frames& frames)
     {
         for (const json::Value& f : frames)
             for (const json::Value& ev : f["events"].arr)

@@ -21,6 +21,28 @@ uint32_t Step(State& s)
 uint32_t NextU32() { return Step(gState); }
 
 bool Same(const State& a, const State& b) { return a.s0 == b.s0 && a.s1 == b.s1 && a.s2 == b.s2 && a.s3 == b.s3; }
+
+// cos and sin of a float, as the engine (MSVC's CRT, x64) rounds them. MSVC: its cosf and sinf
+// (the PC port matches the game's probes with them). Elsewhere the double functions rounded to
+// float: newlib's cosf and sinf (the GameCube) are a single-precision kernel that misses by an ulp
+// often (2 of slime.jsonl's 16 probes), the double route agrees with MSVC's on all but about 6 in
+// 100,000 floats of [0, 2 pi] (both are within an ulp; they part only near a rounding midpoint).
+inline float CosF(float a)
+{
+#if defined(_MSC_VER)
+    return std::cos(a);
+#else
+    return static_cast<float>(std::cos(static_cast<double>(a)));
+#endif
+}
+inline float SinF(float a)
+{
+#if defined(_MSC_VER)
+    return std::sin(a);
+#else
+    return static_cast<float>(std::sin(static_cast<double>(a)));
+#endif
+}
 } // namespace
 
 int DrawsBetween(State from, const State& to, int maxDraws)
@@ -76,7 +98,7 @@ int32_t Range(int32_t min, int32_t max)
 Vector2 insideUnitCircle()
 {
     const float angle = Range(0.0f, 3.14159274f * 2.0f); // kPI * 2
-    Vector2 v{std::cos(angle), std::sin(angle)};
+    Vector2 v{CosF(angle), SinF(angle)};
     const float r = std::sqrt(Range(0.0f, 1.0f));
     return {v.x * r, v.y * r};
 }
@@ -87,8 +109,8 @@ Vector3 insideUnitSphere()
     const float a = Range(0.0f, 3.14159274f * 2.0f);
     const float r = std::sqrt(1.0f - z * z);
     Vector3 v;
-    v.x = r * std::cos(a);
-    v.y = r * std::sin(a);
+    v.x = r * CosF(a);
+    v.y = r * SinF(a);
     v.z = z;
     const float k = std::pow(value(), 1.0f / 3.0f);
     v.x *= k;

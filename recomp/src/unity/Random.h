@@ -30,8 +30,9 @@ int32_t Range(int32_t min, int32_t max);
 // Random.insideUnitCircle: two draws, as the engine's RandomPointInsideUnitCircle makes it:
 // an angle Range(0, 2 pi) to the unit circle (cos, sin in floats), then scaled by
 // sqrt(Range(0, 1)). Not yet checked against the game (the slime oracle's "rngProbe" lines
-// hold its results; slime_test compares them). cos and sin are the C library's, as the
-// engine's are its compiler's: a platform whose sinf/cosf round differently drifts here.
+// hold its results; slime_test compares them). cos and sin as the engine's compiler rounds them:
+// MSVC's cosf and sinf; elsewhere (the GameCube's newlib) the double functions rounded to float,
+// which agree with MSVC's but near a rounding midpoint (Random.cpp's CosF).
 Vector2 insideUnitCircle();
 
 // Random.insideUnitSphere: three draws, as the engine's RandomPointInsideUnitSphere makes it:
