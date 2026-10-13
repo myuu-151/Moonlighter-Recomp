@@ -41,6 +41,16 @@ namespace MoonlighterOracle
     ///     OnAllEnemiesDefeated: the Random state before and after), "indicator"
     ///     (QuantitytIndicatorManager.InstantiateFloatingDamageIndicator: invincible or not, the
     ///     Random state before and after);
+    ///   - inside CreateExplosionToDamageEnemies and SelfDestroy only (their Random draws the
+    ///     decomp doesn't explain: enemy_KamikazeGolem.jsonl of recq kamifix-1 and -2, one draw
+    ///     in the explosion before the floating damage number): "window" (its start and end:
+    ///     "other" the method, and at the explosion's start Enemy.OnEnemyRecivesDamage's handlers
+    ///     and MoonlighterEffectRegistry's effects), "rnd" (a call of one of UnityEngine.Random's
+    ///     managed members: "other" the member, "callers" the stack's methods, nearest first, any
+    ///     assembly), "br" (a call of a method on the explosion's path: Physics2D.OverlapCircleAll,
+    ///     Enemy.DealDamageToEnemy / CalcHitDamage, EnemyStats.CurrentHealth's setter, the
+    ///     singletons' getters...: "other" the method), each with the Random state before and
+    ///     after;
     ///   - the start line's "kroom" (WriteStart): the room's chests ([type, name, isLocked, active]
     ///     in roomChests' order), OnAllEnemiesDefeated's handlers ("Type.Method" in order) and
     ///     isRoomCleared.
@@ -86,6 +96,170 @@ namespace MoonlighterOracle
         {
             active = Wants(prefab);
             if (active) HookSounds();
+            if (active) HookRandomProbe();
+        }
+
+        // ---- The draws inside the explosion and SelfDestroy ---------------------------------
+
+        private static int window; // inside CreateExplosionToDamageEnemies or SelfDestroy (depth)
+        private static bool inProbe;  // the probe's own Random.state reads and stack walks
+        private static bool randomProbeHooked;
+
+        private static string Stack()
+        {
+            var st = new System.Diagnostics.StackTrace(2, false);
+            var names = new List<string>();
+            for (int i = 0; i < st.FrameCount && names.Count < 8; i++)
+            {
+                var m = st.GetFrame(i).GetMethod();
+                if (m == null) continue;
+                var t = m.DeclaringType;
+                if (t != null && t.Assembly == typeof(KamikazeOracle).Assembly) continue; // (the oracle's own)
+                names.Add((t != null ? t.Name : "?") + "." + m.Name);
+            }
+            return string.Join(" < ", names.ToArray());
+        }
+
+        private static void HookRandomProbe()
+        {
+            if (randomProbeHooked) return;
+            randomProbeHooked = true;
+            var harmony = new Harmony("moonlighter.oracle.kamikaze.random");
+            int n = 0;
+            var rndPrefix = new HarmonyMethod(typeof(KamikazeOracle), nameof(RndPrefix));
+            var brPrefix = new HarmonyMethod(typeof(KamikazeOracle), nameof(BrPrefix));
+            var postfix = new HarmonyMethod(typeof(KamikazeOracle), nameof(ProbePostfix));
+            foreach (var m in typeof(UnityEngine.Random).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+            {
+                if (m.ContainsGenericParameters || m.GetMethodBody() == null || m.Name == "get_state" || m.Name == "set_state") continue;
+                try { harmony.Patch(m, prefix: rndPrefix, postfix: postfix); n++; }
+                catch (Exception) { }
+            }
+            var path = new List<MethodBase>();
+            foreach (var m in typeof(Physics2D).GetMethods(BindingFlags.Public | BindingFlags.Static))
+                if (m.Name == "OverlapCircleAll") path.Add(m);
+            path.Add(AccessTools.Method(typeof(Enemy), "DealDamageToEnemy"));
+            path.Add(AccessTools.Method(typeof(Enemy), "CalcHitDamage"));
+            path.Add(AccessTools.PropertySetter(typeof(EnemyStats), "CurrentHealth"));
+            path.Add(AccessTools.PropertyGetter(typeof(EnemyStats), "Invencible"));
+            path.Add(AccessTools.Method(typeof(EnemyBehaviour), "IsEnemyPlayingDamagedEffect"));
+            path.Add(AccessTools.PropertyGetter(typeof(QuantitytIndicatorManager), "Instance"));
+            path.Add(AccessTools.PropertyGetter(typeof(HeroMerchant), "Instance"));
+            path.Add(AccessTools.PropertyGetter(typeof(MoonlighterEffectRegistry), "Instance"));
+            path.Add(AccessTools.Method(typeof(EnemyStats), "Die"));
+            path.Add(AccessTools.Method(typeof(EnemyStats), "MarkEnemyAsDefeated"));
+            path.Add(AccessTools.Method(typeof(DungeonRoom), "EnemyDefeated"));
+            path.Add(AccessTools.Method(typeof(DungeonRoom), "OpenAllDoors"));
+            foreach (var m in path)
+            {
+                if (m == null || m.GetMethodBody() == null) continue;
+                try { harmony.Patch(m, prefix: brPrefix, postfix: postfix); n++; }
+                catch (Exception e) { OraclePlugin.Log.LogWarning("enemy KamikazeGolem: can't hook " + m.Name + ": " + e.Message); }
+            }
+            OraclePlugin.Log.LogInfo("enemy KamikazeGolem: random probe, " + n + " methods hooked");
+        }
+
+        private static void RndPrefix(MethodBase __originalMethod, out Ev __state)
+        {
+            __state = null;
+            if (window <= 0 || !Recording || inProbe) return;
+            inProbe = true;
+            __state = AddPlain("rnd");
+            __state.other = __originalMethod.Name;
+            __state.sound = Stack();
+            inProbe = false;
+        }
+
+        private static void BrPrefix(MethodBase __originalMethod, out Ev __state)
+        {
+            __state = null;
+            if (window <= 0 || !Recording || inProbe) return;
+            inProbe = true;
+            __state = AddPlain("br");
+            __state.other = __originalMethod.DeclaringType.Name + "." + __originalMethod.Name;
+            inProbe = false;
+        }
+
+        private static void ProbePostfix(Ev __state)
+        {
+            if (__state == null) return;
+            inProbe = true;
+            __state.rng1 = Rng.Get();
+            inProbe = false;
+        }
+
+        private static string Handlers()
+        {
+            var parts = new List<string>();
+            try
+            {
+                var f = AccessTools.Field(typeof(Enemy), "OnEnemyRecivesDamage");
+                var d = f != null ? f.GetValue(null) as Delegate : null;
+                if (d != null)
+                    foreach (var h in d.GetInvocationList()) parts.Add("damage:" + h.Method.DeclaringType.Name + "." + h.Method.Name);
+                var inst = AccessTools.Field(typeof(MoonlighterEffectRegistry), "_instance").GetValue(null);
+                var reg = inst != null ? AccessTools.Field(typeof(MoonlighterEffectRegistry), "_reg").GetValue(inst) as System.Collections.IEnumerable : null;
+                if (reg != null)
+                    foreach (var entry in reg)
+                    {
+                        var eff = entry != null ? Traverse.Create(entry).Field("effect").GetValue() : null;
+                        parts.Add("effect:" + (eff != null ? eff.GetType().Name : "null"));
+                    }
+            }
+            catch (Exception e) { parts.Add("error:" + e.Message); }
+            return string.Join(" ", parts.ToArray());
+        }
+
+        [HarmonyPatch(typeof(GolemKamikazeBehaviour), "CreateExplosionToDamageEnemies")]
+        private static class ExplosionWindow
+        {
+            [HarmonyPriority(Priority.First)]
+            private static void Prefix()
+            {
+                if (!Recording) return;
+                inProbe = true;
+                var e = AddPlain("window");
+                e.other = "CreateExplosionToDamageEnemies " + Handlers();
+                e.flag = true;
+                inProbe = false;
+                window++;
+            }
+
+            [HarmonyPriority(Priority.Last)]
+            private static void Postfix()
+            {
+                if (!Recording || window <= 0) return;
+                window--;
+                inProbe = true;
+                AddPlain("window").other = "CreateExplosionToDamageEnemies";
+                inProbe = false;
+            }
+        }
+
+        [HarmonyPatch(typeof(GolemKamikazeBehaviour), "SelfDestroy")]
+        private static class SelfDestroyWindow
+        {
+            [HarmonyPriority(Priority.First)]
+            private static void Prefix()
+            {
+                if (!Recording) return;
+                inProbe = true;
+                var e = AddPlain("window");
+                e.other = "SelfDestroy";
+                e.flag = true;
+                inProbe = false;
+                window++;
+            }
+
+            [HarmonyPriority(Priority.Last)]
+            private static void Postfix()
+            {
+                if (!Recording || window <= 0) return;
+                window--;
+                inProbe = true;
+                AddPlain("window").other = "SelfDestroy";
+                inProbe = false;
+            }
         }
 
         public static void End() => active = false;
@@ -301,6 +475,14 @@ namespace MoonlighterOracle
                     case "unlockChests":
                     case "indicator":
                         j.Prop("flag", e.flag);
+                        Rng.WriteState(j.Key("rng0"), e.rng0);
+                        Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
+                        break;
+                    case "window":
+                    case "rnd":
+                    case "br":
+                        j.Prop("other", e.other).Prop("start", e.flag);
+                        if (e.sound != null) j.Prop("callers", e.sound);
                         Rng.WriteState(j.Key("rng0"), e.rng0);
                         Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
                         break;
