@@ -19,7 +19,8 @@ namespace MoonlighterOracle
     ///
     ///   {"ev":"uiStart", ...}                    the script, the screen, the CanvasScaler settings
     ///   {"ev":"frame","f",...}                   per frame: clocks, screen, the input given, the
-    ///                                            EventSystem's selected object, the open panel
+    ///                                            EventSystem's selected object, the open panel and
+    ///                                            popup (GUIManager's), whether a press was refused
     ///   {"ev":"node","id","parent","name","path","rect","comps"}
     ///                                            an object the first time it's seen (id: its
     ///                                            Transform's instance id; parent 0 at the scene's root)
@@ -31,9 +32,11 @@ namespace MoonlighterOracle
     ///
     /// An "e" row: rt = anchorMin, anchorMax, anchoredPosition, sizeDelta, pivot (2 each),
     /// localPosition (3), localRotation (4), localScale (3), rect (x, y, width, height),
-    /// GetWorldCorners (4 x 3): 36 floats as their bits. Then what it has of: "cv" (a Canvas:
-    /// render mode, scale factor, reference pixels per unit, sorting layer and order, override
-    /// sorting, root, pixel rect, plane distance, world camera), "cg" (a CanvasGroup: alpha,
+    /// GetWorldCorners (4 x 3): 36 floats as their bits; "wp": Transform.position. Then what it
+    /// has of: "cv" (a Canvas: render mode, scale factor, reference pixels per unit, sorting
+    /// layer and order, override sorting, root, enabled, pixel rect, plane distance, world camera;
+    /// "cam" for a root canvas with a camera: orthographic, size, aspect, field of view, pixel
+    /// rect, viewport rect, position, rotation, clip planes, pixel size), "cg" (a CanvasGroup: alpha,
     /// interactable, blocks raycasts, ignore parent groups), "g" (a Graphic: its type, enabled,
     /// colour, the CanvasRenderer's alpha and inherited alpha, raycast target, culled), "img"
     /// (an Image: sprite, overrideSprite, type, fill amount, method, origin, clockwise, preserve
@@ -69,7 +72,8 @@ namespace MoonlighterOracle
             public string[] buttons;
             public int hold;
             public int stickFrames; // the stick is held this many frames (0: the whole step)
-            public Step(int frames, float x = 0f, float y = 0f, string buttons = null, int hold = 2, int stickFrames = 0)
+            public string expect;   // the step's buttons are pressed only with this object selected
+            public Step(int frames, float x = 0f, float y = 0f, string buttons = null, int hold = 2, int stickFrames = 0, string expect = null)
             {
                 this.frames = frames;
                 this.x = x;
@@ -77,6 +81,7 @@ namespace MoonlighterOracle
                 this.buttons = string.IsNullOrEmpty(buttons) ? new string[0] : buttons.Split(',');
                 this.hold = hold;
                 this.stickFrames = stickFrames;
+                this.expect = expect;
             }
         }
 
@@ -84,40 +89,59 @@ namespace MoonlighterOracle
         // first, then waits moveRepeatFirstDuration), then released for the rest of the step.
         private static Step Tap(float x, float y, int frames = 30) => new Step(frames, x, y, null, 2, 4);
         private static Step Press(string button, int frames = 30) => new Step(frames, 0f, 0f, button);
+        // A submit (the input module's A) with the selection checked first: if another object is
+        // selected the press is refused and the run marked FAILED (the script has gone astray;
+        // nothing it didn't mean is ever pressed).
+        private static Step Submit(string selected, int frames = 60) => new Step(frames, 0f, 0f, "gui.Action1", 2, 0, selected);
         private static Step Idle(int frames) => new Step(frames);
 
         // The main menu from its closed doors ("press any key"): Y opens them (GUIManager hands
-        // any button to the panel's OnAnyKeyPressed; Y isn't the input module's submit, so no
-        // button can be pressed by it), the selection moves down and up through the buttons
-        // (never submitted), the stick held down (the input module's repeat), and B closes the
-        // doors again.
+        // any button to the panel's OnAnyKeyPressed; Y isn't the input module's submit), the
+        // selection moved through Continue, NewGame and Options; Options opened (A, checked to be
+        // on Options), its rows walked up and down and its tabs switched with the bumpers, closed
+        // with B (closing saves the options: blocked); NewGame's slot panel opened, its slots
+        // walked, back with B; the stick held down (the input module's repeat, 0.2 s then every
+        // 0.2 s) down to Exit, never pressed; B closes the doors. Never X or the bumpers while
+        // the news viewer is up (its Read More and paging), never A on Continue, Exit or a slot,
+        // never left or right in Options (they change values) or on a slot (copy, erase).
         private static readonly Step[] TitleScript =
         {
-            Idle(90),
+            Idle(120),
             Press("gui.Action4", 150),
-            Tap(0f, -1f), Tap(0f, -1f), Tap(0f, -1f), Tap(0f, -1f), Tap(0f, -1f), Tap(0f, -1f),
-            Tap(0f, 1f), Tap(0f, 1f), Tap(0f, 1f), Tap(0f, 1f), Tap(0f, 1f), Tap(0f, 1f),
-            Tap(1f, 0f), Tap(-1f, 0f),
-            new Step(90, 0f, -1f),   // held down: the input module's repeat (0.8 s, then every 0.1 s)
+            Tap(0f, -1f), Tap(0f, -1f), Tap(0f, 1f), Tap(0f, 1f), Tap(0f, -1f), Tap(0f, -1f),
+            Submit("Options", 90),
+            Tap(0f, -1f), Tap(0f, -1f), Tap(0f, -1f), Tap(0f, 1f),
+            Press("gui.RightBumper", 60), Tap(0f, -1f), Press("gui.RightBumper", 60), Tap(0f, -1f), Press("gui.LeftBumper", 60),
+            Press("gui.Action2", 120),
+            Tap(0f, 1f),
+            Submit("NewGame", 120),
+            Tap(0f, -1f), Tap(0f, -1f), Tap(0f, 1f),
+            Press("gui.Action2", 120),
+            new Step(90, 0f, -1f),
             Idle(30),
-            Press("gui.Action2", 120),  // B: the doors close
+            Press("gui.Action2", 120),
         };
 
         // The first room of the Golem dungeon's first floor: the HUD idle and with the hero
-        // walking; the bag (the hero's Y, HeroMerchantController) opened, its slots walked
-        // through with the stick, closed with B; the minimap's detail panel (the hero's Select,
-        // GUIManager) opened and closed.
+        // walking; the bag (the hero's Y, HeroMerchantController; the game pauses) opened, its
+        // slots walked with the stick and the stick held (the repeat), closed with B; the pause
+        // panel (GUI Start) opened, Options and back to BackToGame, closed with B; the minimap's
+        // detail panel (the hero's Select, GUIManager) opened and closed. Never A, X or the
+        // bumpers in the bag (they move, use or swap items), never the right trigger without a
+        // panel (a potion), never MainMenu or ExitToDesktop in the pause panel.
         private static readonly Step[] DungeonScript =
         {
             Idle(60),
+            new Step(30, 1f, 0f),
+            Idle(30),
+            Press("hero.Action4", 60),
+            Tap(1f, 0f), Tap(1f, 0f), Tap(1f, 0f), Tap(0f, -1f), Tap(0f, -1f), Tap(-1f, 0f), Tap(0f, 1f),
             new Step(40, 1f, 0f),
-            new Step(40, 0f, 1f),
-            Idle(30),
-            Press("hero.Action4", 90),
-            Tap(1f, 0f), Tap(1f, 0f), Tap(1f, 0f), Tap(0f, -1f), Tap(0f, -1f), Tap(-1f, 0f), Tap(-1f, 0f),
-            Tap(0f, 1f), Tap(0f, 1f), Tap(-1f, 0f), Tap(-1f, 0f), Tap(-1f, 0f), Tap(0f, -1f),
+            Idle(20),
             Press("gui.Action2", 90),
-            Idle(30),
+            Press("gui.ButtonStart", 90),
+            Tap(0f, -1f), Tap(0f, 1f),
+            Press("gui.Action2", 90),
             Press("hero.ButtonSelect", 90),
             Press("hero.ButtonSelect", 90),
             Idle(30),
@@ -159,6 +183,21 @@ namespace MoonlighterOracle
             var hero = InputActionsManager.Instance != null ? InputActionsManager.Instance.actions : null;
             if (set == hero) return "hero";
             return null;
+        }
+
+        private static readonly System.Reflection.FieldInfo OwnerEnabled = AccessTools.Field(typeof(OneAxisInputControl), "ownerEnabled");
+        private static bool strayed;
+
+        /// A step that expects a selection: is that object selected? (Logged once when not.)
+        private static bool SelectionAsExpected(Step s)
+        {
+            if (s.expect == null) return true;
+            var es = EventSystem.current;
+            var selected = es != null ? es.currentSelectedGameObject : null;
+            if (selected != null && selected.name == s.expect) return true;
+            if (!strayed) OraclePlugin.Log.LogError($"ui: {s.expect} should be selected for the press, not {(selected != null ? PathOf(selected.transform) : "nothing")}: not pressed");
+            strayed = true;
+            return false;
         }
 
         private static int newsCheckedFrame = -1;
@@ -212,17 +251,21 @@ namespace MoonlighterOracle
                     case "LeftStickLeft": value = Mathf.Max(0f, -stick.x); break;
                     default:
                         if (Current(out Step s, out int i) && i < s.hold && Array.IndexOf(s.buttons, set + "." + __instance.Name) >= 0)
-                            value = 1f;
-                        // Never the news viewer's buttons while it's up: X is its "Read More"
-                        // (InGameNewsViewer.LateUpdate), the bumpers page through the news.
-                        if (value > 0f && set == "gui" && (__instance.Name == "Action3" || __instance.Name == "LeftBumper" || __instance.Name == "RightBumper")
-                            && NewsViewerUp())
+                            value = SelectionAsExpected(s) ? 1f : 0f;
+                        // Never X while the news viewer is up: it's its "Read More" (InGameNewsViewer.
+                        // LateUpdate: a web page, and the save). (Its bumpers only page the news.)
+                        if (value > 0f && set == "gui" && __instance.Name == "Action3" && NewsViewerUp())
                         {
-                            OraclePlugin.Log.LogError("ui: the script presses " + __instance.Name + " with the news viewer up; not pressed");
+                            OraclePlugin.Log.LogError("ui: the script presses X with the news viewer up: not pressed");
+                            strayed = true;
                             value = 0f;
                         }
                         break;
                 }
+                // PlayerAction.UpdateBindings refreshes this before reading the bindings: WasPressed
+                // is false while the set is disabled (the game disables GUIManager's input while a
+                // panel opens).
+                OwnerEnabled.SetValue(__instance, __instance.Owner.Enabled);
                 __instance.CommitWithValue(value, updateTick, deltaTime);
                 return false;
             }
@@ -316,6 +359,9 @@ namespace MoonlighterOracle
             rt.GetWorldCorners(corners);
             for (int i = 0; i < 4; i++) Bits(j, corners[i]);
             j.EndArr();
+            j.Key("wp").Arr();
+            Bits(j, rt.position);
+            j.EndArr();
 
             var canvas = rt.GetComponent<Canvas>();
             if (canvas != null)
@@ -327,6 +373,19 @@ namespace MoonlighterOracle
                 j.Bits(pr.x).Bits(pr.y).Bits(pr.width).Bits(pr.height).Bits(canvas.planeDistance)
                     .Val(canvas.worldCamera != null ? canvas.worldCamera.name : null);
                 j.EndArr();
+                var cam = canvas.worldCamera;
+                if (cam != null && canvas.isRootCanvas)
+                {
+                    // What UpdateCanvasRectTransform reads of it: orthographic size, aspect, its
+                    // pixel and viewport rects, where it is.
+                    j.Key("cam").Arr().Val(cam.orthographic).Bits(cam.orthographicSize).Bits(cam.aspect).Bits(cam.fieldOfView);
+                    Rect cpr = cam.pixelRect, cvr = cam.rect;
+                    j.Bits(cpr.x).Bits(cpr.y).Bits(cpr.width).Bits(cpr.height).Bits(cvr.x).Bits(cvr.y).Bits(cvr.width).Bits(cvr.height);
+                    Bits(j, cam.transform.position);
+                    Bits(j, cam.transform.rotation);
+                    j.Bits(cam.nearClipPlane).Bits(cam.farClipPlane).Val(cam.pixelWidth).Val(cam.pixelHeight);
+                    j.EndArr();
+                }
             }
             var group = rt.GetComponent<CanvasGroup>();
             if (group != null)
@@ -388,13 +447,15 @@ namespace MoonlighterOracle
                 .Key("rt").Bits(Time.realtimeSinceStartup);
             j.Prop("sw", Screen.width).Prop("sh", Screen.height);
             j.Key("in").Arr().Bits(stick.x).Bits(stick.y);
-            if (inStep < step.hold)
+            if (inStep < step.hold && (step.expect == null || !strayed))
                 foreach (var b in step.buttons) j.Val(b);
             j.EndArr();
             if (selected != null) Node(snap, selected.transform);
             j.Prop("sel", selected != null ? selected.transform.GetInstanceID() : 0).Prop("selPath", selected != null ? PathOf(selected.transform) : null);
             var panel = GUIManager.Instance != null ? GUIManager.Instance.currentInventory : null;
-            j.Prop("panel", panel != null ? panel.GetType().Name : null).Prop("paused", gm != null && gm.isGamePaused);
+            var popUp = GUIManager.Instance != null ? GUIManager.Instance.currentPopUp : null;
+            j.Prop("panel", panel != null ? panel.GetType().Name : null).Prop("popup", popUp != null ? popUp.GetType().Name : null)
+                .Prop("paused", gm != null && gm.isGamePaused).Prop("strayed", strayed);
             snap.header = j.EndObj().ToString();
 
             // Root canvases, in a fixed order (their paths), with what's above them.
@@ -474,7 +535,8 @@ namespace MoonlighterOracle
             {
                 var gui = GUIManager.Instance;
                 var panel = gui != null ? gui.currentInventory : null;
-                if (panel is DigitalSun.Moonlighter.InGameNewsPopup news && news.IsActive())
+                var popup = gui != null ? gui.currentPopUp : null;
+                if ((popup ?? panel) is DigitalSun.Moonlighter.InGameNewsPopup news && news.IsActive())
                 {
                     log.LogInfo("ui: dismissing the main menu news popup (Later)");
                     news.Disable();
@@ -484,8 +546,8 @@ namespace MoonlighterOracle
                 var menu = UnityEngine.Object.FindObjectOfType<MainMenuPanel>();
                 // Its doors closed and listening: the gamepad notice gone (receiveInput), the news
                 // looked at (a press opens the doors only then), the panel GUIManager's.
-                if (menu != null && menu.isActiveAndEnabled && menu.IsActive() && panel == menu
-                    && Traverse.Create(menu).Field("receiveInput").GetValue<bool>()
+                if (menu != null && menu.isActiveAndEnabled && menu.IsActive() && panel == menu && popup == null
+                    && menu.receiveInput && !menu.blockInput
                     && DigitalSun.Moonlighter.InGameNewsViewer.importantNewsAlreadyShown)
                 {
                     yield return new WaitForSecondsRealtime(2f);
@@ -552,7 +614,9 @@ namespace MoonlighterOracle
             setup.Key("dpi").Bits(Screen.dpi);
             var module = UnityEngine.Object.FindObjectOfType<InControlInputModule>();
             if (module != null)
-                setup.Key("moveRepeatFirst").Bits(module.moveRepeatFirstDuration).Key("moveRepeatDelay").Bits(module.moveRepeatDelayDuration);
+                setup.Key("moveRepeatFirst").Bits(module.moveRepeatFirstDuration).Key("moveRepeatDelay").Bits(module.moveRepeatDelayDuration)
+                    .Prop("forceModuleActive", module.forceModuleActive);
+            setup.Prop("mousePresent", Input.mousePresent);
             setup.Key("scalers").Arr();
             foreach (var cs in UnityEngine.Object.FindObjectsOfType<CanvasScaler>().OrderBy(c => PathOf(c.transform), StringComparer.Ordinal))
             {
@@ -581,6 +645,11 @@ namespace MoonlighterOracle
             writer.Flush();
             writer.Close();
             writer = null;
+            if (strayed)
+            {
+                failed = true;
+                File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "FAILED"), "ui: the script strayed (a press refused: see the log)");
+            }
             if (!failed)
             {
                 File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "UI_DONE"), DateTime.Now.ToString("o"));
