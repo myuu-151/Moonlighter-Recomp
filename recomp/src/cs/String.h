@@ -132,6 +132,14 @@ String* ToString(char16_t v);
 String* ToString(float v);  // "G": 7 significant digits (Mono's NumberFormatter)
 String* ToString(double v); // "G": 15 significant digits
 
+// The generated dispatchers' lookup (SendMessage / Invoke / an Animator event by name,
+// StartCoroutine(string), a prefab's serialized fields): the index of `name` in a table of names
+// (null-terminated), or -1 (a null name too). One shared loop instead of a comparison per name in
+// every class.
+int32_t NameIndex(String* name, const char16_t* const* names, int32_t count);
+int32_t NameIndex(String* name, const char* const* names, int32_t count); // ASCII names
+int32_t NameIndex(const char* name, const char* const* names, int32_t count);
+
 // Parsing as int.Parse / float.Parse with the invariant (en-US) culture.
 int32_t ParseInt32(String* s);
 bool TryParseInt32(String* s, int32_t& result);

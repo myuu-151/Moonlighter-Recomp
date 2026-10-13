@@ -25,6 +25,19 @@
 
 namespace cs {
 
+void Tracer::Push(Object* o)
+{
+    o->gc_mark_ = epoch_;
+    stack_.push_back(o);
+    if (parents_) parents_->push_back({o, current_});
+}
+
+void Tracer::MarkRefs(const void* obj, const uint16_t* offsets, int32_t count)
+{
+    const char* base = static_cast<const char*>(obj);
+    for (int32_t i = 0; i < count; i++) Mark(*reinterpret_cast<Object* const*>(base + offsets[i]));
+}
+
 namespace {
 // The program's own heap: never destroyed (at exit, other statics may still point into it).
 Heap& DefaultHeap()

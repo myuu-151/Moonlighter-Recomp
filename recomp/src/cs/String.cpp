@@ -226,6 +226,40 @@ bool String::op_Equality(String* a, String* b)
     return a->s_ == b->s_;
 }
 
+int32_t NameIndex(String* name, const char16_t* const* names, int32_t count)
+{
+    if (!name) return -1;
+    const std::u16string& s = name->str();
+    for (int32_t i = 0; i < count; i++) {
+        const char16_t* n = names[i];
+        size_t k = 0;
+        while (k < s.size() && n[k] != 0 && n[k] == s[k]) k++;
+        if (k == s.size() && n[k] == 0) return i;
+    }
+    return -1;
+}
+
+int32_t NameIndex(String* name, const char* const* names, int32_t count)
+{
+    if (!name) return -1;
+    const std::u16string& s = name->str();
+    for (int32_t i = 0; i < count; i++) {
+        const unsigned char* n = reinterpret_cast<const unsigned char*>(names[i]);
+        size_t k = 0;
+        while (k < s.size() && n[k] != 0 && n[k] == s[k]) k++;
+        if (k == s.size() && n[k] == 0) return i;
+    }
+    return -1;
+}
+
+int32_t NameIndex(const char* name, const char* const* names, int32_t count)
+{
+    if (!name) return -1;
+    for (int32_t i = 0; i < count; i++)
+        if (!std::strcmp(name, names[i])) return i;
+    return -1;
+}
+
 int32_t String::CompareOrdinal(String* a, String* b)
 {
     if (a == b) return 0;

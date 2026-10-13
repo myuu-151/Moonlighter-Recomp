@@ -343,6 +343,9 @@ public sealed class Names
         return "CS_LIT(" + PieceLiteral(s) + ")";
     }
 
+    // A UTF-16 C++ literal (u"..."), for name tables (short names only).
+    public static string U16Literal(string s) => PieceLiteral(s);
+
     static string PieceLiteral(string s)
     {
         var sb = new StringBuilder("u\"");

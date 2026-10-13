@@ -66,14 +66,15 @@ class Tracer {
 public:
     Tracer();
     uint32_t Epoch() const { return epoch_; }
+    // (Inline: the test; out of line: the rest, which every cs_trace would otherwise carry.)
     void Mark(Object* o)
     {
-        if (o && o->gc_mark_ != epoch_) {
-            o->gc_mark_ = epoch_;
-            stack_.push_back(o);
-            if (parents_) parents_->push_back({o, current_});
-        }
+        if (o && o->gc_mark_ != epoch_) Push(o);
     }
+    void Push(Object* o);
+    // The generated cs_trace's: the references at these byte offsets of `obj` (each a pointer to a
+    // cs::Object subclass, or null).
+    void MarkRefs(const void* obj, const uint16_t* offsets, int32_t count);
     void Drain()
     {
         while (!stack_.empty()) {

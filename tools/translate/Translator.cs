@@ -472,12 +472,21 @@ public sealed class Translator
     // (IEnumerator.MoveNext of a coroutine, IDisposable.Dispose...).
     static bool IsRuntimeInterfaceMember(IMethodSymbol im) => true;
 
+    // Methods (by their C++ name, gen::Type::Method) whose translation doesn't compile yet: a
+    // throwing body instead (TranslateCommand's --broken: tools/gcsize's whole-game build).
+    public readonly HashSet<string> Broken = new(StringComparer.Ordinal);
+
     void TranslateMethod(IMethodSymbol m)
     {
         var r = methods[m];
         if (r.Stub || r.Hand)
         {
             // Declared with a throwing body; its signature's types are still declared.
+            return;
+        }
+        if (Broken.Count > 0 && Broken.Contains(N.QualifiedGameName(m.ContainingType)[2..] + "::" + N.Method(m)))
+        {
+            r.Error = "does not compile yet (--broken)";
             return;
         }
         current = r;

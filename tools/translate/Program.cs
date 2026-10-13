@@ -7,7 +7,9 @@ namespace MoonlighterTranslate;
 //   decompile  decompiles the game's Assembly-CSharp.dll into the cache (and prints where)
 //   survey     [--classes progress/classes.tsv] [--ported progress/ported.tsv]
 //              [--out progress/class_deps.tsv] [--summary <file.md>]
-//   translate  [--units tools/translate/units.txt] [--out recomp/gen/cpp]
+//   translate  [--units tools/translate/units.txt] [--out recomp/gen/cpp] [--broken f]
+//              (--broken: methods, one C++ name a line (gen::Type::Method), translated as
+//              throwing stubs: what doesn't compile yet in a whole-game build, tools/gcsize)
 //   diag       the decompiled code's compile errors as Roslyn sees them (a health check)
 //
 // Common options: --managed <dir> the game's Managed folder (default $ML_GAME/Moonlighter_Data/Managed,
@@ -67,6 +69,7 @@ public sealed class Options
     public string Ported;
     public string Bindings;
     public string Summary;
+    public string Broken;
     public List<string> Positional = new();
 
     // The main checkout holds the game copy (Moonlighter/); worktrees sit next to it in ml-wt/.
@@ -102,6 +105,7 @@ public sealed class Options
                 case "--ported": o.Ported = Next(); break;
                 case "--bindings": o.Bindings = Next(); break;
                 case "--summary": o.Summary = Next(); break;
+                case "--broken": o.Broken = Next(); break;
                 default:
                     if (a.StartsWith("--")) throw new UsageException($"unknown option {a}");
                     o.Positional.Add(a);
