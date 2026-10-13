@@ -494,7 +494,7 @@ namespace MoonlighterOracle
             HookOtherClipEvents();
             WatchTypes(); // (EnemyOracleQueries.cs)
             // What is out already (its scripts' Awake/OnEnable/Start, hooked now, track the rest).
-            foreach (var type in prefabs.Where(x => !x.enemy).SelectMany(x => x.types).Distinct())
+            foreach (var type in prefabs.Where(x => !x.enemy).SelectMany(x => x.types).Distinct().ToList()) // (SpawnRoot can add a pool's name)
                 foreach (var o in UnityEngine.Object.FindObjectsOfType(type))
                     if (o is Component c && c != null)
                     {
@@ -577,7 +577,20 @@ namespace MoonlighterOracle
         {
             p = null;
             for (var t = c.transform; t != null; t = t.parent)
-                if (prefabByName.TryGetValue(PrefabName(t.name), out p)) return t.gameObject;
+            {
+                string n = PrefabName(t.name);
+                if (prefabByName.TryGetValue(n, out p)) return t.gameObject;
+                // A pool made after the preparation (the FruitTree's, at StartTargetingPlayer):
+                // PoolManager names its objects "<enemy>_<prefab>".
+                if (n.StartsWith(prefab + "_", StringComparison.Ordinal) && prefabByName.TryGetValue(n.Substring(prefab.Length + 1), out var of) && !of.enemy)
+                {
+                    p = new SpawnPrefab { name = n, from = "pool of " + of.name, enemy = false };
+                    p.types.AddRange(of.types);
+                    prefabs.Add(p);
+                    prefabByName[n] = p;
+                    return t.gameObject;
+                }
+            }
             return null;
         }
 
