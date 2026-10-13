@@ -61,7 +61,8 @@ namespace MoonlighterOracle
     /// stick on it, 30 frames standing; 120 frames standing (360 in the generic mode: more of
     /// the enemies' own attacks). He doesn't die: his health is refilled after every hit
     /// (RecoverAllHealth, after DealDamageToPlayer has run). With `-oracle-hero-off-holes` he
-    /// lets go of the stick for the rest of a segment once he pushes into a hole (no fall).
+    /// lets go of the stick for the rest of a segment once he pushes into a hole (no fall); with
+    /// `-oracle-hero-no-attacks` his attack segments stand.
     ///
     /// Not deterministic: the frame times (60 fps asked, real time measured: deltaTime is
     /// recorded), and so how many fixed steps each frame has (recorded too); the hit-stop
@@ -195,7 +196,7 @@ namespace MoonlighterOracle
         /// Toward the nearest live slime from his collider's centre; let go within 12.
         private static Vector2 StickFor(Segment s)
         {
-            if (s.kind == Kind.Stand) return Vector2.zero;
+            if (s.kind == Kind.Stand || (s.kind == Kind.Attack && NoAttacks)) return Vector2.zero;
             var ctrl = HeroMerchant.Instance.heroMerchantController;
             Vector2 h = (Vector2)ctrl.transform.position + ctrl.characterCollider.offset;
             float best = float.MaxValue;
@@ -220,6 +221,11 @@ namespace MoonlighterOracle
         // Golem_Enemies_3's into its secret room, which switches its BrokenGolemTurrets off for the
         // rest of the recording. Only the input changes; the start line says "heroOffHoles".
         internal static bool OffHoles;
+        // `-oracle-hero-no-attacks`: his attack segments stand (no Action1, the stick let go), so
+        // the enemies outlive the recording (TurretRootMotionProbe.cs needs a BrokenGolemTurret up
+        // at its end; Golem_Chest_17's one died to his first swing, frame 272). The start line
+        // says "heroNoAttacks".
+        internal static bool NoAttacks;
         private static int stickHeldUntil = -1; // (Time.frameCount)
 
         // The first frame after the current segment.
@@ -267,7 +273,7 @@ namespace MoonlighterOracle
                 if (a == null) return true;
                 if (__instance != a.Action1 && __instance != a.Action2 && __instance != a.Action3 && __instance != a.Action4 && __instance != a.LeftTrigger)
                     return true;
-                bool down = __instance == a.Action1 && Current(out Segment s, out bool first) && first && s.kind == Kind.Attack;
+                bool down = __instance == a.Action1 && !NoAttacks && Current(out Segment s, out bool first) && first && s.kind == Kind.Attack;
                 __instance.CommitWithValue(down ? 1f : 0f, updateTick, deltaTime);
                 return false;
             }
@@ -780,6 +786,7 @@ namespace MoonlighterOracle
             var ma = DarkTonic.MasterAudio.MasterAudio.SafeInstance;
             j.Prop("maFollower", ma != null ? (int)ma.variationFollowerType : -1);
             if (OffHoles) j.Prop("heroOffHoles", true); // (-oracle-hero-off-holes)
+            if (NoAttacks) j.Prop("heroNoAttacks", true); // (-oracle-hero-no-attacks)
             TurretOracle.WriteStart(j, room);
             CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
             Emit(j);
