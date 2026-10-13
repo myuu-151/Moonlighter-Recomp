@@ -153,6 +153,9 @@ struct ReplayHooks {
     virtual void BeforeAnimators(float /*deltaTime*/) {}
     // The frame's end (after the enemies' rows).
     virtual void AtFrameEnd(long long /*frame*/, const Value& /*frameLine*/, Tally& /*t*/) {}
+    // After the last frame: the recording's lines of other kinds, in order (the
+    // BrokenGolemTurret's "rootMotionProbe", made after the recording).
+    virtual void AfterFrames(const std::vector<Value>& /*otherLines*/, Tally& /*t*/) {}
 };
 
 // What a replay needs of the game's data.
@@ -294,6 +297,7 @@ void SetMap(game::PolyNav2D& nav, const Value& m)
 
 #include "enemy_replay_colliders.h" // (the HermitSlime's rows: ColliderReplay)
 #include "enemy_replay_room.h"      // (the room's DisableEnemies: RoomExitReplay)
+#include "enemy_replay_critters.h"  // (the room's critters: CritterReplay)
 
 int ReplayRecording(const std::string& file, const ReplayData& data)
 {
@@ -303,7 +307,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         return 0;
     }
     Value start;
-    std::vector<Value> enemyLines, frames, maps, probes, colliders;
+    std::vector<Value> enemyLines, frames, maps, probes, colliders, otherLines;
     for (std::string line; std::getline(in, line);) {
         if (line.empty()) continue;
         Value v = json::Parse(line);
@@ -314,6 +318,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         else if (ev == "navMap") maps.push_back(std::move(v));
         else if (ev == "rngProbe") probes.push_back(std::move(v));
         else if (ev == "collider") colliders.push_back(std::move(v));
+        else otherLines.push_back(std::move(v)); // (ReplayHooks::AfterFrames)
     }
     if (start.IsNull() || enemyLines.empty() || frames.empty() || maps.empty()) {
         std::printf("%s: no start, enemies, frames or map\n", file.c_str());
@@ -354,6 +359,24 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             if (v["path"].s == c.path && v.Find("body")) body = v["body"].s;
         world.AddCollider(c, body == "Kinematic" ? unity::RigidbodyType2D::Kinematic : unity::RigidbodyType2D::Static, body != "none");
     }
+    // The room's triggers on a Kinematic or Static Rigidbody2D (a chest's "Trigger" child, on the
+    // chest's body), as the room's colliders: an attack trigger enters them as it enters those
+    // (enemy_FlyingKamikazeGolem.jsonl, frame 76: IronChest(Clone)/Trigger). The room's only (the
+    // hero's ActionAreas are such triggers too, but they're his: HerosTrigger).
+    unity::Physics2D bodyTriggers;
+    const std::string roomPath = "Dungeon/" + start["room"].s + "/";
+    for (const Value& c : colliders) {
+        const std::string body = c.Find("body") ? c["body"].s : "none";
+        if ((body != "Kinematic" && body != "Static") || !c["trigger"].b || !c["enabled"].b || c["type"].s != "BoxCollider2D") continue;
+        if (c["path"].s.compare(0, roomPath.size(), roomPath) != 0) continue;
+        bodyTriggers.Add(ColliderFrom(c));
+    }
+    for (const unity::Collider2D& c : bodyTriggers.Colliders()) {
+        std::string body = "none";
+        for (const Value& v : colliders)
+            if (v["path"].s == c.path && v.Find("body")) body = v["body"].s;
+        world.AddCollider(c, body == "Kinematic" ? unity::RigidbodyType2D::Kinematic : unity::RigidbodyType2D::Static, true);
+    }
     // The room's triggers without a body of their own (the breakables'), after: an enemy's attack
     // trigger enters them too (enemy_GolemSoldier.jsonl: OnTriggerEnter2D on a BreakableTable).
     unity::Physics2D roomTriggers;
@@ -367,6 +390,13 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     std::vector<std::string> triggerNames;
     for (const unity::Collider2D& c : roomTriggers.Colliders()) triggerNames.push_back(c.path.substr(c.path.rfind('/') + 1));
     auto RoomTrigger = [&](const std::string& name) { return std::find(triggerNames.begin(), triggerNames.end(), name) != triggerNames.end(); };
+    // A hit of the port's on one of those (by its fixture's collider).
+    auto RoomTriggerHit = [&](const game::EnemyPhysics::Hit& hit) {
+        const unity::Collider2D* c = hit.otherFixture ? world.ColliderOf(hit.otherFixture) : nullptr;
+        for (const unity::Collider2D& t : roomTriggers.Colliders())
+            if (c == &t) return true;
+        return false;
+    };
     const Value& h = start["hero"];
     unity::Rigidbody2DDef heroDef;
     heroDef.mass = Bits(h["mass"]);
@@ -380,6 +410,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     const Value& f0 = frames[0];
     unity::Rigidbody2D& heroBody = world.AddBody(heroDef, V2(h["pos"]), static_cast<int>(h["layer"].AsInt()), V2(h["colliderOffset"]),
                                                  V2(h["colliderSize"]));
+    CritterReplay critterRows; // (tests/enemy_replay_critters.h)
+    critterRows.Setup(start, colliders, enemyLines, world);
     game::EnemyPhysics::Options physicsOptions;
     physicsOptions.writeBackUnmoved = std::getenv("ML_SLIME_WRITEBACK_MOVED") == nullptr;
     game::EnemyPhysics physics(world, physicsOptions);
@@ -659,6 +691,9 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             unity::Random::SetState(State(f["rng"]));
         }
         nav.BeginFrame();
+        // Time.frameCount: the frame's from its start, its fixed steps' sounds included (a
+        // variation played there isn't playing yet in the frame's Update: game/MasterAudio.h).
+        audio.frameCount = f.Find("fc") ? static_cast<int>(f["fc"].AsInt()) : static_cast<int>(fn);
         if (data.hooks) data.hooks->BeginFrame(fn, f);
         roomExit.Plan(f, fi > 0 ? &frames[fi - 1] : nullptr, roomList);
         const Value& events = f["events"];
@@ -706,6 +741,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             if (data.hooks) data.hooks->BeforeStep(fn, k, f, t);
             portDamage.clear();
             colliderRows.portTypes.clear();
+            critterRows.BeforeStep(f, k, world);
             physics.Step(fixedDt);
             if (const char* cf = std::getenv(data.contactsEnv.c_str()); cf && std::atoll(cf) == fn)
                 for (ReplayEnemy& s : enemies) {
@@ -723,16 +759,22 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             // breakables') inform without failing: a box grazing a table's edge leaves it and
             // enters it again in Box2D where the game reports the one enter (slime.jsonl, frame
             // 365, three frames after the first), and the hero can break a table without the
-            // recording saying.
-            for (int pass = 0; pass < 2; pass++) {
-                const bool triggers = pass == 1;
+            // recording saying. Those on the room's critters, where the recording lacks their
+            // moves, can't be made: they fail on a row of their own, which says to record again
+            // (tests/enemy_replay_critters.h).
+            for (int pass = 0; pass < 3; pass++) {
+                const bool triggers = pass == 1, critterPass = pass == 2;
+                if (critterPass && critterRows.recorded) continue;
                 std::vector<std::pair<int, bool>> mine, theirs;
-                for (const game::EnemyPhysics::Hit& hit : physics.LastHits())
-                    if (hit.otherTrigger == triggers) mine.emplace_back(idOf(*hit.enemy), hit.player);
+                if (!critterPass)
+                    for (const game::EnemyPhysics::Hit& hit : physics.LastHits())
+                        if (RoomTriggerHit(hit) == triggers) mine.emplace_back(idOf(*hit.enemy), hit.player);
                 for (const Value& ev : events.arr) {
                     if (ev["k"].s != "attackHit" || ev["step"].AsInt() != static_cast<long long>(k)) continue;
                     const std::string other = ev["other"].IsString() ? ev["other"].s : "";
-                    if (HerosTrigger(other) || RoomTrigger(other) != triggers) continue;
+                    if (HerosTrigger(other)) continue;
+                    if ((!critterRows.recorded && critterRows.IsCritterName(other)) != critterPass) continue;
+                    if (!critterPass && RoomTrigger(other) != triggers) continue;
                     theirs.emplace_back(static_cast<int>(ev["s"].AsInt()), ev["player"].b);
                 }
                 if (mine.empty() && theirs.empty()) continue;
@@ -742,7 +784,10 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                 for (const auto& hit : mine) which += " " + std::to_string(hit.first) + (hit.second ? "/hero" : "/other");
                 which += ", game";
                 for (const auto& hit : theirs) which += " " + std::to_string(hit.first) + (hit.second ? "/hero" : "/other");
-                if (triggers) t.Info("attack trigger: OnTriggerEnter2D on the room's triggers (breakables)", mine == theirs, which);
+                if (critterPass)
+                    t.Add("attack trigger: OnTriggerEnter2D on the room's critters (their moves unrecorded: record again, CritterOracle.cs)",
+                          mine == theirs, which);
+                else if (triggers) t.Info("attack trigger: OnTriggerEnter2D on the room's triggers (breakables)", mine == theirs, which);
                 else t.Add("attack trigger: OnTriggerEnter2D (whose, on the hero or a collider)", mine == theirs, which);
             }
             // The weapon's hits in this step, in the game's order; the enemies' own hits on him.
@@ -798,7 +843,6 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         // the hero's position it had).
         calls.now = time;
         audio.now = time;
-        audio.frameCount = f.Find("fc") ? static_cast<int>(f["fc"].AsInt()) : static_cast<int>(fn);
         // DOTween: the scaled tweens by deltaTime, the independent ones by its own unscaled clock
         // ("dotweenUdt" where the recording has it; else Time.unscaledDeltaTime, close to it).
         const Value* tweenUdt = f.Find("dotweenUdt");
@@ -938,6 +982,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         }
         if (data.hooks) data.hooks->AtFrameEnd(fn, f, t);
     }
+    if (data.hooks) data.hooks->AfterFrames(otherLines, t);
     game::PolyNav2D::current = nullptr;
     std::printf("\n");
     t.Print();

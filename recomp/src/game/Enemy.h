@@ -452,6 +452,7 @@ public:
         Enemy* enemy = nullptr;
         bool player = false;
         bool otherTrigger = false; // what it touched is a trigger itself (a breakable's)
+        const b2Fixture* otherFixture = nullptr; // what it touched (for checks)
     };
     const std::vector<Hit>& LastHits() const { return hits_; }
 

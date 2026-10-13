@@ -18,7 +18,15 @@
 //   - its child's EventSounds.OnEnable ("enSnd": the golem switched on, mostly before the
 //     recording, by EnableEnemies): that the game drew exactly when the port's golem has an
 //     enable sound (Enemy::enableSounds); the port's draws from the game's state are printed
-//     (the replay's MasterAudio pools aren't the game's then).
+//     (the replay's MasterAudio pools aren't the game's then). The first one before the
+//     recording is the golem's Instantiate at the floor's generation (DungeonRoom.RoomPlaced ->
+//     SpawnEnemies, the prefab instantiated active), which comes before
+//     DungeonGenerator.GenerateSounds instantiates the dungeon's DynamicSoundGroupCreators
+//     ("Sounds - GolemDungeon", ...): MasterAudio has no such group yet ("could not find
+//     sound"), so nothing plays and nothing draws (enemy_FlyingKamikazeGolem.jsonl: frameCount
+//     16523, 0 draws; game/SpawnDraws.cpp: no spawn draws but the Tangles'). That one runs
+//     the port's sounds against a MasterAudio without the dungeon's groups, its draws
+//     compared bit for bit.
 
 #include <map>
 #include <string>
@@ -93,13 +101,29 @@ struct FlyKamiReplay : ReplayHooks {
         tally = &t;
     }
 
-    void CheckEnableSounds(const game::Enemy& e, const Value& fl, const std::string& at, Tally& t)
+    // `beforeRecording`: the start's list, whose first is the floor's generation's (above).
+    void CheckEnableSounds(const game::Enemy& e, const Value& fl, const std::string& at, Tally& t, bool beforeRecording)
     {
         const Value* snd = fl.Find("enSnd");
         if (!snd) return;
+        size_t index = 0;
         for (const Value& s : snd->arr) {
             const unity::Random::State r0 = State(s["rng0"]), r1 = State(s["rng1"]);
             const int game = unity::Random::DrawsBetween(r0, r1, 64);
+            if (beforeRecording && index++ == 0) {
+                // MasterAudio at the floor's generation: none of the dungeon's sound groups yet.
+                const unity::Random::State saved = unity::Random::GetState();
+                game::MasterAudio atGeneration;
+                unity::Random::SetState(r0);
+                for (const std::string& name : e.enableSounds) atGeneration.PlaySound(name);
+                const int port = unity::Random::DrawsBetween(r0, unity::Random::GetState(), 64);
+                t.Add("EventSounds.OnEnable at the floor's generation (SpawnEnemies before GenerateSounds: no group yet), its draws",
+                      SameState(unity::Random::GetState(), r1),
+                      at + " (frameCount " + std::to_string(s["fc"].AsInt()) + "): the port " + std::to_string(port) + " draws, the game " +
+                          std::to_string(game));
+                unity::Random::SetState(saved);
+                continue;
+            }
             t.Add("EventSounds.OnEnable: the golem's enable sound draws (Enemy::enableSounds)", (game > 0) == !e.enableSounds.empty(),
                   at + " (frameCount " + std::to_string(s["fc"].AsInt()) + "): the game " + std::to_string(game) + " draws, the port's sounds " +
                       std::to_string(e.enableSounds.size()));
@@ -132,7 +156,7 @@ struct FlyKamiReplay : ReplayHooks {
             e.colliderEnabled = (*fl)["colOn"].b; // (before EnemyPhysics::Add makes the body)
             if ((*fl)["invEnd"].b || (*fl)["invEnable"].b || golem->isReturning)
                 std::printf("note: golem %d starts with EndCharge, EnableCharge or its return pending (not replayable)\n", id);
-            CheckEnableSounds(e, *fl, "golem " + std::to_string(id) + " before the recording", t);
+            CheckEnableSounds(e, *fl, "golem " + std::to_string(id) + " before the recording", t, true);
         } else {
             std::printf("note: no \"fly\" in the recording (FlyKamiOracle.cs): the golems' own rows skipped\n");
         }
@@ -251,7 +275,7 @@ struct FlyKamiReplay : ReplayHooks {
                     t.Add("golem's Invokes pending (EndCharge, EnableCharge)",
                           calls->IsInvoking(g, "EndCharge") == (*fl)["invEnd"].b && calls->IsInvoking(g, "EnableCharge") == (*fl)["invEnable"].b, who);
                 t.Add("golem's z (the port's 2D transforms: 0)", Bits((*fl)["z"]) == 0.0f, who + ": " + std::to_string(Bits((*fl)["z"])));
-                CheckEnableSounds(e, *fl, who, t);
+                CheckEnableSounds(e, *fl, who, t, false);
             }
         portEvents.clear();
         charges.clear();

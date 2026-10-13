@@ -206,6 +206,7 @@ void EnemyProjectiles::AfterWorldStep()
 {
     if (!world_) return;
     std::vector<std::pair<const EnemyProjectile*, const b2Fixture*>> now;
+    points_.clear();
     const std::vector<EnemyProjectile*> all = All();
     auto projectileOf = [&](const b2Body* b) -> EnemyProjectile* {
         for (EnemyProjectile* p : all)
@@ -223,11 +224,21 @@ void EnemyProjectiles::AfterWorldStep()
             EnemyProjectile* p = projectileOf(mine->GetBody());
             if (!p) continue;
             now.emplace_back(p, other);
+            points_.emplace_back(p, c->GetManifold()->pointCount);
             if (std::find(touching_.begin(), touching_.end(), std::make_pair(static_cast<const EnemyProjectile*>(p), other)) == touching_.end())
                 enters_.emplace_back(p, Describe(other));
         }
     }
     touching_ = std::move(now);
+}
+
+int EnemyProjectiles::GetContactsCount(const EnemyProjectile& p) const
+{
+    if (p.isTrigger) return 0;
+    int n = 0;
+    for (const auto& [q, points] : points_)
+        if (q == &p) n += points;
+    return n;
 }
 
 void EnemyProjectiles::WriteBack()

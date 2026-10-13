@@ -297,6 +297,7 @@ namespace MoonlighterOracle
         {
             private static void Prefix(EnemyBehaviour __instance, GameObject other)
             {
+                if (attackHitDepth > 0) return; // (recorded by the attack trigger's hook: EnemyOracleAttackHit.cs)
                 int id = Id(__instance);
                 if (id >= 0) Add(new Ev { k = "attackHit", s = id, step = Step, player = other != null && other.CompareTag("Player"), other = other != null ? other.name : null });
             }
@@ -686,6 +687,7 @@ namespace MoonlighterOracle
             if (independent != null) j.Prop("dotweenIndependent", (bool)independent.GetValue(null));
             j.Key("dotweenTimeScale").Bits(DG.Tweening.DOTween.timeScale);
             TurretOracle.WriteStart(j, room);
+            CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
             Emit(j);
         }
 
@@ -716,6 +718,7 @@ namespace MoonlighterOracle
             stepBoxes.Clear();
             TurretOracle.Clear();
             FlyKamiOracle.Clear();
+            CritterOracle.Clear();
         }
 
         private static void WriteFrame(int f)
@@ -780,7 +783,7 @@ namespace MoonlighterOracle
                         Rng.WriteState(j.Key("rng0"), e.rng0);
                         Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
                         break;
-                    default: WriteEventExtra(j, e); break;
+                    default: if (!WriteEventExtra(j, e)) WriteRoomEvent(j, e); break; // (EnemyOracleColliders.cs, EnemyOracleRoom.cs)
                 }
                 j.EndObj();
             }
@@ -808,6 +811,7 @@ namespace MoonlighterOracle
             j.EndArr();
             TurretOracle.WriteFrame(j);
             FlyKamiOracle.WriteFrame(j);
+            CritterOracle.WriteFrame(j);
             Emit(j);
         }
 
@@ -838,6 +842,7 @@ namespace MoonlighterOracle
                 StepBoxes();
                 TurretOracle.OnStep();
                 FlyKamiOracle.OnStep(slimes);
+                CritterOracle.OnStep();
             }
         }
 
@@ -957,6 +962,7 @@ namespace MoonlighterOracle
             HookAnimationEvents();
             TurretOracle.Begin(prefab);
             FlyKamiOracle.Begin(prefab);
+            CritterOracle.Begin(room);
             var rec = new GameObject("OracleEnemyRecorder").AddComponent<Recorder>();
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
             // The start, at a frame's end.
@@ -989,8 +995,11 @@ namespace MoonlighterOracle
             }
             recording = false;
             Active = false;
+            // (The turret's root motion on a moving body: one line after the last frame.)
+            if (TurretOracle.Wants(prefab)) yield return TurretRootMotionProbe.Run(slimes, Emit);
             TurretOracle.End();
             FlyKamiOracle.End();
+            CritterOracle.End();
             UnityEngine.Object.Destroy(rec.gameObject);
             writer.Flush();
             writer.Close();

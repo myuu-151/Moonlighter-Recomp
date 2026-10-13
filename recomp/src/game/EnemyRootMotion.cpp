@@ -13,9 +13,10 @@
 // leaves it asleep, frame 56 of its recording).
 //
 // Open: whether the root motion also sets the body's velocity (to deltaPosition / deltaTime, zero
-// here) or moves it (MovePosition): a turret never moves in the recording. TurretOracle.cs's
-// "rootMotionProbe" (after the recording) records what a velocity set in Update has become by
-// the frame's end; tests/turret_replay.h checks it against this model when it's there.
+// here) or moves it (MovePosition): a turret never moves in the recording. The oracle's
+// "rootMotionProbe" (TurretRootMotionProbe.cs, after the recording) sets a turret's velocity in
+// Update and records it at the frame's end and the body after the next fixed step;
+// tests/turret_replay.h (AfterFrames) checks it against this model where the recording has it.
 
 #include <Box2D/Box2D.h>
 

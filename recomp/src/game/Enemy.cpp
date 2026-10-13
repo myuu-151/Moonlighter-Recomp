@@ -654,6 +654,7 @@ public:
             hit.enemy = e;
             hit.player = owner_.hero_ && other->GetBody() == owner_.hero_->Body() && !other->IsSensor();
             hit.otherTrigger = other->IsSensor();
+            hit.otherFixture = other;
             owner_.hits_.push_back(hit);
         }
     }
