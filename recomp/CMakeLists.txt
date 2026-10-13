@@ -221,7 +221,10 @@ add_test(NAME enemy_hermit_slime
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 # The BrokenGolemTurret and its shots (game/BrokenGolemTurret.h, game/EnemyProjectile.h): turrets in a
 # box (the look's raycasts, the shots' pool, flight, crash and return), and against the game
-# (`-oracle-enemy=BrokenGolemTurret`; skipped if there's none).
+# (`-oracle-enemy=BrokenGolemTurret -oracle-hero-off-holes -oracle-hero-no-attacks`: recq
+# enemyfix-turret-3, Golem_Enemies_2's four turrets for 968 frames and the root motion's probe;
+# skipped if there's none). Several shots' OnCollisionEnter2D in one step are called in the
+# recording's order, which a room's replay can't rebuild (tests/turret_replay.h).
 add_test(NAME enemy_broken_turret
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_BrokenGolemTurret.jsonl BrokenGolemTurret
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
