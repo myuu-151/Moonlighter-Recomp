@@ -81,7 +81,7 @@ int FillRoomZonesWithSprites(const std::vector<Rect>& zones, const std::vector<D
             if (Random::Range(0.0f, 1.0f) <= generationProb) {
                 int sprite = GetRandom(static_cast<int>(details.size()));
                 const DetailsData::Size& s = details.at(static_cast<size_t>(sprite));
-                if (s.null) throw cs::NullReferenceException(); // random.texture on a null sprite
+                if (s.null) cs::ThrowNullReference(); // random.texture on a null sprite
                 float halfW = static_cast<float>(s.w) / 2.0f;
                 float halfH = static_cast<float>(s.h) / 2.0f;
                 Rect rect{z.x + halfW, z.y + halfH, z.width - static_cast<float>(s.w), z.height - static_cast<float>(s.h)};

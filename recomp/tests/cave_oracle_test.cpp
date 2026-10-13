@@ -214,7 +214,7 @@ std::string CheckLayout(const Value& rec, const FloorGenerationSaveInfo& fi, Ran
     std::string exception;
     try {
         L.Generate(fi, specialAvailable);
-    } catch (const cs::Exception& e) {
+    } catch (const cs::Thrown& e) {
         exception = e.TypeName();
     }
     std::string result;

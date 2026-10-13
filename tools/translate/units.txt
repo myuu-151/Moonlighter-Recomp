@@ -1,0 +1,21 @@
+# What tools/translate translates (docs/translator_plan.md, "Units"): the seeds of the closure.
+#   file <path under the decompiled Assembly-CSharp>   every type declared in it, whole
+#   type <metadata name> [members...]                  the type; only those members if given
+# Everything the seeds call is translated too.
+
+# Dungeon generation: the cave layout (cave_oracle, ML_TRANSLATED=ON)
+file CaveGenerator.cs
+file CaveRoom.cs
+file SingleCaveRoom.cs
+file CaveRoomUnit.cs
+file BossCaveRoom.cs
+file Miner.cs
+file FixedStepsMiner.cs
+file CommonRoomMiner.cs
+file BossRoomMiner.cs
+type DungeonGenerator+FloorGenerationSaveInfo
+type DungeonGenerator GenerateBossRoomCaveRoom GenerateNextLevelCaveRoom GenerateCaveOnsen GenerateHomeChestCaveRoom GenerateWavesCaveRoom GenerateAbandonedItemsCaveRoom GenerateWandererCaveRoom GenerateTimedChestCaveRooms GenerateCrazyPeteCaveRoom GenerateCorruptedCaveRoom GeneratChestRooms GetComplementaryDoorIndex
+# the fields GenerateDungeonCoroutine's layout part sets (recomp/tests/translated runs that part)
+type DungeonGenerator .ctor floorGenerationSaveInfo culture level lastDoorDirectionIndex cave bossCaveRoom initCaveRoom onsenCaveRoom homeChestCaveRoom wavesCaveRoom wandererNestCaveRoom abandonedItemsCaveRoom timedChestCaveRooms chestCaveRooms crazyPeteCaveRoom specialDungeonCaveRoom corruptedCaveRoom usedSpecialCaveRooms
+# The constants the generation reads (the game's own JSON reader, FullSerializer's)
+type Constants ReadFile GetFloat GetInt GetString GetBool GetFloatArray GetIntArray GetStringArray GetString2DArray GetFloat2DArray GetInt2DArray

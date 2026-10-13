@@ -35,7 +35,7 @@ void RoomFill::LoadGridFromInfo()
     DungeonTile rocksOrHoles = Random::Range(0.0f, 1.0f) > 0.5f ? DungeonTile::Rocks : DungeonTile::Holes;
     for (int i = 0; i < pack->spawns->Count(); i++) {
         DungeonRoomInfo::TileSpawn* s = (*pack->spawns)[i];
-        if (static_cast<unsigned>(s->index) >= obstaclesGrid.size()) throw cs::Exception("IndexOutOfRangeException");
+        if (static_cast<unsigned>(s->index) >= obstaclesGrid.size()) cs::ThrowIndexOutOfRange();
         obstaclesGrid[s->index] = static_cast<int>(s->tile);
         if (s->tile == DungeonTile::None_Holes) obstaclesGrid[s->index] = static_cast<int>(noneOrHoles);
         if (s->tile == DungeonTile::Holes_Rocks) obstaclesGrid[s->index] = static_cast<int>(rocksOrHoles);
