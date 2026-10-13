@@ -82,6 +82,15 @@ FIELDS = {
     'EventSounds': ('m_Enabled', 'useEnableSound', 'enableSound'),
     # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
     'WeaponCollisionDetection': ('weaponAttackType',),
+    # The GolemHead (an EnemyBehaviour): its roll's settings (the prefab's runOverForce 50, not the
+    # class's 9000), the collider it switches (its object's path: the AttackCollider's box), its
+    # break particles (their object's path; presentation), its PolyNav2D (none: FindObjectOfType),
+    # and EnemyBehaviour.effectOnAttack (whether set: its is the ConfusedEffect prefab's).
+    'GolemHeadBehaviour': ENEMY_BEHAVIOUR + ('runOverRepeatTime', 'runOverForce', 'runOverCollider', 'breakParticles',
+                                             'polyNavInstance', 'effectOnAttack'),
+    # A MoonlighterEffect an enemy's attack puts on the hero (the GolemHead's effectOnAttack):
+    # target (0 None), unique (0 None, 1 ResetOther, 2 EraseThis), its sound, how long.
+    'ConfusedEffect': ('target', 'soundName', '_yOffset', 'unique', 'effectName', 'confusedTime'),
 }
 
 
@@ -129,6 +138,8 @@ STRUCTURED = {
     ('BrokenGolemTurretProjectile', 'projectileArt'): object_path,
     ('FlyingKamikazeGolemBehaviour', 'Attack'): object_path,
     ('EventSounds', 'enableSound'): play_sound_types,
+    ('GolemHeadBehaviour', 'runOverCollider'): object_path,  # (a component: its object's path)
+    ('GolemHeadBehaviour', 'breakParticles'): object_path,
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 

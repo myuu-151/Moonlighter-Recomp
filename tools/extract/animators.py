@@ -30,6 +30,8 @@ the port uses (TARGETS):
       sprites/enemies/GolemTurretProjectile/ (the turrets' shot: its flight and its crash)
   enemies_golem / FlyingKamikazeGolem (controller), exact      -> animators/FlyingKamikazeGolem.json,
       sprites/enemies/FlyingKamikazeGolem/ (its hover and its charge)
+  enemies_golem / GolemHead (controller), exact                -> animators/GolemHead.json,
+      sprites/enemies/GolemHead/ (its look, roll, clash and stun; updateMode 1, AnimatePhysics)
 
   animators/<name>.json:
     controller, override (the override's name, null for a plain controller)
@@ -106,6 +108,8 @@ TARGETS = (
     ('enemies_golem', 'GolemTurretProjectile', 'controller', 'GolemTurretProjectile', 'enemies/GolemTurretProjectile', 'prefab', True),
     # The FlyingKamikazeGolem: its charge, its flight (its AttackCollider and root box are the script's).
     ('enemies_golem', 'FlyingKamikazeGolem', 'controller', 'FlyingKamikazeGolem', 'enemies/FlyingKamikazeGolem', 'prefab', True),
+    # The GolemHead: its roll, its clash and stun (an AnimatePhysics Animator: updateMode 1).
+    ('enemies_golem', 'GolemHead', 'controller', 'GolemHead', 'enemies/GolemHead', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).
@@ -192,15 +196,21 @@ def clip_curves_exact(clip):
     return out
 
 
-def animator_paths(env, controller_ids):
+def animator_paths(env, controller_ids, renderers=None):
     """({CRC32 of a path below the Animator's object: the path}, {update modes}) of the Animators
-    playing the controller: a clip binding's path is such a CRC32."""
+    playing the controller: a clip binding's path is such a CRC32. `renderers` (a set, if given)
+    gets the CRC32s of the paths whose object has a SpriteRenderer."""
     objs = {o.path_id: o for o in env.objects}
     paths, modes = {}, set()
 
     def walk(transform_id, path):
         t = objs[transform_id].read_typetree()
         paths[zlib.crc32(path.encode())] = path
+        if renderers is not None:
+            go = objs[t['m_GameObject']['m_PathID']].read_typetree()
+            if any(c['component']['m_FileID'] == 0 and c['component']['m_PathID'] in objs and
+                   objs[c['component']['m_PathID']].type.name == 'SpriteRenderer' for c in go['m_Component']):
+                renderers.add(zlib.crc32(path.encode()))
         for child in t['m_Children']:
             if child['m_FileID'] == 0 and child['m_PathID'] in objs:
                 c = objs[child['m_PathID']].read_typetree()
@@ -259,7 +269,8 @@ def extract(env, name, kind=None, exact=False):
     label = ac['m_Name'] + (f" (override {override['m_Name']})" if override else '')
     tos = {int(k): v for k, v in ac['m_TOS']}
     tos.update({zlib.crc32(v.encode()): v for v in tos.values()})
-    paths, modes = animator_paths(env, {found.path_id, ac_obj.path_id}) if exact else ({}, set())
+    renderers = set()
+    paths, modes = animator_paths(env, {found.path_id, ac_obj.path_id}, renderers) if exact else ({}, set())
     if len(modes) > 1:
         raise SystemExit(f'{label}: its Animators have different update modes {sorted(modes)}')
 
@@ -303,7 +314,10 @@ def extract(env, name, kind=None, exact=False):
             for binding in b['genericBindings']:
                 n = curve_count(binding)
                 if binding['isPPtrCurve']:
-                    if binding['typeID'] == 212 and binding['customType'] == 23:
+                    # A sprite curve on an object without a SpriteRenderer binds to nothing (the
+                    # GolemHead's CycleDown has a second one on its root): Unity skips it.
+                    unbound = binding['typeID'] == 212 and paths and binding['path'] not in renderers
+                    if binding['typeID'] == 212 and binding['customType'] == 23 and not unbound:
                         if entry['spritePath'] is not None:
                             raise SystemExit(f"{label}: clip {t['m_Name']} has more than one sprite curve")
                         entry['spritePath'] = path_name(binding['path'])
