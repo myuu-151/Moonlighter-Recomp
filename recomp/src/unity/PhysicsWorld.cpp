@@ -254,6 +254,11 @@ void PhysicsWorld::SetLayer(Rigidbody2D& body, int layer)
     if (body.layer_ == layer) return;
     body.layer_ = layer;
     for (b2Fixture* f = body.body_->GetFixtureList(); f; f = f->GetNext()) f->Refilter();
+    // Its colliders on another layer wake the body, its rest started over (as a remade
+    // collider's: enemy_KamikazeGolem.jsonl of recq kamifix-2, frame 167: a kamikaze asleep
+    // since before the recording is awake at the end of the frame its JumpTowardsPlayer put it
+    // on FlyingEnemy, before its jump moved it).
+    if (body.body_->GetType() != b2_staticBody) RestartRest(body);
 }
 
 void PhysicsWorld::FixtureMadeElsewhere() { newContacts_ = true; }
