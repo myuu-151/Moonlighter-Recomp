@@ -65,8 +65,10 @@ void Renderer::cs_trace(cs::Tracer& t)
 Material* Renderer::get_material()
 {
     if (!material_) {
+        // Its own instance (Unity's renderer.material): the renderer's to keep, collected with it.
         material_ = cs::gcnew<Material>();
         material_->name_ = CS_LIT(u"Material (Instance)");
+        material_->rooted_ = false;
     }
     return material_;
 }

@@ -156,3 +156,39 @@ std::string Leaf(const std::string& path)
     const size_t slash = path.rfind('/');
     return slash == std::string::npos ? path : path.substr(slash + 1);
 }
+
+// The enemies the game destroyed, which the replay let go of (their objects collectable): whether
+// the collector freed them (their GameObject no longer among the live objects: the same address
+// with the same instance number) by the replay's end.
+struct Released {
+    const UnityEngine::Object* object = nullptr;
+    int32_t hash = 0;
+    int id = 0;
+};
+inline bool StillLive(const Released& r)
+{
+    for (UnityEngine::Object* o : UnityEngine::Object::Live())
+        if (o == r.object && o->GetHashCode() == r.hash) return true;
+    return false;
+}
+// The collector's account after a replay with ML_GC_EVERY_FRAME: what it freed, the destroyed
+// objects among them, and the destroyed enemies it collected (one kept is referenced by something
+// still live: named).
+inline void PrintCollected(int runs, size_t freed, const std::vector<Released>& released)
+{
+    std::printf("collected at %d frame ends: %zu objects freed (%zu of them destroyed Unity objects), %zu left\n", runs, freed,
+                UnityEngine::Object::DestroyedFreed(), cs::CurrentHeap().Count());
+    if (released.empty()) return;
+    int collected = 0;
+    std::string kept;
+    for (const Released& r : released) {
+        if (!StillLive(r)) {
+            collected++;
+            continue;
+        }
+        kept += " " + std::to_string(r.id);
+        if (std::getenv("ML_GC_WHY"))
+            std::printf("  enemy %d kept: %s\n", r.id, cs::Heap::WhyAlive(const_cast<UnityEngine::Object*>(r.object)).c_str());
+    }
+    std::printf("destroyed enemies collected: %d of %zu%s\n", collected, released.size(), kept.empty() ? "" : (" (still referenced:" + kept + ")").c_str());
+}

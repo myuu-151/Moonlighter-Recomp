@@ -154,9 +154,17 @@ public:
 
     bool destroyed_ = false;
     cs::String* name_ = nullptr;
+    // Held by its native side while it isn't destroyed (a scene's object, a component, an asset): a
+    // root of the collector until Destroy. Off for what the engine leaves to its owner (a renderer's
+    // own material instance: collected with the renderer, as UnloadUnusedAssets would).
+    bool rooted_ = true;
 
-    // Every live UnityEngine.Object (Resources.FindObjectsOfTypeAll); roots of the collector.
+    // Every UnityEngine.Object not yet collected (Resources.FindObjectsOfTypeAll); those not
+    // destroyed (and rooted_) are roots of the collector. A destroyed one is collected once nothing
+    // references it; until then it lives on, == null.
     static std::vector<Object*>& Live();
+    // How many destroyed objects the collector has freed (the _gc replays' evidence).
+    static size_t& DestroyedFreed();
 };
 
 class ScriptableObject : public Object {

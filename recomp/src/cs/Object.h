@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -70,6 +71,7 @@ public:
         if (o && o->gc_mark_ != epoch_) {
             o->gc_mark_ = epoch_;
             stack_.push_back(o);
+            if (parents_) parents_->push_back({o, current_});
         }
     }
     void Drain()
@@ -77,12 +79,17 @@ public:
         while (!stack_.empty()) {
             Object* o = stack_.back();
             stack_.pop_back();
+            current_ = o;
             o->cs_trace(*this);
         }
+        current_ = nullptr;
     }
+    // (A diagnosis: who marked what, Heap::WhyAlive's.)
+    std::vector<std::pair<Object*, Object*>>* parents_ = nullptr;
 
 private:
     std::vector<Object*> stack_;
+    Object* current_ = nullptr;
     uint32_t epoch_;
 };
 
@@ -113,6 +120,9 @@ public:
     // seen. Returns the number of objects freed.
     size_t Collect();
     size_t Count() const { return count_; }
+    // A diagnosis (not for the game): the chain of references from a root to `o` ("" if no root
+    // reaches it), each object by its type, the root first.
+    static std::string WhyAlive(Object* o);
 
 private:
     Object* head_ = nullptr;

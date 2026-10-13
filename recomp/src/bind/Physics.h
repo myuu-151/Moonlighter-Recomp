@@ -30,6 +30,7 @@
 //     PolygonCollider2D's pieces are one), then the collision messages.
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <limits>
 #include <unordered_map>
@@ -220,7 +221,11 @@ public:
     UnityEngine::Collider2D* ObjectOf(const b2Fixture* fixture) const;
 
     void Add(UnityEngine::Rigidbody2D* rb);
+    // The body's component destroyed: out of the world (inactive, as Unity's), and out of this
+    // scene's tables (nothing here references it or its colliders any more: they're collectable).
     void Remove(UnityEngine::Rigidbody2D* rb);
+    // A collider destroyed: its fixture gone (a body's own box: the mass kept), its entry dropped.
+    void ColliderDestroyed(UnityEngine::Collider2D* c);
     void SetActive(UnityEngine::Rigidbody2D* rb, bool active);
     void LayerChanged(UnityEngine::GameObject* go);
     // A replay's start: the body somewhere its transform isn't, without the transform counting as moved.
@@ -283,6 +288,7 @@ private:
     struct Attached {
         UnityEngine::Collider2D* collider = nullptr;
         b2Fixture* fixture = nullptr;
+        int* slot = nullptr; // its fixture's userData: the layer (slots_: outlives the collider)
         bool built = false;
         UnityEngine::Vector2 center, size;
         bool sensor = false;
@@ -311,6 +317,8 @@ private:
     bool InColliderAlready(const b2Fixture* sensor, const b2Fixture* other) const;
 
     std::vector<Body> bodies_;
+    std::deque<int> slots_; // the attached fixtures' layers (stable addresses, never freed)
+    void ForgetFixture(const b2Fixture* f);
     std::unordered_map<const b2Fixture*, UnityEngine::Collider2D*> fixtures_;
     std::vector<std::pair<const unity::Collider2D*, UnityEngine::Collider2D*>> queryObjects_;
     Listener* listener_ = nullptr;

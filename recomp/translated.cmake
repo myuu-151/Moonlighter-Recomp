@@ -109,6 +109,12 @@ foreach(_i RANGE 0 ${_ml_last} 3)
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
     list(APPEND _ml_gc_tests ${_name}_gc)
 endforeach()
+# The collector on the facade's objects (tests/translated/bind_gc_test): a destroyed object kept
+# while referenced (== null), collected with its tree once nothing references it.
+add_executable(bind_gc_test tests/translated/bind_gc_test.cpp)
+target_link_libraries(bind_gc_test PRIVATE mlgen)
+add_test(NAME bind_gc COMMAND bind_gc_test)
+set_tests_properties(bind_gc PROPERTIES ENVIRONMENT "ML_GC_POISON=1")
 # The Tangle (tests/translated/tangle_translated_test: tangle_test's replay and rows, its weave's
 # LateUpdates in the game's order) on the game's own TangleBehaviour.
 add_executable(tangle_translated_test tests/translated/tangle_translated_test.cpp tests/translated/scene/Standins.cpp)

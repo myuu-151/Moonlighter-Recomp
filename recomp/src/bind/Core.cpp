@@ -13,9 +13,11 @@ namespace UnityEngine {
 namespace {
 std::string gTextRoot = "data/extracted";
 
+// The native side's: every object not destroyed (a destroyed one only through what references it).
 void TraceLive(cs::Tracer& t)
 {
-    for (Object* o : Object::Live()) t.Mark(o);
+    for (Object* o : Object::Live())
+        if (!o->destroyed_ && o->rooted_) t.Mark(o);
 }
 const bool gLiveRoots = cs::RegisterRoots(&TraceLive);
 
@@ -44,7 +46,13 @@ Object::Object()
     Live().push_back(this);
 }
 
-Object::Object(const Object& o) : cs::Object(o), destroyed_(false), name_(o.name_)
+size_t& Object::DestroyedFreed()
+{
+    static size_t n = 0;
+    return n;
+}
+
+Object::Object(const Object& o) : cs::Object(o), destroyed_(false), name_(o.name_), rooted_(o.rooted_)
 {
     Live().push_back(this);
 }
@@ -56,6 +64,7 @@ Object* Object::cs_Clone()
 
 Object::~Object()
 {
+    if (destroyed_) DestroyedFreed()++;
     auto& l = Live();
     auto it = std::find(l.begin(), l.end(), this);
     if (it != l.end()) l.erase(it);

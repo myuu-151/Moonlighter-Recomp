@@ -892,6 +892,7 @@ int Replay(const std::string& file, Data& data)
     const bool gcEveryFrame = std::getenv("ML_GC_EVERY_FRAME") != nullptr;
     int gcRuns = 0;
     size_t gcFreed = 0;
+    std::vector<Released> released;
     auto runRoomExit = [&](int step) {
         hooks->AroundRoomExit(false, step);
         room->DisableEnemies();
@@ -1325,6 +1326,15 @@ int Replay(const std::string& file, Data& data)
             if (t.debug) std::printf("frame %lld enemy %d: %s %s | game %s\n", fn, id, Str(Position(s)).c_str(), SpriteOf(s).c_str(), Str(V2(v["pos"])).c_str());
         }
         hooks->AtFrameEnd(fn, f, t);
+        // An enemy the game destroyed is let go of (the game's references to it are the game's
+        // business now): its objects are collectable.
+        for (Replayed& s : enemies)
+            if (s.go && s.go->destroyed_) {
+                released.push_back({s.go, s.go->GetHashCode(), s.id});
+                const int id = s.id;
+                s = Replayed{};
+                s.id = id;
+            }
         // ML_GC_EVERY_FRAME=1: the collector at every frame boundary (docs/translator_plan.md,
         // "Memory"), where no translated code is running: what the roots don't reach is freed, so
         // a live object the roots miss shows up as a crash or a mismatch in the frames after.
@@ -1336,7 +1346,7 @@ int Replay(const std::string& file, Data& data)
     hooks->AfterFrames(otherLines, t);
     std::printf("\n");
     t.Print();
-    if (gcEveryFrame) std::printf("collected at %d frame ends: %zu objects freed, %zu left\n", gcRuns, gcFreed, cs::CurrentHeap().Count());
+    if (gcEveryFrame) PrintCollected(gcRuns, gcFreed, released);
     std::printf("Random drawn by the game's other scripts (resynced) %d times\n", rngElsewhere);
     if (roomExit.inferred) std::printf("the room's DisableEnemies placed from the enemies' rows (no event recorded) %d times\n", roomExit.inferred);
     if (unseenEnters)

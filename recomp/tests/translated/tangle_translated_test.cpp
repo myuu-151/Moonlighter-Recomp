@@ -497,6 +497,7 @@ int Replay(const std::string& file, const Data& data)
     const bool gcEveryFrame = std::getenv("ML_GC_EVERY_FRAME") != nullptr;
     int gcRuns = 0;
     size_t gcFreed = 0;
+    std::vector<Released> released;
     for (size_t fi = 0; fi < frames.size(); fi++) {
         const Value& f = frames[fi];
         const long long fn = f["f"].AsInt();
@@ -749,6 +750,14 @@ int Replay(const std::string& file, const Data& data)
             }
             if (t.debug) std::printf("frame %lld tangle %d: %s %s | game %s\n", fn, id, Str(Position(*o)).c_str(), SpriteOf(*o).c_str(), Str(V2(v["pos"])).c_str());
         }
+        // A Tangle the game destroyed is let go of: its objects are collectable.
+        for (TangleObj& s : tangles)
+            if (s.go && s.go->destroyed_) {
+                released.push_back({s.go, s.go->GetHashCode(), s.id});
+                const int id = s.id;
+                s = TangleObj{};
+                s.id = id;
+            }
         if (gcEveryFrame) {
             gcFreed += cs::CurrentHeap().Collect();
             gcRuns++;
@@ -756,7 +765,7 @@ int Replay(const std::string& file, const Data& data)
     }
     std::printf("\n");
     t.Print();
-    if (gcEveryFrame) std::printf("collected at %d frame ends: %zu objects freed, %zu left\n", gcRuns, gcFreed, cs::CurrentHeap().Count());
+    if (gcEveryFrame) PrintCollected(gcRuns, gcFreed, released);
     std::printf("Random drawn by the game's other scripts (resynced) %d times\n", rngElsewhere);
     std::printf("weaves: %d (%d with the raycast hitting)\n", weaves, weaveHits);
     std::printf("script order: the Tangle's LateUpdate before its agent's in %d frames, after it in %d\n", tangleFirst, agentFirst);

@@ -25,7 +25,11 @@ Rigidbody2D* Collider2D::get_attachedRigidbody()
 void Collider2D::Changed() { changed_ = true; }
 void Collider2D::cs_ActiveChanged(bool) { Changed(); }
 void Collider2D::cs_EnabledChanged(bool) { Changed(); }
-void Collider2D::cs_Destroyed() { Changed(); }
+void Collider2D::cs_Destroyed()
+{
+    Changed();
+    if (P()) P()->ColliderDestroyed(this);
+}
 
 void Collider2D::set_isTrigger(bool v)
 {
@@ -77,7 +81,7 @@ void Rigidbody2D::cs_ActiveChanged(bool active)
 
 void Rigidbody2D::cs_Destroyed()
 {
-    if (P()) P()->SetActive(this, false);
+    if (P()) P()->Remove(this);
 }
 
 Vector2 Rigidbody2D::get_velocity() { return body_ ? body_->velocity() : Vector2{}; }
@@ -425,7 +429,65 @@ void PhysicsScene::Add(Rigidbody2D* rb)
     rb->synced_ = Vector2{pos.x, pos.y};
 }
 
-void PhysicsScene::Remove(Rigidbody2D* rb) { SetActive(rb, false); }
+// A fixture this scene won't see again: its pairs and its object forgotten (a new fixture can be
+// made at its address).
+void PhysicsScene::ForgetFixture(const b2Fixture* f)
+{
+    if (!f) return;
+    fixtures_.erase(f);
+    EraseIf(remade_, [&](const b2Fixture* r) { return r == f; });
+    EraseIf(carried_, [&](const std::pair<const b2Fixture*, const b2Fixture*>& c) { return c.first == f || c.second == f; });
+    EraseIf(touching_, [&](const Touch& t) { return t.self == f || t.other == f; });
+    EraseIf(enters_, [&](const Touch& t) { return t.self == f || t.other == f; });
+    EraseIf(stays_, [&](const Touch& t) { return t.self == f || t.other == f; });
+    EraseIf(exits_, [&](const Touch& t) { return t.self == f || t.other == f; });
+}
+
+void PhysicsScene::Remove(Rigidbody2D* rb)
+{
+    SetActive(rb, false);
+    for (size_t i = 0; i < bodies_.size(); i++) {
+        if (bodies_[i].rb != rb) continue;
+        Body& b = bodies_[i];
+        // (The body stays in the world, inactive: no proxies, no contacts; its fixtures' userData
+        // point at this scene's slots or the body's own layer, not at the destroyed objects.)
+        ForgetFixture(b.boxFixture);
+        for (const Attached& a : b.attached) ForgetFixture(a.fixture);
+        bodies_.erase(bodies_.begin() + static_cast<std::ptrdiff_t>(i));
+        return;
+    }
+}
+
+void PhysicsScene::ColliderDestroyed(Collider2D* c)
+{
+    for (Body& b : bodies_) {
+        b2Body* body = b.rb->body_ ? b.rb->body_->Body() : nullptr;
+        if (b.box == c) {
+            if (b.boxFixture && body) {
+                b2MassData mass;
+                body->GetMassData(&mass);
+                ForgetFixture(b.boxFixture);
+                body->DestroyFixture(b.boxFixture);
+                if (body->GetType() == b2_dynamicBody) body->SetMassData(&mass);
+            }
+            b.boxFixture = nullptr;
+            b.boxBuilt = false;
+            b.box = nullptr;
+        }
+        for (size_t k = b.attached.size(); k-- > 0;) {
+            Attached& a = b.attached[k];
+            if (a.collider != c) continue;
+            if (a.fixture && body) {
+                b2MassData mass;
+                body->GetMassData(&mass);
+                ForgetFixture(a.fixture);
+                body->DestroyFixture(a.fixture);
+                if (body->GetType() == b2_dynamicBody) body->SetMassData(&mass);
+            }
+            b.attached.erase(b.attached.begin() + static_cast<std::ptrdiff_t>(k));
+        }
+    }
+}
 
 void PhysicsScene::SetActive(Rigidbody2D* rb, bool active)
 {
@@ -440,6 +502,7 @@ void PhysicsScene::LayerChanged(GameObject* go)
         for (Attached& a : b.attached)
             if (a.collider->gameObject_ == go) {
                 a.collider->layerSlot_ = go->layer_;
+                if (a.slot) *a.slot = go->layer_;
                 if (a.fixture) a.fixture->Refilter();
             }
 }
@@ -529,7 +592,12 @@ void PhysicsScene::SyncAttached(Body& b, Attached& a)
     a.sensor = c->isTrigger_;
     if (!on) return;
     c->layerSlot_ = c->gameObject_->layer_;
-    a.fixture = MakeBox(body, center, size, c->isTrigger_, 0.0f, 0.2f, &c->layerSlot_); // (the mass set by hand stays)
+    if (!a.slot) {
+        slots_.push_back(0);
+        a.slot = &slots_.back();
+    }
+    *a.slot = c->layerSlot_;
+    a.fixture = MakeBox(body, center, size, c->isTrigger_, 0.0f, 0.2f, a.slot); // (the mass set by hand stays)
     fixtures_[a.fixture] = c;
     world.RestartRest(*b.rb->body_);
     if (c->isTrigger_) MadeTrigger(a.fixture);
