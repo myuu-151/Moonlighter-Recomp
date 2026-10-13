@@ -649,8 +649,15 @@ void b2World::SolveTOI(const b2TimeStep& step)
 					continue;
 				}
 
-				bool collideA = bA->IsBullet() || typeA != b2_dynamicBody;
-				bool collideB = bB->IsBullet() || typeB != b2_dynamicBody;
+				// ML port (altered from Box2D 2.3.1, where a static or kinematic body counts here
+				// too: bA->IsBullet() || typeA != b2_dynamicBody): Unity's
+				// CollisionDetectionMode2D.Discrete body (a non-bullet dynamic one: unity::PhysicsWorld
+				// makes a Continuous one a bullet) takes no part in continuous collision, against
+				// static and kinematic bodies too; "collision contacts are only generated at the new
+				// position" (enemy_FlyingKamikazeGolem.jsonl, frame 119: the Discrete golem flies
+				// 0.18 into a Kinematic wall in one step and is pushed out over the next ones).
+				bool collideA = bA->IsBullet();
+				bool collideB = bB->IsBullet();
 
 				// Are these two non-bullet dynamic bodies?
 				if (collideA == false && collideB == false)

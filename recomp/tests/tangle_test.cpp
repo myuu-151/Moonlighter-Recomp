@@ -664,6 +664,12 @@ int ReplayRecording(const std::string& file, const Data& data)
             const double first = static_cast<double>(Bits(f0["steps"][0]["ft"]));
             for (int k = 1; k < 1000; k++) {
                 const double at = first - static_cast<double>(k) * static_cast<double>(fixedDt);
+                // (Invoke counts from Time.fixedTime, the last step at or before EnableEnemies:
+                // unity/DelayedCalls.h.)
+                if (static_cast<float>(at) <= Bits(*et)) {
+                    calls.fixedNow = at;
+                    if (static_cast<float>(at) != Bits(*et)) break;
+                }
                 if (at < enabled - 0.005) break;
                 if (static_cast<float>(at) == Bits(*et)) {
                     calls.inFixedStep = true;

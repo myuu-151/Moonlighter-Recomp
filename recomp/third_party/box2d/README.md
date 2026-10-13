@@ -16,6 +16,12 @@ Unity 2019.2's 2D physics is a fork of Box2D. This is stock Box2D 2.3.1, which
   outside. Unity's `Physics2DSettings.maxTranslationSpeed` is 100 in Moonlighter's project;
   this takes it as per second over the 0.01 s fixed step. Whether Unity's fork applies it per
   second or per step is not known.
+- `Dynamics/b2World.cpp` (`SolveTOI`): only a pair with a bullet body gets a time of impact. Unity's
+  `CollisionDetectionMode2D.Discrete` body (a non-bullet dynamic one: `unity::PhysicsWorld` makes
+  a Continuous one a bullet) takes no part in continuous collision, against static and kinematic
+  bodies too (stock Box2D gives every dynamic body a TOI against those):
+  `enemy_FlyingKamikazeGolem.jsonl` has the Discrete golem fly 0.18 into a Kinematic wall in one
+  step and get pushed out over the next ones.
 
 Every other tuning constant already matches the project's Physics2DSettings
 (`data/extracted/physics2d.json`): linear slop 0.005 (polygon radius 0.01 = the default contact

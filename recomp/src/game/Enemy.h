@@ -428,6 +428,10 @@ public:
     // makes it again (the body's rest restarted, as a remade attack trigger's); the mass set by
     // hand stays. game/EnemyRootCollider.cpp.
     void SetRootColliderEnabled(Enemy& enemy, bool enabled);
+    // The Animator's root motion (its controller's applyRootMotion: the BrokenGolemTurret's) on
+    // the enemy's Dynamic body, once per Animator pass: the body woken with its rest restarted
+    // (game/EnemyRootMotion.cpp).
+    void ApplyRootMotion(Enemy& enemy);
 
     // Other bodies of the world stepped with the enemies' (game/EnemyProjectile.h: the enemy
     // projectiles), called in Step: Sync after the enemies' sync, AfterWorldStep right after

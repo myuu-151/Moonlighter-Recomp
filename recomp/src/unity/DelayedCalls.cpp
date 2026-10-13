@@ -28,7 +28,7 @@ void DelayedCalls::Add(const void* owner, const std::string& name, Kind kind, do
 
 void DelayedCalls::Invoke(const void* owner, const std::string& name, float delay, std::function<void()> fn, float repeatRate)
 {
-    Add(owner, name, Kind::Invoke, inFixedStep ? fixedNow : now, delay, std::move(fn), repeatRate);
+    Add(owner, name, Kind::Invoke, fixedNow, delay, std::move(fn), repeatRate); // (Time.fixedTime, wherever: the header)
 }
 
 void DelayedCalls::Wait(const void* owner, float seconds, std::function<void()> resume)

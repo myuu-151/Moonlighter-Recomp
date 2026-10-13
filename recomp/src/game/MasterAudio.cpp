@@ -148,10 +148,15 @@ void MasterAudio::Refill(Group& g)
     list2.clear();
 }
 
-bool MasterAudio::PlayIfAvailable(Group& g, Variation& v, double time)
+bool MasterAudio::SourcePlaying(const Variation& v, double time, int frame)
+{
+    return v.startedAt >= 0.0 && frame != v.startedFrame && time < v.startedAt + v.clipLength;
+}
+
+bool MasterAudio::PlayIfAvailable(Group& g, Variation& v, double time, int frame)
 {
     // A Normal group's variation still playing short of retriggerPercentage of its clip.
-    if (g.curVariationMode == 0 && v.startedAt >= 0.0 && v.clipLength > 0.0f && time < v.startedAt + v.clipLength) {
+    if (g.curVariationMode == 0 && v.clipLength > 0.0f && SourcePlaying(v, time, frame)) {
         const double played = (time - v.startedAt) / static_cast<double>(v.clipLength) * 100.0;
         if (played < static_cast<double>(g.retriggerPercentage)) return false;
     }
@@ -174,6 +179,7 @@ bool MasterAudio::PlayIfAvailable(Group& g, Variation& v, double time)
         unity::Random::Range(v.randomStartMinPercent, v.randomStartMaxPercent);
     }
     v.startedAt = time;
+    v.startedFrame = frame;
     return true;
 }
 
@@ -186,7 +192,7 @@ bool MasterAudio::PlayAtVolume(Group& g, double time, int frame, bool triggeredA
     g.lastTimePlayed = time;
     g.lastFramePlayed = frame;
     if (g.sources.empty()) return false;
-    auto playing = [&](const Variation& v) { return v.startedAt >= 0.0 && time < v.startedAt + v.clipLength; };
+    auto playing = [&](const Variation& v) { return SourcePlaying(v, time, frame); };
     if (g.curVariationMode == 0 && g.limitPolyphony) {
         int n = 0;
         for (const Variation& v : g.sources)
@@ -210,7 +216,7 @@ bool MasterAudio::PlayAtVolume(Group& g, double time, int frame, bool triggeredA
     bool played = false, refilled = false, last = false;
     do {
         last = false;
-        if (PlayIfAvailable(g, *info, time)) {
+        if (PlayIfAvailable(g, *info, time, frame)) {
             played = true;
             if (!single) {
                 // RemoveClipAndRefillIfEmpty: the pool's front goes (the pick), into the played list.

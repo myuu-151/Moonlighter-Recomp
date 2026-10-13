@@ -49,6 +49,8 @@ An exact target (--exact) adds what the port needs to play the clips' other curv
 does (the targets before it keep the format above, unchanged):
     updateMode  the Animator's (0 normal, 1 animate physics, 2 unscaled time; null if no
                 prefab of the bundle plays it)
+    applyRootMotion  the Animator's m_ApplyRootMotion (true / false; null if no prefab of the
+                bundle plays it, or its prefabs differ)
     states      each also has writeDefaults (m_WriteDefaultValues)
     clips       each also has spritePath (the renderer its sprite curve drives, null if none)
                 and its curves are, in the clip's curve order,
@@ -192,9 +194,10 @@ def clip_curves_exact(clip):
     return out
 
 
-def animator_paths(env, controller_ids):
+def animator_paths(env, controller_ids, root_motion=None):
     """({CRC32 of a path below the Animator's object: the path}, {update modes}) of the Animators
-    playing the controller: a clip binding's path is such a CRC32."""
+    playing the controller: a clip binding's path is such a CRC32. root_motion (a set): gets
+    their m_ApplyRootMotion values."""
     objs = {o.path_id: o for o in env.objects}
     paths, modes = {}, set()
 
@@ -214,6 +217,8 @@ def animator_paths(env, controller_ids):
         if a['m_Controller']['m_FileID'] != 0 or a['m_Controller']['m_PathID'] not in controller_ids:
             continue
         modes.add(a['m_UpdateMode'])
+        if root_motion is not None:
+            root_motion.add(bool(a['m_ApplyRootMotion']))
         go = objs[a['m_GameObject']['m_PathID']].read_typetree()
         for comp in go['m_Component']:
             ref = comp['component']
@@ -259,7 +264,8 @@ def extract(env, name, kind=None, exact=False):
     label = ac['m_Name'] + (f" (override {override['m_Name']})" if override else '')
     tos = {int(k): v for k, v in ac['m_TOS']}
     tos.update({zlib.crc32(v.encode()): v for v in tos.values()})
-    paths, modes = animator_paths(env, {found.path_id, ac_obj.path_id}) if exact else ({}, set())
+    root_motion = set()
+    paths, modes = animator_paths(env, {found.path_id, ac_obj.path_id}, root_motion) if exact else ({}, set())
     if len(modes) > 1:
         raise SystemExit(f'{label}: its Animators have different update modes {sorted(modes)}')
 
@@ -368,6 +374,7 @@ def extract(env, name, kind=None, exact=False):
                   'anyState': [transition(t['data']) for t in sm['m_AnyStateTransitionConstantArray']], 'clips': clips}
     if exact:
         controller['updateMode'] = modes.pop() if modes else None
+        controller['applyRootMotion'] = root_motion.pop() if len(root_motion) == 1 else None
     return controller, sprites_wanted, {found.path_id, ac_obj.path_id}, name_of
 
 

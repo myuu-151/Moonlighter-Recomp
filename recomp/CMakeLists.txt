@@ -82,6 +82,10 @@ add_library(mlcore STATIC
     src/game/EnemyRootCollider.cpp
     # MasterAudio's EventSounds on an enemy's objects: OnEnable's sounds and their draws.
     src/game/EnemyEventSounds.cpp
+    # An Animator's root motion on an enemy's body (the BrokenGolemTurret's: it never sleeps).
+    src/game/EnemyRootMotion.cpp
+    # DungeonRoom.DisableEnemies (ExitRoom: the hero leaving, or falling into a secret room).
+    src/game/EnemyRoom.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 

@@ -190,6 +190,8 @@ void Enemy::UpdateAnimator(float deltaTime)
 {
     if (!enemyAnimator || !animatorEnabled || !active || destroyed) return;
     enemyAnimator->Update(deltaTime);
+    // Its root motion (applyRootMotion: the clips move nothing, but the body's rest restarts).
+    if (controller_ && controller_->applyRootMotion == 1 && physics) physics->ApplyRootMotion(*this);
     if (hasAttackCollider) {
         ApplyAnimatedProperties();
         // Unity remakes the box's shapes as the Animator writes it.

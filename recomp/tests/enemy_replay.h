@@ -44,6 +44,7 @@
 #include "game/Constants.h"
 #include "game/Enemy.h"
 #include "game/EnemyFactory.h"
+#include "game/EnemyRoom.h"
 #include "game/EnemyStats.h"
 #include "game/GolemSoldier.h"
 #include "game/HermitSlime.h"
@@ -292,6 +293,7 @@ void SetMap(game::PolyNav2D& nav, const Value& m)
 }
 
 #include "enemy_replay_colliders.h" // (the HermitSlime's rows: ColliderReplay)
+#include "enemy_replay_room.h"      // (the room's DisableEnemies: RoomExitReplay)
 
 int ReplayRecording(const std::string& file, const ReplayData& data)
 {
@@ -319,6 +321,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     }
     Tally t;
     t.debug = std::getenv(data.debugEnv.c_str()) != nullptr;
+    RoomExitReplay roomExit; // (tests/enemy_replay_room.h)
+    roomExit.Scan(frames);
     std::printf("recording: room %s, %zu %s, %zu frames\n", start["room"].s.c_str(), enemyLines.size(), start["enemy"].s.c_str(), frames.size());
 
     // insideUnitCircle from the game's states.
@@ -580,6 +584,9 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             if (s.id == id) return s.enemy.get();
         return nullptr;
     };
+    std::vector<std::pair<int, game::Enemy*>> roomList; // (the room's DisableEnemies)
+    for (ReplayEnemy& s : enemies) roomList.emplace_back(s.id, s.enemy.get());
+    std::sort(roomList.begin(), roomList.end());
     unity::Random::SetState(State(f0["rng"]));
 
     const float fixedDt = Bits(start["fixedDeltaTime"]);
@@ -598,6 +605,12 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             const double first = static_cast<double>(Bits(f0["steps"][0]["ft"]));
             for (int k = 1; k < 1000; k++) {
                 const double at = first - static_cast<double>(k) * static_cast<double>(fixedDt);
+                // (Invoke counts from Time.fixedTime, the last step at or before EnableEnemies:
+                // unity/DelayedCalls.h.)
+                if (static_cast<float>(at) <= Bits(*et)) {
+                    calls.fixedNow = at;
+                    if (static_cast<float>(at) != Bits(*et)) break;
+                }
                 if (at < enabled - 0.005) break;
                 if (static_cast<float>(at) == Bits(*et)) {
                     calls.inFixedStep = true;
@@ -647,6 +660,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         }
         nav.BeginFrame();
         if (data.hooks) data.hooks->BeginFrame(fn, f);
+        roomExit.Plan(f, fi > 0 ? &frames[fi - 1] : nullptr, roomList);
         const Value& events = f["events"];
         // The hero's weapon hitbox (not in this world) came on since the last step if its first
         // touch lands in this frame's first step: its new fixture has Box2D pair every moved
@@ -754,6 +768,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                 }
             }
             colliderRows.StepTypes(t, events, k, fn);
+            if (roomExit.step == static_cast<int>(k)) RoomExitReplay::Run(roomList);
             calls.UpdateFixed(fixedClock);
             calls.inFixedStep = false;
             if (data.hooks) data.hooks->AfterStep(fn, k, f, t);
@@ -788,7 +803,9 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         // ("dotweenUdt" where the recording has it; else Time.unscaledDeltaTime, close to it).
         const Value* tweenUdt = f.Find("dotweenUdt");
         tweens.Update(dt, tweenUdt ? Bits(*tweenUdt) : f.Find("udt") ? Bits(f["udt"]) : dt);
+        size_t updateIndex = 0;
         for (const Value& u : f["updates"].arr) {
+            if (roomExit.step == -1 && roomExit.updatesBefore == updateIndex++) RoomExitReplay::Run(roomList);
             game::Enemy* e = enemyById(static_cast<int>(u["s"].AsInt()));
             if (!e) continue;
             hero.position = V2(u["hero"]);
@@ -802,6 +819,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                   "frame " + std::to_string(fn) + " enemy " + std::to_string(u["s"].AsInt()));
             unity::Random::SetState(State(u["rng1"]));
         }
+        if (roomExit.step == -1 && roomExit.updatesBefore >= f["updates"].size()) RoomExitReplay::Run(roomList);
         ColliderReplay::FrameEvents(t, events, enemyById, fn);
         calls.Update(time);
         nav.ResumeCoroutines();
@@ -874,7 +892,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                   at + ": port goal " + Str(e->navAgent.primeGoal()) + " path " + std::to_string(e->navAgent.activePath().size()) + " req " +
                       std::to_string(e->navAgent.requests()) + "; game " + Str(V2(ag["goal"])) + " " + std::to_string(gamePath.size()) + " " +
                       std::to_string(ag["req"].AsInt()));
-            const unity::AnimatorStateInfo info = e->enemyAnimator->GetCurrentAnimatorStateInfo();
+            const unity::AnimatorStateInfo info = RoomExitReplay::InfoOf(*e);
             // (A disabled Animator's state info isn't the game's to keep: only that it's off.)
             t.Add("Animator state, normalized time (bits)",
                   e->animatorEnabled == an["on"].b && (!an["on"].b || (info.shortNameHash == static_cast<int32_t>(an["state"].AsInt()) &&
@@ -924,6 +942,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     std::printf("\n");
     t.Print();
     std::printf("Random drawn by the game's other scripts (resynced) %d times\n", rngElsewhere);
+    if (roomExit.inferred) std::printf("the room's DisableEnemies placed from the enemies' rows (no event recorded) %d times\n", roomExit.inferred);
     if (animResynced) std::printf("Random resynced before an animation event %d times\n", animResynced);
     std::printf("\n%s\n", t.Ok() ? "ALL MATCH" : "MISMATCHES");
     return t.Ok() ? 0 : 1;
