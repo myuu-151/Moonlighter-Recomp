@@ -98,6 +98,8 @@ namespace MoonlighterOracle
                 Harvest.InstallSafety(harmony);
                 StartCoroutine(TangleOracle.Run(this, quit, tangleArg.Contains("=") ? tangleArg.Substring(tangleArg.IndexOf('=') + 1) : ""));
             }
+            // -oracle-fonts (fonts.jsonl), -oracle-text (text.jsonl): the font and text layout probes (TextOracle.cs).
+            TextOracle.Start(this, harmony, args, quit);
         }
 
         private IEnumerator RunAll(bool quit)
