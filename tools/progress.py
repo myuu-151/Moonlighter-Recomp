@@ -97,7 +97,7 @@ def read_tsv(path):
     return out
 
 
-def bar_svg(name, ported, verified, width=160, height=12, label=None):
+def bar_svg(name, ported, verified, width=160, height=12, label=None, fill='#e8b43c'):
     """progress/bars/<name>.svg: a rounded bar, the ported share in gold and the verified share in
     green over it (the tray icon's colours), on a grey track that reads on light and dark pages.
     With a label, the text sits to the right of the bar. Returns the README's relative path."""
@@ -110,7 +110,7 @@ def bar_svg(name, ported, verified, width=160, height=12, label=None):
            f'<clipPath id="c"><rect width="{width}" height="{height}" rx="{r}"/></clipPath>',
            '<g clip-path="url(#c)">',
            f'<rect width="{width}" height="{height}" fill="#8b949e" fill-opacity="0.3"/>',
-           f'<rect width="{pw:.2f}" height="{height}" fill="#e8b43c"/>',
+           f'<rect width="{pw:.2f}" height="{height}" fill="{fill}"/>',
            f'<rect width="{vw:.2f}" height="{height}" fill="#5ac86e"/>',
            '</g>']
     if label:
@@ -119,6 +119,15 @@ def bar_svg(name, ported, verified, width=160, height=12, label=None):
     svg.append('</svg>')
     (BARS / f'{name}.svg').write_text('\n'.join(svg) + '\n', encoding='utf-8', newline='\n')
     return f'progress/bars/{name}.svg'
+
+
+def read_translated():
+    """{path: the share of its lines that tools/translate translates today} from the translator's
+    survey (progress/class_deps.tsv), or {} before there is one."""
+    path = OUT / 'class_deps.tsv'
+    if not path.exists():
+        return {}
+    return {r[0]: float(r[6].rstrip('%')) / 100.0 for r in read_tsv(path) if len(r) > 6}
 
 
 def slug(name):
@@ -134,10 +143,14 @@ def report():
     ported = read_tsv(OUT / 'ported.tsv')
     total = sum(v[0] for v in classes.values())
     cats = {}
+    shares = read_translated()
+    translated = 0.0
     for rel, (lines, cat) in classes.items():
-        c = cats.setdefault(cat, {'lines': 0, 'ported': 0.0, 'verified': 0.0, 'classes': 0, 'done': 0})
+        c = cats.setdefault(cat, {'lines': 0, 'ported': 0.0, 'verified': 0.0, 'translated': 0.0, 'classes': 0, 'done': 0})
         c['lines'] += lines
         c['classes'] += 1
+        c['translated'] += lines * shares.get(rel, 0.0)
+        translated += lines * shares.get(rel, 0.0)
     done = verified = 0.0
     unknown = []
     for row in ported:
@@ -156,7 +169,7 @@ def report():
             c['done'] += 1
     if unknown:
         print('ported.tsv names classes not in classes.tsv: ' + ', '.join(unknown), file=sys.stderr)
-    pct, vpct = 100.0 * done / total, 100.0 * verified / total
+    pct, vpct, tpct = 100.0 * done / total, 100.0 * verified / total, 100.0 * translated / total
     full = sum(1 for r in ported if float(r[1]) >= 1.0 and r[0] in classes)
 
     OUT.mkdir(exist_ok=True)
@@ -165,7 +178,7 @@ def report():
     json.dump({'schemaVersion': 1, 'label': 'verified vs. game', 'message': f'{vpct:.1f}%', 'color': colour(vpct)},
               open(OUT / 'badge_verified.json', 'w', encoding='utf-8'))
     json.dump({'lines': total, 'ported': round(done), 'verified': round(verified), 'percent': round(pct, 2),
-               'verifiedPercent': round(vpct, 2), 'classes': len(classes), 'classesDone': full,
+               'verifiedPercent': round(vpct, 2), 'translated': round(translated), 'translatedPercent': round(tpct, 2), 'classes': len(classes), 'classesDone': full,
                'categories': {k: {kk: (round(vv, 1) if isinstance(vv, float) else vv) for kk, vv in v.items()} for k, v in cats.items()}},
               open(OUT / 'progress.json', 'w', encoding='utf-8'), indent=1)
 
@@ -188,8 +201,22 @@ def report():
         '',
         '<sub>gold: ported · green: verified against the game</sub>',
         '',
-        '| Area | Lines | Ported | Verified | |',
-        '|---|---:|---:|---:|---|',
+    ]
+    if shares:
+        lines += [
+            f"**{tpct:.1f}%** translates today: the share of the game's lines that `tools/translate` turns into C++ "
+            'with every API it calls bound to the hand-written Unity layer ([docs/translator_plan.md](docs/translator_plan.md); '
+            'per class in `progress/class_deps.tsv`, what blocks the rest in `progress/unity_api_gaps.tsv`; '
+            'each class counts by its share rounded to a whole percent).',
+            '',
+            f'<img src="{bar_svg("translated", translated / total, 0.0, width=360, height=18, label=f"{tpct:.1f}%", fill="#58a6ff")}" alt="{tpct:.1f}% translates">',
+            '',
+            '<sub>blue: translates today</sub>',
+            '',
+        ]
+    lines += [
+        '| Area | Lines | Ported | Verified | Translates | |',
+        '|---|---:|---:|---:|---:|---|',
     ]
     for name in order:
         c = cats.get(name)
@@ -198,7 +225,8 @@ def report():
         p = c['ported'] / c['lines'] if c['lines'] else 0.0
         v = c['verified'] / c['lines'] if c['lines'] else 0.0
         img = bar_svg(slug(name), p, v)
-        lines.append(f'| {name} | {c["lines"]:,} | {100 * p:.1f}% | {100 * v:.1f}% | <img src="{img}" alt="{100 * p:.1f}%"> |')
+        t = c['translated'] / c['lines'] if c['lines'] else 0.0
+        lines.append(f'| {name} | {c["lines"]:,} | {100 * p:.1f}% | {100 * v:.1f}% | {100 * t:.1f}% | <img src="{img}" alt="{100 * p:.1f}%"> |')
     lines += ['', '_Updated by `tools/progress.py` on every commit._ On Windows, `py tools/tray_progress_startup.py` puts the same numbers next to the taskbar clock (`tools/tray_progress.ps1`), starting with Windows.', '<!-- progress:end -->']
     section = '\n'.join(lines)
 

@@ -4,6 +4,8 @@
  "verified": 11192,
  "percent": 7.37,
  "verifiedPercent": 6.97,
+ "translated": 108975,
+ "translatedPercent": 67.82,
  "classes": 1173,
  "classesDone": 41,
  "categories": {
@@ -11,6 +13,7 @@
    "lines": 13388,
    "ported": 101.6,
    "verified": 26.0,
+   "translated": 10021.2,
    "classes": 132,
    "done": 1
   },
@@ -18,6 +21,7 @@
    "lines": 9277,
    "ported": 2044.0,
    "verified": 1940.8,
+   "translated": 7071.6,
    "classes": 28,
    "done": 1
   },
@@ -25,6 +29,7 @@
    "lines": 44306,
    "ported": 531.2,
    "verified": 354.9,
+   "translated": 29884.0,
    "classes": 487,
    "done": 5
   },
@@ -32,6 +37,7 @@
    "lines": 20716,
    "ported": 0.0,
    "verified": 0.0,
+   "translated": 8797.5,
    "classes": 97,
    "done": 0
   },
@@ -39,6 +45,7 @@
    "lines": 27342,
    "ported": 3346.9,
    "verified": 3166.9,
+   "translated": 21676.6,
    "classes": 178,
    "done": 15
   },
@@ -46,6 +53,7 @@
    "lines": 12097,
    "ported": 0.0,
    "verified": 0.0,
+   "translated": 8037.5,
    "classes": 67,
    "done": 0
   },
@@ -53,6 +61,7 @@
    "lines": 8285,
    "ported": 187.8,
    "verified": 187.8,
+   "translated": 6878.1,
    "classes": 53,
    "done": 2
   },
@@ -60,6 +69,7 @@
    "lines": 5487,
    "ported": 329.9,
    "verified": 207.9,
+   "translated": 3444.3,
    "classes": 30,
    "done": 0
   },
@@ -67,6 +77,7 @@
    "lines": 10310,
    "ported": 5220.8,
    "verified": 5220.8,
+   "translated": 6776.3,
    "classes": 42,
    "done": 17
   },
@@ -74,6 +85,7 @@
    "lines": 9474,
    "ported": 86.9,
    "verified": 86.9,
+   "translated": 6388.0,
    "classes": 59,
    "done": 0
   }
