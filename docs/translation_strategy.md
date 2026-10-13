@@ -225,6 +225,45 @@ That's a target, not a measurement yet: the next step is a whole-game GameCube b
 translated code, shrunk as above, whose measured numbers replace this table
 (`docs/gamecube_translated.md`).
 
+### How the GameCube port is laid out
+
+The GameCube side (Moonlighter GC, the MLGC repo) follows the structure of a previous port of a 2D
+game to the GameCube on the same engine (Octave-libogc), which got a bigger game running in 24 MB
+by these means. Each of its pieces has a counterpart here:
+
+| Piece | In the previous port | In Moonlighter GC | State |
+|---|---|---|---|
+| Two repos and a builder | A PC reimplementation the GameCube repo compiles; `Build *.bat` -> `tools/builder.py` -> `tools/make_data.py` -> Octave's headless build | This repo + MLGC, the same builder chain; "Translated game code" is a builder option | Done |
+| Data from the user's copy | Extractors run at build time; nothing of the game in git | `tools/extract/*` (rooms, prefabs, animators, sounds, UI), run by MLGC's `make_data.py` | Done, grows per area |
+| The game inside the engine | A game class driven from an Octave widget, the engine's frame around it | `MoonGame` and `DungeonView` | Done for the dungeon |
+| Renderer | Its own GX renderer for what the game draws (Octave draws 3D meshes), Octave's display-list and texture code followed for the low-level parts | `render/` and `DungeonView` draw rooms, the hero and enemies; the UI's canvas batcher next (`docs/ui_plan.md`) | Dungeon done; UI to do |
+| Main memory | `operator new` of its own: small blocks in pages by size, a scratch region for short-lived bursts, room made by sending caches to ARAM before failing; a memory census in diagnostic builds | The same allocator under the translated code's collected heap (`cs::Heap`); load-time bursts (the game's JSON reading, floor generation) in scratch | To do |
+| ARAM | DMA by Octave's rules (32-byte addresses and lengths); a cache for what's drawn, the sound bank, a music ring | Sprite and texture cache, the SFX bank, the music ring | Audio lane under way |
+| Made ahead | What's slow to make is made while the loading screen is up, kept in ARAM, fetched by DMA when first drawn | Moonlighter is pixel art, so nothing is tessellated: what's made ahead is the next room's or area's textures in ARAM, and the next area's code module, during the floor's and the town's loading screens | To do |
+| Engine trimmed | Octave's feature switches (physics, Lua, video, particles... off), no C++ string streams, diagnostics only in diagnostic builds, buffers made when first needed, `--no-eh-frame-hdr` | The same switches and link flags in `Makefile_GCN`; the translated code adds its own diet (shared generics, message tables, code modules: above) | Switches done; code diet to do |
+| Sound | Effects bank read into ARAM at boot, music streamed from the disc into an 8 s ARAM ring by a reader thread below the main thread's priority; mixing on the CPU | MasterAudio's choices (its Random draws exact, as verified) played from an ARAM bank; music and ambience streamed the same way; DSP-ADPCM considered | Audio lane under way |
+| Files | One file index, disc or SD-card image reads through Octave, retries | The same | Done |
+| Saves | Memory card through Octave's code | The game's own save code translated, written to the memory card (big-endian care) | To do |
+| Replays on the console | Recorded play replayed on the GameCube to compare | `TTEST=1` discs replay the oracle's recordings on the translated code (BabySlime ALL MATCH in Dolphin) | Started |
+| Diagnostics | USB Gecko log (free memory and largest block every 2 s, slow frames, loads), SD-card log, stall watchdog, a diagnostic build | `GECKOLOG=1` today; the same periodic lines and a diagnostic build to add | Partly |
+| Testing | Dolphin first, then the console with the Gecko; a triage guide for whose bug it is; a list of bugs only the console shows | The same order; Dolphin's timings read as a floor (`docs/gamecube_translated.md`) | Ongoing |
+
+What carries over as rules:
+
+- **Follow Octave's low-level code** (display lists, textures, ARAM, the pads, the memory card,
+  disc reads, threads) instead of writing it again: the previous port's worst console-only bug came
+  from display lists written from scratch with less padding than Octave's.
+- **Memory first.** Measure from the link map (loaded sections only) and the console's free-memory
+  log line, shrink in phases, and play a session on the console after each.
+- **Threads that touch the disc or the SD card** get 64 KB of stack and run below the main thread,
+  except during each read.
+- **When work happens decides what's seen:** done behind a loading screen it's invisible; done in
+  play it's lag.
+- **Music in ARAM, not main memory:** a ring in ARAM outlasts slow stretches at no cost to the
+  scarce main memory.
+- **Presentation-only cuts** are allowed on the GameCube (particles, soft light and shadow layers,
+  UI effects), but every `UnityEngine.Random` draw stays, or the game's random stream shifts.
+
 ### The GameCube optimisation pass
 
 Like the Castle Crashers GameCube port, the GameCube build gets hand-optimised beyond what the
