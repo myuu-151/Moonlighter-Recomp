@@ -498,6 +498,11 @@ public:
 
 private:
     class Listener;
+    // Unity's trigger callbacks are per Collider2D pair: a room collider cut into several
+    // fixtures (a PolygonCollider2D's pieces) is one. Whether two fixtures are one collider's,
+    // and whether `attack` already touches another piece of `other`'s collider.
+    bool SameCollider(const b2Fixture* a, const b2Fixture* b) const;
+    bool TouchesAnotherPiece(const b2Fixture* attack, const b2Fixture* other) const;
     void AddChildColliders(Enemy& enemy); // a trigger root, the hurtboxes (game/EnemyColliders.cpp)
     unity::PhysicsWorld& world_;
     Options options_;

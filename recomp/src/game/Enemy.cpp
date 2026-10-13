@@ -648,8 +648,11 @@ public:
             b2Fixture* other = a == e->attackFixture ? b : b == e->attackFixture ? a : nullptr;
             if (!other || other->GetBody() == e->attackFixture->GetBody()) continue;
             bool carried = false;
-            for (const auto& c : owner_.carried_) carried = carried || (c.first == e->attackFixture && c.second == other);
+            for (const auto& c : owner_.carried_) carried = carried || (c.first == e->attackFixture && owner_.SameCollider(c.second, other));
             if (carried) continue;
+            // One enter per collider: a piece of a collider it already touches is no new one
+            // (enemy_HermitSlime.jsonl, frame 519: a slime puddle's 14 pieces, one enter).
+            if (owner_.TouchesAnotherPiece(e->attackFixture, other)) continue;
             Hit hit;
             hit.enemy = e;
             hit.player = owner_.hero_ && other->GetBody() == owner_.hero_->Body() && !other->IsSensor();
@@ -797,6 +800,25 @@ void EnemyPhysics::WriteBack()
         e->setPosition(b);
         e->synced_ = e->position();
     }
+}
+
+bool EnemyPhysics::SameCollider(const b2Fixture* a, const b2Fixture* b) const
+{
+    if (a == b) return true;
+    const unity::Collider2D* c = a ? world_.ColliderOf(a) : nullptr;
+    return c && c == world_.ColliderOf(b);
+}
+
+bool EnemyPhysics::TouchesAnotherPiece(const b2Fixture* attack, const b2Fixture* other) const
+{
+    const unity::Collider2D* c = world_.ColliderOf(other);
+    if (!c || c->shapes.size() + c->parts.size() < 2) return false;
+    for (const b2ContactEdge* ce = attack->GetBody()->GetContactList(); ce; ce = ce->next) {
+        const b2Contact* k = ce->contact;
+        const b2Fixture* o = k->GetFixtureA() == attack ? k->GetFixtureB() : k->GetFixtureB() == attack ? k->GetFixtureA() : nullptr;
+        if (o && o != other && k->IsTouching() && world_.ColliderOf(o) == c) return true;
+    }
+    return false;
 }
 
 void EnemyPhysics::ReportTriggers()

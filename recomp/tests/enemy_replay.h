@@ -297,6 +297,19 @@ unity::Collider2D HoleFrom(const Value& v)
     return c;
 }
 
+// A PolygonCollider2D (a slime puddle's) as Unity cuts its paths, for the physics world.
+unity::Collider2D PolygonFrom(const Value& v)
+{
+    std::vector<std::vector<Vector2>> paths;
+    for (const Value& path : v["paths"].arr) {
+        paths.emplace_back();
+        for (size_t k = 0; k + 1 < path.arr.size(); k += 2) paths.back().push_back({Bits(path[k]), Bits(path[k + 1])});
+    }
+    unity::Collider2D c = ColliderFrom(v);
+    unity::SetPolygonColliderShapes(c, paths);
+    return c;
+}
+
 void SetMap(game::PolyNav2D& nav, const Value& m)
 {
     auto polys = [](const Value& list) {
@@ -414,6 +427,18 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         roomTriggers.Add(ColliderFrom(c));
     }
     for (const unity::Collider2D& c : roomTriggers.Colliders()) world.AddCollider(c);
+    // The room's PolygonCollider2D triggers without a body (the slime puddles: DungeonLevelRoomSlime's
+    // Collider_<n>, DungeonRoomGenerator.GenerateCollidersFromGrid with isTrigger), cut as Unity
+    // cuts them: an attack trigger enters them (enemy_HermitSlime.jsonl, frame 519: Collider_0 and
+    // Collider_3), and compares as it does on the hero.
+    unity::Physics2D polygonTriggers;
+    for (const Value& c : colliders) {
+        const std::string body = c.Find("body") ? c["body"].s : "none";
+        if (body != "none" || !c["trigger"].b || !c["enabled"].b || c["type"].s != "PolygonCollider2D") continue;
+        const unity::Collider2D& p = polygonTriggers.Add(PolygonFrom(c));
+        CheckPolygonProbe(t, c, p);
+    }
+    for (const unity::Collider2D& c : polygonTriggers.Colliders()) world.AddCollider(c);
     // Their objects' names (an OnTriggerEnter2D's other).
     std::vector<std::string> triggerNames;
     for (const unity::Collider2D& c : roomTriggers.Colliders()) triggerNames.push_back(c.path.substr(c.path.rfind('/') + 1));
