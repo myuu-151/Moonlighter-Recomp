@@ -166,10 +166,31 @@ Not zero, but small, and mostly in places that don't matter:
 - **Safety checks.** C# checks array bounds and nulls. The tool drops the checks it can prove
   unnecessary; the rest stay, and they're cheap.
 
-My guess, which a real GameCube build will settle: within roughly 10–30% of a hand port in size
+**Expected** (the guess before a GameCube build): within roughly 10–30% of a hand port in size
 and speed overall, concentrated in a few spots. Those spots get the hand-written overrides, so they
 end up exactly as fast as a hand port. Most of the game (menus, shop logic, dialogue, item data)
 runs rarely enough that the difference will never show on screen.
+
+**Measured** (2026-10-13, the first GameCube build of translated code: the BabySlime's oracle
+replay, translated and hand-ported, in Dolphin's Accurate profile, timed on the Gekko's timebase;
+`docs/gamecube_translated.md` has the method and the profile). The translated BabySlime matches the
+game on the GameCube, every row as on the PC. Then:
+
+| | translated | hand port | |
+|---|---:|---:|---|
+| speed: the enemies' Updates (4 slimes, per frame) | 34.2 us | 26.5 us | 1.29 times: the guess held for the scripts |
+| speed: all the game's work per frame | 423 us | 227 us | 1.86 times: the scene facade's physics is 2.6 times the hand port's |
+| speed: the collector at every frame end | 566 us | (none) | 83% of what it marks is static data (the constants' tree) |
+| size: the same classes, linked | 374 KB | 94 KB | 4 times: the methods compile to the same size; generics per type, interface thunks and per-class dispatch make up two thirds |
+| memory: live objects / made per frame | 4,468 / 4 | | small; but 6.2 MB of garbage at load, from the game's own RemoveComments |
+
+So: speed is within the guess where it is the game's code, and outside it in the layers around it
+(the facade's physics, the collector run every frame), which are hand-written and fixable. Size is
+far outside it: at this density the whole game is about 20 MB of code, more than the GameCube can
+hold with its art, so sharing the generic code and slimming the per-class machinery come before any
+speed work. Dolphin's timebase counts instructions, not cache misses or latencies: on the console
+everything is slower, the pointer-heavy translated code and the collector likely more so. The fixes,
+ranked by what they save, are in `docs/gamecube_translated.md`.
 
 ### The GameCube optimisation pass
 
@@ -190,7 +211,9 @@ Two kinds of optimisation, with one rule between them:
    recordings catch any slip.
 
 The data comes from real hardware: a USB Gecko streams frame times per system (enemy updates,
-physics, pathfinding, drawing) and memory high-water marks per area from the console. That decides
+physics, pathfinding, drawing) and memory high-water marks per area from the console. (The first
+numbers came from Dolphin: MLGC's `TTEST=1` disc times the translated and hand-ported replays phase
+by phase, `TTEST_PROFILE=1` samples where the time goes; `docs/gamecube_translated.md`.) That decides
 which code gets an override and how much art each area can keep in memory. (In DolphinWorks:
 install the FTDI driver, and enable Gecko log output for hardware builds.)
 

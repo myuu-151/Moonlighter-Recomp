@@ -290,9 +290,14 @@ void CheckSlimeInABox(const Data& data)
 
 } // namespace
 
-int main(int argc, char** argv)
+// (MLGC's test builds (TTEST=1) run it on the GameCube, its main() renamed.)
+#ifndef ML_TEST_MAIN
+#define ML_TEST_MAIN main
+#endif
+int ML_TEST_MAIN(int argc, char** argv)
 {
     const std::string file = argc > 1 ? argv[1] : "data/oracle/slime.jsonl";
+    replay_profile::FromEnv();
     CheckRandom();
     CheckDelayedCalls();
     Data data = LoadData();

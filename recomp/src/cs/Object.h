@@ -113,6 +113,12 @@ public:
     // seen. Returns the number of objects freed.
     size_t Collect();
     size_t Count() const { return count_; }
+    // Each object on the heap, the newest first (diagnostics: MLGC's test builds count them by type).
+    template <typename F>
+    void ForEach(F&& f) const
+    {
+        for (Object* o = head_; o; o = o->gc_next_) f(o);
+    }
 
 private:
     Object* head_ = nullptr;

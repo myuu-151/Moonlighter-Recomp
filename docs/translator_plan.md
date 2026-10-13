@@ -259,11 +259,13 @@ use it; `progress/unity_api_gaps.tsv` lists every such API with the methods and 
   before compiling, and compiles `recomp/gen/cpp/*.cpp` (listed in `sources.cmake`) with the
   runtime and the facade; devkitPPC's GCC needs `-std=gnu++17 -fexceptions -frtti
   -ffp-contract=off` (exceptions: C# exceptions are C++ exceptions; RTTI: casts and catch
-  clauses). Nothing generated is committed, in either repository. (Not wired in yet: MLGC's
-  Makefile_GCN compiles recomp/src/cs but not gen/ or bind/. Checked by hand on 2026-10-13: the
-  proof's units, recomp/src/cs, recomp/src/bind and the translated tests pass devkitPPC GCC
-  15.2's front end, `-fsyntax-only -std=gnu++17` and `gnu++20` with the GameCube's machine flags
-  and PI defined as Octave's Maths.h defines it.)
+  clauses). Nothing generated is committed, in either repository. Wired in since 2026-10-13:
+  MLGC's `Makefile_GCN` with `TRANSLATED=1` runs the translator into its own Intermediate/gen
+  and compiles it and the facade (objects `gen_*.o`, `bind_*.o`: the translation's file names
+  are the hand port's too); the builder's "Translated game code" option sets it. devkitPPC GCC
+  15.2 takes the generated code, the facade and the runtime unchanged. `TTEST=1` builds a disc
+  that replays the BabySlime against the translated code and the hand port on the GameCube:
+  ALL MATCH in Dolphin, with the time and memory numbers in `docs/gamecube_translated.md`.
 
 ## The proof
 
