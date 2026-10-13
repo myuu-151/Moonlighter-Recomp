@@ -54,6 +54,7 @@
 #include "game/MasterAudio.h"
 #include "game/PolyNav.h"
 #include "game/Prefabs.h"
+#include "game/RoomPhysics.h"
 #include "unity/Animator.h"
 #include "unity/DelayedCalls.h"
 #include "unity/Mathf.h"
@@ -261,6 +262,15 @@ unity::Collider2D ColliderFrom(const Value& v)
     c.hasWorldBox = c.enabled;
     c.worldMin = V2(v["min"]);
     c.worldMax = V2(v["max"]);
+    // Its turn, which the oracle's rows don't carry: a dungeon room's ("Dungeon/<room>/<path>")
+    // as the DungeonRoom prefab has it (game::DungeonRoomTurn: the turned door boundaries).
+    const size_t room = c.path.rfind("Dungeon/", 0) == 0 ? c.path.find('/', 8) : std::string::npos;
+    game::Turn turn;
+    if (room != std::string::npos && game::DungeonRoomTurn(c.path.substr(room + 1), turn)) {
+        c.rotZ = turn.z;
+        c.rotW = turn.w;
+        c.matrixScale = turn.scale;
+    }
     return c;
 }
 

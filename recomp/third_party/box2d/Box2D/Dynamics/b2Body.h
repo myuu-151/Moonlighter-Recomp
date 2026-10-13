@@ -505,7 +505,11 @@ inline void b2Body::SetLinearVelocity(const b2Vec2& v)
 
 	if (b2Dot(v,v) > 0.0f)
 	{
-		SetAwake(true);
+		// ML port (altered from Box2D 2.3.1, which calls SetAwake(true): the time at rest goes
+		// back to zero only for a body that was asleep): Unity's b2Body::SetLinearVelocity wakes
+		// the body and zeroes its time at rest whether it slept or not (README.md).
+		m_flags |= e_awakeFlag;
+		m_sleepTime = 0.0f;
 	}
 
 	m_linearVelocity = v;

@@ -191,6 +191,7 @@ private:
         std::vector<b2Fixture*> fixtures;
         int layer = 0;
         bool enabled = false, trigger = false;
+        bool ownBody = false; // on a Rigidbody2D of its own (AddCollider's hasRigidbody)
     };
     void CreateFixtures(ColliderEntry& e);
     void DestroyFixtures(ColliderEntry& e);

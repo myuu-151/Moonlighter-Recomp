@@ -1,5 +1,7 @@
 #include "unity/PhysicsWorld.h"
 
+#include <cmath>
+
 #include <Box2D/Box2D.h>
 
 #include "util/Json.h"
@@ -13,6 +15,62 @@ Vector2 V2(const b2Vec2& v) { return {v.x, v.y}; }
 
 // Unity's default PhysicsMaterial2D (the project sets none).
 constexpr float kFriction = 0.4f, kBounciness = 0.0f, kDensity = 1.0f;
+
+// Unity's QuaternionToMatrix for a turn about z (the quaternion (0, 0, z, w)): its block in x and y.
+struct Turn2 {
+    float m00, m01, m10, m11;
+};
+Turn2 TurnMatrix(float z, float w)
+{
+    const float z2 = z + z, zz = z * z2, wz = w * z2;
+    return {1.0f - (zz + 0.0f), 0.0f - wz, wz + 0.0f, 1.0f - (zz + 0.0f)};
+}
+
+// The angle Unity gives a Rigidbody2D whose transform is turned by (0, 0, z, w)
+// (Rigidbody2D::Create: the quaternion with w >= 0, twice atan2f(z, w)). A door boundary turned
+// half a turn ((0, 0, 1, 0) in the DungeonRoom prefab) gets (float)pi, whose sine isn't 0.
+float BodyAngle(float z, float w)
+{
+    if (0.0f > w) {
+        z = -z;
+        w = -w;
+    }
+    const float a = std::atan2(z, w);
+    return a + a;
+}
+
+// A BoxCollider2D on a turned Rigidbody2D of its own, in its body's frame as Unity makes it:
+// Collider2D::CalculateColliderTransformation takes the inverse of the body's turn (the
+// quaternion PhysicsUtility2D::ZRotFromFullRot rebuilds from the angle, conjugated) times the
+// transform's localToWorldMatrix with its translation zeroed, and BoxCollider2D::PrepareShapes
+// runs the box's corners through it. The two turns don't cancel exactly: the half-turned door
+// boundary's corners come out turned by -sin((float)pi) and rounded, so that in the world its
+// faces lean by what the body's sine and those corners leave (enemy_FlyingKamikazeGolem.jsonl of
+// recq enemyfix-flykami-2, frames 111-188: the golem pressed into DoorBoundaryDown's top face,
+// whose friction leaves velocities of 1e-6 down to 1e-13 that only that lean gives).
+void TurnedBox(b2PolygonShape& shape, const Collider2D& c)
+{
+    float z = c.rotZ, w = c.rotW;
+    if (0.0f > w) {
+        z = -z;
+        w = -w;
+    }
+    const float a = std::atan2(z, w), half = (a + a) * 0.5f;
+    const Turn2 inv = TurnMatrix(-std::sin(half), std::cos(half));
+    const Turn2 r = TurnMatrix(c.rotZ, c.rotW);
+    // (Matrix4x4f::SetTRS: the rotation's columns times the scale. The transform's matrix as the
+    // scalar QuaternionToMatrix gives it; that the Transform hierarchy's own math gives the same
+    // bits for the quarter-turned boundaries, whose quaternions aren't exact, no recording
+    // settles yet.)
+    const float m00 = r.m00 * c.matrixScale.x, m10 = r.m10 * c.matrixScale.x, m01 = r.m01 * c.matrixScale.y, m11 = r.m11 * c.matrixScale.y;
+    const float p00 = inv.m00 * m00 + inv.m01 * m10, p01 = inv.m00 * m01 + inv.m01 * m11;
+    const float p10 = inv.m10 * m00 + inv.m11 * m10, p11 = inv.m10 * m01 + inv.m11 * m11;
+    const float hx = c.size.x * 0.5f, hy = c.size.y * 0.5f, ox = c.offset.x, oy = c.offset.y;
+    const float xs[4] = {ox - hx, hx + ox, hx + ox, ox - hx}, ys[4] = {oy - hy, oy - hy, hy + oy, hy + oy};
+    b2Vec2 v[4];
+    for (int k = 0; k < 4; k++) v[k] = b2Vec2(p00 * xs[k] + p01 * ys[k], p10 * xs[k] + p11 * ys[k]);
+    shape.Set(v, 4);
+}
 
 // A box from `mn` to `mx`, relative to `origin`.
 void MakeBox(b2PolygonShape& shape, Vector2 mn, Vector2 mx, Vector2 origin, bool set)
@@ -124,7 +182,9 @@ void PhysicsWorld::CreateFixtures(ColliderEntry& e)
             const int n = static_cast<int>(poly.size() < b2_maxPolygonVertices ? poly.size() : b2_maxPolygonVertices);
             for (int k = 0; k < n; k++) v[k] = b2Vec2(poly[static_cast<size_t>(k)].x - origin.x, poly[static_cast<size_t>(k)].y - origin.y);
             shape.Set(v, n);
-        } else
+        } else if (e.ownBody && c.Turned() && c.parts.empty())
+            TurnedBox(shape, c);
+        else
             MakeBox(shape, c.parts.empty() ? c.Min() : c.parts[i].first, c.parts.empty() ? c.Max() : c.parts[i].second, origin,
                     options_.polygonSet);
         b2FixtureDef fd;
@@ -158,7 +218,9 @@ void PhysicsWorld::AddCollider(const Collider2D& collider, RigidbodyType2D body,
         b2BodyDef bd;
         bd.type = body == RigidbodyType2D::Kinematic ? b2_kinematicBody : body == RigidbodyType2D::Dynamic ? b2_dynamicBody : b2_staticBody;
         bd.position = B2(collider.position);
+        if (hasRigidbody && collider.Turned()) bd.angle = BodyAngle(collider.rotZ, collider.rotW);
         e.body = world_->CreateBody(&bd);
+        e.ownBody = hasRigidbody;
     }
     if (e.enabled) CreateFixtures(e);
 }
