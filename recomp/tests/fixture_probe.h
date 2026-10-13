@@ -8,9 +8,11 @@
 //
 // The replays call FixtureMadeElsewhere before a step whose "fx" has a collider made (switched on,
 // new, its object activated), reshaped, or moved where Unity must remake its shapes (one without
-// a Rigidbody2D, in world space; one below its body's object). A trigger switch and a body's
-// type or simulated flag aren't counted: whether Unity remakes fixtures for those isn't known,
-// and the recordings will show it. "fx" leaves out the recorded enemies' own colliders (they are
+// a Rigidbody2D, in world space; one below its body's object), or switched to or from a trigger
+// (Unity remakes its shapes: enemy_BrokenGolemTurret.jsonl of enemyfix-turret-2, frame 206, a
+// shot's isTrigger set as it crashed, in "fxOwn"; game/EnemyProjectile.cpp). A body's type or
+// simulated flag isn't counted: whether Unity remakes fixtures for those isn't known, and the
+// recordings will show it. "fx" leaves out the recorded enemies' own colliders (they are
 // in "fxOwn"; so are the BrokenGolemTurret's shots, pooled outside its hierarchy, which the turret
 // replay makes itself): the port remakes those itself (Box2D's CreateFixture sets e_newFixture),
 // and taking them from the recording would hide a remake the port misses. The room's critters
@@ -33,7 +35,7 @@ inline bool StepMadeFixtures(const json::Value& step)
 {
     const json::Value* fx = step.Find("fx");
     if (!fx || fx->size() < 4) return false;
-    for (size_t k = 0; k < 4; k++)
+    for (size_t k = 0; k < 5 && k < fx->size(); k++)
         if ((*fx)[k].AsInt() > 0) return true;
     return false;
 }

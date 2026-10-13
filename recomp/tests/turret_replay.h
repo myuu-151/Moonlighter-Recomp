@@ -65,6 +65,7 @@ struct TurretReplay : ReplayHooks {
     std::vector<std::pair<int, int>> destroys;     // (projectile, step)
     std::vector<std::string> hits;                 // "p/step/tag"
     int tcFrames = 0, tcGame = 0;
+    float fixedDt = 0.0f; // (the start's Time.fixedDeltaTime: the probe's next step)
 
     int IdOf(const game::EnemyProjectile* p)
     {
@@ -90,6 +91,7 @@ struct TurretReplay : ReplayHooks {
                  unity::Physics2D& roomColliders, unity::Rigidbody2D& heroBody, Tally& t) override
     {
         hero = &h;
+        fixedDt = Bits(start["fixedDeltaTime"]);
         sys = std::make_unique<game::EnemyProjectiles>(scene);
         sys->Register(projectilePrefab, projectileController);
         sys->SetPhysics(world, physics);
@@ -404,10 +406,11 @@ struct TurretReplay : ReplayHooks {
     }
 
     // The Animator's root motion on a turret body that moves ("rootMotionProbe", made after the
-    // recording: TurretRootMotionProbe.cs): the port's model (game/EnemyRootMotion.cpp: its pass
-    // restarts the body's rest, the velocity kept) has a velocity set in Update kept through the
-    // Animator pass to the frame's end, the body awake, and moved by it in the next fixed step
-    // (not set from the clip's delta, not pinned where the clip puts it).
+    // recording: TurretRootMotionProbe.cs): the probe's velocity set on the port's turret, then the
+    // port's Animator pass (game/EnemyRootMotion.cpp), against the game's body at the frame's end
+    // (velocity bits, awake); and the next fixed step against the velocity the pass left (a body
+    // without contacts moved by it: the game's position after the step is the one before plus
+    // that velocity times the step, here not moved at all).
     void AfterFrames(const std::vector<Value>& lines, Tally& t) override
     {
         bool probed = false;
@@ -415,22 +418,41 @@ struct TurretReplay : ReplayHooks {
             if (l["ev"].s != "rootMotionProbe") continue;
             probed = true;
             const auto it = enemies.find(static_cast<int>(l["s"].AsInt()));
-            const unity::AnimatorController* c = it != enemies.end() ? it->second->Controller() : nullptr;
+            game::Enemy* e = it != enemies.end() ? it->second : nullptr;
+            const unity::AnimatorController* c = e ? e->Controller() : nullptr;
             t.Add("rootMotionProbe: applyRootMotion as the port's controller has it (animators.py)",
                   c && (c->applyRootMotion == 1) == l["applyRootMotion"].b,
                   "turret " + std::to_string(l["s"].AsInt()) + ": port " + std::to_string(c ? c->applyRootMotion : -2) + ", game " +
                       std::to_string(l["applyRootMotion"].b));
-            const Value &before = l["before"], &set = l["set"], &end = l["frameEnd"], &step = l["afterStep"];
-            const bool kept = Same(V2(end["vel"]), V2(set)) && end["awake"].b;
-            const bool moved = !Same(V2(step["pos"]), V2(before["pos"])) && step["awake"].b;
-            t.Add("rootMotionProbe: a velocity set in Update kept through the Animator pass, the body moved by it (the port's model)",
-                  kept && moved,
-                  "set " + Str(V2(set)) + ", frame end v " + Str(V2(end["vel"])) + (end["awake"].b ? " awake" : " asleep") + ", next step pos " +
-                      Str(V2(before["pos"])) + " -> " + Str(V2(step["pos"])) + " v " + Str(V2(step["vel"])) +
+            const Value &before = l["before"], &set = l["set"], &afterSet = l["afterSet"], &end = l["frameEnd"], &step = l["afterStep"];
+            std::string port = "no turret " + std::to_string(l["s"].AsInt()) + " in the port";
+            bool ok = false;
+            if (e && e->body && e->physics && !e->destroyed) {
+                const Vector2 saved = e->body->velocity();
+                e->body->SetVelocity(V2(set));
+                const bool setTook = Same(e->body->velocity(), V2(afterSet["vel"]));
+                e->physics->ApplyRootMotion(*e);
+                const Vector2 v = e->body->velocity();
+                const bool awake = e->body->IsAwake();
+                e->body->SetVelocity(saved);
+                // (b2Island::Solve: the velocity damped by the body's drag, the position moved by it.)
+                const Vector2 b = V2(before["pos"]);
+                const float damp = 1.0f / (1.0f + fixedDt * e->body->Body()->GetLinearDamping());
+                const Vector2 vd = {v.x * damp, v.y * damp};
+                const Vector2 moved = {b.x + fixedDt * vd.x, b.y + fixedDt * vd.y};
+                ok = setTook && Same(v, V2(end["vel"])) && awake == end["awake"].b && Same(V2(end["pos"]), b) && Same(V2(step["pos"]), moved) &&
+                     Same(V2(step["vel"]), vd) && step["awake"].b == awake;
+                port = "port: after the pass v " + Str(v) + (awake ? " awake" : " asleep") + ", next step pos " + Str(moved);
+            }
+            t.Add("rootMotionProbe: the Animator pass on a moving body (the port's root motion: the velocity it leaves, awake; the next step)", ok,
+                  port + "; game: set " + Str(V2(set)) + ", frame end v " + Str(V2(end["vel"])) + (end["awake"].b ? " awake" : " asleep") +
+                      ", next step pos " + Str(V2(before["pos"])) + " -> " + Str(V2(step["pos"])) + " v " + Str(V2(step["vel"])) +
                       (step["awake"].b ? " awake" : " asleep") + " (updateMode " + std::to_string(l["updateMode"].AsInt()) + ")");
         }
         // (The probe needs a turret still active when the recording ends: none after the hero
-        // leaves the room, as he falls into its secret room at frame 208 of the first recording.)
+        // leaves the room, as he falls into its secret room at frame 208 of the first recording,
+        // or kills its one turret (-oracle-hero-off-holes and -oracle-hero-no-attacks keep both
+        // from happening).)
         if (!probed)
             std::printf("note: no \"rootMotionProbe\" line (TurretRootMotionProbe.cs: no turret active at the recording's end): the root "
                         "motion's model (game/EnemyRootMotion.cpp) unchecked\n");

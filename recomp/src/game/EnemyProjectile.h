@@ -104,6 +104,9 @@ public:
     std::unique_ptr<unity::Animator> animator;
     bool animatorFresh = true; // reset on activation, not yet updated
     std::string sprite;
+    // The renderer's sprite as the prefab has it: what the Animator writes back as it's switched
+    // off with its object (back in the pool), the default value of the property its clips drive.
+    std::string defaultSprite;
     float artRotation = 0.0f;
     void UpdateAnimator(float deltaTime);
 
@@ -154,6 +157,9 @@ public:
     // The object made active (parented under the room): body, Animator, Start.
     void Activate(EnemyProjectile& p);
     void Deactivate(EnemyProjectile& p);
+    // Collider2D.isTrigger changed on its box: Unity makes its shapes again (Box2D: the fixtures
+    // destroyed, their contacts ended, and made again, the body's mass kept).
+    void RemakeFixture(EnemyProjectile& p);
 
     // OnCollisionEnter2D as it's called, before (after = false) and after (checks).
     std::function<void(EnemyProjectile&, const Collision2D&, bool after)> onCollisionEnter;
@@ -181,8 +187,13 @@ private:
     // (projectile, other fixture) pairs touching after the last step; the enters of this one.
     std::vector<std::pair<const EnemyProjectile*, const b2Fixture*>> touching_;
     std::vector<std::pair<EnemyProjectile*, Collision2D>> enters_;
-    // (projectile, manifold points) of those, after the last step (GetContactsCount).
-    std::vector<std::pair<const EnemyProjectile*, int>> points_;
+    // (projectile, other fixture, manifold points) of those, after the last step (GetContactsCount).
+    struct PointsRow {
+        const EnemyProjectile* p;
+        const b2Fixture* other;
+        int points;
+    };
+    std::vector<PointsRow> points_;
 };
 
 // The script a projectile prefab carries, as its C++ class (BrokenGolemTurretProjectile); a
