@@ -13,7 +13,7 @@ FixedStepsMiner.cs	1	y	game/DungeonLayout
 CommonRoomMiner.cs	1	y	game/DungeonLayout
 BossRoomMiner.cs	1	y	game/DungeonLayout
 DungeonGenerator.cs	0.85	y	game/DungeonFloor, RoomSelection, RoomPlacement	the floor's generation; not the scene loading
-DungeonRoom.cs	0.45	y	game/RoomFill, RoomDetails, RoomScene, RoomDoors	generation and fill, details, doors; not the runtime room
+DungeonRoom.cs	0.47	y	game/RoomFill, RoomDetails, RoomScene, RoomDoors, EnemyRoom	generation and fill, details, doors; at runtime DisableEnemies, EnemyDefeated's OnAllEnemiesDefeated (UnLockRoomChests)
 DungeonRoomGenerator.cs	0.5	y	game/RoomGenerator, Composite	light/shadow, hole sprites, painted textures
 DungeonRoomInfo.cs	1	y	game/RoomDatabase
 DungeonRoomDatabase.cs	1	y	game/RoomDatabase
@@ -33,7 +33,7 @@ DetailsPrefabRegister.cs	0.6	y	game/RoomDetails
 Constants.cs	1	y	game/Constants
 WeightedList.cs	0.8	y	game/RoomSelection	the GetRandom and its sort
 Extensions.cs	0.1	y	cs/List	the list helpers generation uses
-Chest.cs	0.2	y	game/Chest	Awake's drops and shuffle
+Chest.cs	0.22	y	game/Chest	Awake's drops and shuffle; PlayUnlockChestSound's group
 DungeonBossRoom.cs	0.15	y	game/BossRoomStart	Start's draws
 Moonlighter.DLC.WandererDungeon/WandererDLCController.cs	0.1	y	game/DungeonFloor	the floor post-process
 # Doors and floors at runtime
@@ -78,5 +78,6 @@ HermitSlimeAttackState.cs	1	n	game/HermitSlime	no-ops (parameters that do not ex
 BrokenGolemTurretBehaviour.cs	1	y	game/BrokenGolemTurret	enemy_BrokenGolemTurret.jsonl (its root motion on a moving body unchecked until a recording has rootMotionProbe)
 BrokenGolemTurretProjectile.cs	1	y	game/EnemyProjectile	enemy_BrokenGolemTurret.jsonl
 FlyingKamikazeGolemBehaviour.cs	1	n	game/FlyingKamikazeGolem	waits on its recording (audited)
-GolemKamikazeBehaviour.cs	1	n	game/KamikazeGolem	waits on its recording (audited)
+GolemKamikazeBehaviour.cs	1	y	game/KamikazeGolem	enemy_KamikazeGolem.jsonl (recq kamifix-4)
 PoolManager.cs	0.6	n	game/PoolManager	the enemies' projectile pools
+WandererAmuletEffect.cs	0.4	y	game/AmuletEffects	its Enemy.OnEnemyRecivesDamage draw (enemy_KamikazeGolem.jsonl, recq kamifix-4); not SpawnWanderer, nor the strength bonus
