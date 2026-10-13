@@ -80,8 +80,14 @@ order; bindings map them to properties, a sprite curve's value indexing pptrCurv
 One layer, one clip per state: blend trees and further layers are refused (an error naming
 the controller and state), the port's Animator plays neither.
 
+The other dungeons' enemies (BIOME_BUNDLES: enemies_forest, enemies_desert, enemies_tesla), after
+the TARGETS: every prefab whose root plays an Animator (the enemies, their shots, puddles and
+effects), exact, keyed by the prefab's name as the replays ask for it (animators/<prefab>.json,
+sprites/enemies/<prefab>/; a prefab of an earlier bundle or target of that name is kept). A
+controller the port's Animator can't play (a blend tree, more layers) is reported and skipped.
+
     python tools/extract/animators.py --game <the game's folder> --out <folder>
-        (the TARGETS)
+        (the TARGETS, then the other dungeons' prefabs; --no-biomes: the TARGETS only)
     python tools/extract/animators.py --game ... --out ... --bundle <bundle> --name <name>
         [--kind controller|override] [--json <file name>] [--sprites <bank folder>] [--exact]
 """
@@ -114,6 +120,8 @@ TARGETS = (
     ('enemies_golem', 'GolemKamikaze', 'controller', 'KamikazeGolem', 'enemies/KamikazeGolem', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
+# The other dungeons' enemy bundles: their prefabs' controllers after the TARGETS (biome_targets).
+BIOME_BUNDLES = ('enemies_forest', 'enemies_desert', 'enemies_tesla')
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).
 SPRITE_FIELDS = ('enemyDeadSprite',)
 
@@ -464,8 +472,46 @@ def write_bank(env, folder, sprites_wanted):
     return count, total
 
 
+_envs = {}
+
+
+def load(game, bundle):
+    """The bundle (loaded once per run)."""
+    if bundle not in _envs:
+        _envs[bundle] = UnityPy.load(str(Path(game) / 'Moonlighter_Data' / 'StreamingAssets' / 'AssetBundles' / bundle))
+    return _envs[bundle]
+
+
+def biome_targets(game):
+    """TARGETS-like rows for every prefab of BIOME_BUNDLES whose root GameObject has an Animator
+    with a controller: (bundle, controller name, kind, the prefab's name, its bank, 'prefab', exact)."""
+    kinds = {v: k for k, v in KINDS.items()}
+    for bundle in BIOME_BUNDLES:
+        env = load(game, bundle)
+        objs = {o.path_id: o for o in env.objects}
+        rows = []
+        for o in env.objects:
+            if o.type.name != 'Transform':
+                continue
+            t = o.read_typetree()
+            if t['m_Father']['m_PathID'] != 0:
+                continue
+            go = objs[t['m_GameObject']['m_PathID']].read_typetree()
+            for comp in go['m_Component']:
+                ref = comp['component']
+                c = objs.get(ref['m_PathID']) if ref['m_FileID'] == 0 else None
+                if c is None or c.type.name != 'Animator':
+                    continue
+                ctrl = c.read_typetree()['m_Controller']
+                target = objs.get(ctrl['m_PathID']) if ctrl['m_FileID'] == 0 else None
+                if target is None or target.type.name not in kinds:
+                    continue
+                rows.append((bundle, target.peek_name(), kinds[target.type.name], go['m_Name'], 'enemies/' + go['m_Name'], 'prefab', True))
+        yield from sorted(rows, key=lambda r: r[3])
+
+
 def run(game, out, bundle, name, kind, json_name, bank, mode, exact=False):
-    env = UnityPy.load(str(Path(game) / 'Moonlighter_Data' / 'StreamingAssets' / 'AssetBundles' / bundle))
+    env = load(game, bundle)
     controller, sprites_wanted, ids, name_of = extract(env, name, kind, exact)
     (out / 'animators').mkdir(parents=True, exist_ok=True)
     (out / 'animators' / f'{json_name}.json').write_text(json.dumps(controller), encoding='utf-8')
@@ -498,6 +544,7 @@ def main():
                         help="the bank's sprites beside the clips': every renderer in the bundle, or the prefabs playing it")
     parser.add_argument('--exact', action='store_true',
                         help='the exact curves (paths, attributes, keys), write defaults and update mode')
+    parser.add_argument('--no-biomes', action='store_true', help="the TARGETS only, not the other dungeons' prefabs")
     args = parser.parse_args()
     out = Path(args.out)
     if args.bundle:
@@ -506,8 +553,26 @@ def main():
         run(args.game, out, args.bundle, args.name, args.kind, args.json or args.name, args.sprites, args.sprites_from,
             args.exact)
     else:
+        done = set()
         for target in TARGETS:
             run(args.game, out, *target)
+            done.add(target[3])
+        if args.no_biomes:
+            return
+        skipped = []
+        for target in biome_targets(args.game):
+            if target[3] in done:
+                continue
+            done.add(target[3])
+            try:
+                run(args.game, out, *target)
+            except SystemExit as e:  # (a controller the port's Animator can't play)
+                skipped.append(f'{target[0]}/{target[3]} ({target[1]}): {e}')
+                print(f'   {target[3]}: skipped: {e}', flush=True)
+        if skipped:
+            print(f'{len(skipped)} prefabs of the other dungeons skipped:', flush=True)
+            for line in skipped:
+                print('   ' + line, flush=True)
 
 
 if __name__ == '__main__':

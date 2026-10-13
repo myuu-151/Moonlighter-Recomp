@@ -68,6 +68,7 @@
 #include "enable_clock.h"
 #include "fixture_probe.h"
 #include "polygon_probe.h"
+#include "sound_creators.h"
 
 namespace {
 
@@ -502,10 +503,16 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     ColliderReplay::Scene(scene, start);
     // MasterAudio's groups: the first scene's permanent creators' (made at the game's start: "Sounds
     // - Will" has Chest.PlayUnlockChestSound's "dungeon_chest_unlock"; tools/extract/sound_groups.py),
-    // then the Golem dungeon's creators', then the general ones'.
+    // then the dungeon's creators', then the general ones' (tests/sound_creators.h: the recording's
+    // list where it has one, else by its dungeon).
     game::MasterAudio audio;
-    if (!data.soundGroups.IsNull() &&
-        audio.Load(data.soundGroups, {"Sounds - Will", "Sounds - interface", "Sounds - GolemDungeon", "Sounds - GeneralDungeons"}))
+    const std::vector<std::string> creators = SoundCreators(start);
+    if (creators != std::vector<std::string>{"Sounds - Will", "Sounds - interface", "Sounds - GolemDungeon", "Sounds - GeneralDungeons"}) {
+        std::string list;
+        for (const std::string& c : creators) list += (list.empty() ? "" : ", ") + c;
+        std::printf("sound creators: %s\n", list.c_str());
+    }
+    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, creators))
         scene.audio = &audio;
     else std::printf("(no sound_groups.json: MasterAudio's draws not made)\n");
     scene.spawnEnemyDeadSprite = [&](const std::string&, Vector2 p) { portDeadSprites.emplace_back(-1, p); };

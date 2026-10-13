@@ -57,6 +57,7 @@
 #include "../enable_clock.h"
 #include "../fixture_probe.h"
 #include "../polygon_probe.h"
+#include "../sound_creators.h"
 
 namespace {
 
@@ -561,7 +562,8 @@ int Replay(const std::string& file, Data& data)
     gen::HUDManager::Instance = cs::gcnew<gen::HUDManager>();
     gen::HUDManager::Instance->minimap = cs::gcnew<gen::MinimapPanel>();
     game::MasterAudio audio;
-    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - GolemDungeon", "Sounds - GeneralDungeons"}))
+    // (The dungeon's creators and the general ones: tests/sound_creators.h, the recording's or by its dungeon.)
+    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, SoundCreators(start, false)))
         DarkTonic::MasterAudio::MasterAudio::engine = &audio;
     else std::printf("(no sound_groups.json: MasterAudio's draws not made)\n");
 
