@@ -101,6 +101,13 @@ public:
         bool groundBody = true;         // colliders without a Rigidbody2D: one static body at the origin, world vertices
         bool polygonSet = true;         // boxes through b2PolygonShape::Set (else SetAsBox)
         bool continuousPhysics = true;  // b2World's TOI pass
+        // Only bodies with continuous detection (Rigidbody2D.collisionDetectionMode Continuous: Box2D's
+        // bullets) take the TOI pass; a Discrete one isn't swept even against static colliders
+        // (Unity: Discrete "only detects collisions at the new position"). tangle.jsonl, frames
+        // 205-492: Tangle 5 pushed into a hole's inside corner ends where the island's position
+        // iterations left it; stock Box2D's TOI pushes it on to the slop (y 342.985016 against the
+        // game's 342.989410 at frame 205), and the replay differs from there.
+        bool continuousBulletsOnly = true;
     };
 
     // (Two constructors, not a defaulted Options argument: GCC wants Options' member
@@ -122,6 +129,9 @@ public:
     // A body with one BoxCollider2D (local offset and size, density 1), its transform at
     // `position` on `layer`.
     Rigidbody2D& AddBody(const Rigidbody2DDef& def, Vector2 position, int layer, Vector2 boxOffset, Vector2 boxSize);
+    // A body with no collider yet (a child's Rigidbody2D whose box comes and goes: the
+    // KamikazeGolem's AttackCollider), its transform at `position` on `layer`.
+    Rigidbody2D& AddBody(const Rigidbody2DDef& def, Vector2 position, int layer);
 
     // gameObject.layer = layer (Unity refilters its fixtures).
     void SetLayer(Rigidbody2D& body, int layer);

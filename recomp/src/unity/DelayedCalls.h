@@ -13,6 +13,10 @@
 //     targeting a second after an EnableEnemies run in a fixed step's pass starts in the frame);
 //   - a coroutine's WaitForSeconds counts from the frame's Time.time even when it's started in
 //     a fixed step, and resumes in the frame's pass only.
+// (The tangle.jsonl, slime.jsonl and slime_bis.jsonl cited were replaced on 2026-10-12; in the
+// new ones the targeting after an EnableEnemies whose Time.time is a frame's counts from the
+// fixed step before it, as if made there: recomp/tests/enable_clock.h, and the oracle's
+// EnableClockProbe that settles which.)
 // Due ones run earliest first, ties in the order they were made; one made during a pass waits
 // for the next pass even if it's already due. Times are doubles, as the engine keeps them; the
 // driver sets the clocks (now, fixedNow, inFixedStep).
@@ -38,6 +42,10 @@ public:
     void Wait(const void* owner, float seconds, std::function<void()> resume);
     // Object.Destroy(obj, t): `destroy` once due.
     void Destroy(const void* owner, float seconds, std::function<void()> destroy);
+    // Object.Destroy(obj) (no delay): `destroy` at the frame's end, after the LateUpdates (the
+    // engine's delayed pass after them; EndOfFrame runs these). Forget drops it too.
+    void DestroyAtFrameEnd(const void* owner, std::function<void()> destroy);
+    void EndOfFrame();
     // StopAllCoroutines (the object was deactivated): its waits go, its invokes stay.
     void StopCoroutines(const void* owner);
     // The owner is gone (destroyed): all of its calls go.
@@ -62,6 +70,7 @@ private:
         long long pass = -1; // the pass it was made in (-1: between passes)
         bool fixedPass = false; // made inside a fixed step: the fixed passes run it too
         bool cancelled = false;
+        bool frameEnd = false; // DestroyAtFrameEnd's
     };
     void Add(const void* owner, const std::string& name, Kind kind, double base, float delay, std::function<void()> fn, float repeat);
     void Pass(double time, bool fixedPass);

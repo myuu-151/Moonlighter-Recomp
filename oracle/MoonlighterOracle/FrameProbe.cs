@@ -7,12 +7,14 @@ using UnityEngine;
 
 namespace MoonlighterOracle
 {
-    /// Who draws from UnityEngine.Random during the frames generation yields to (the boss
-    /// room's Start frame): every Awake/Start/OnEnable/Update/... of the game's
-    /// MonoBehaviours and StateMachineBehaviours is wrapped, and while a window is open each
-    /// call that moved the RNG is logged ("frameDraw": type, method, object, draws, and the
-    /// nesting depth, so nested calls aren't counted twice). Random's own methods are engine
-    /// internals Harmony can't wrap; this finds their callers instead.
+    /// Who draws from UnityEngine.Random during the frames generation yields to (window
+    /// "generation": before the first room and between rooms; "bossStart": the boss room's
+    /// Start frame on): every Awake/Start/OnEnable/Update/... of the game's MonoBehaviours and
+    /// StateMachineBehaviours is wrapped, and while a window is open each call that moved the
+    /// RNG is logged ("frameDraw": type, method, object, draws, the nesting depth, so nested
+    /// calls aren't counted twice, and "gen": made inside the generation's own coroutine).
+    /// Random's own methods are engine internals Harmony can't wrap; this finds their callers
+    /// instead.
     internal static class FrameProbe
     {
         private static readonly string[] Methods =
@@ -51,6 +53,7 @@ namespace MoonlighterOracle
                 }
             }
             OraclePlugin.Log.LogInfo($"frame probe: {patched} methods wrapped ({failed} could not be)");
+            HookGenerator(harmony);
         }
 
         private static void Prefix(out uint[] __state)
@@ -70,7 +73,7 @@ namespace MoonlighterOracle
             Trace.Safe("frameDraw", () =>
             {
                 var j = Trace.Ev("frameDraw").Prop("window", Window).Prop("type", __originalMethod.DeclaringType?.FullName)
-                    .Prop("method", __originalMethod.Name).Prop("depth", depth).Prop("object", PathOf(__instance))
+                    .Prop("method", __originalMethod.Name).Prop("depth", depth).Prop("gen", inGenerator > 0).Prop("object", PathOf(__instance))
                     .Prop("draws", DrawsBetween(__state, after, 100000));
                 Rng.WriteState(j.Key("before"), __state);
                 Trace.Emit(Trace.State(j, "after"));
@@ -98,6 +101,55 @@ namespace MoonlighterOracle
                 w = w ^ (w >> 19) ^ t ^ (t >> 8);
             }
             return -1;
+        }
+
+        // The frames the generation yields to, from the cave's end (GeneratChestRooms, where
+        // cave_game.jsonl takes "stateAfter") to the boss room's window or the end: the bundles'
+        // loading before the first room and a corrupted room's, and each room's
+        // `yield return new WaitForEndOfFrame()`. Other scripts' Updates run there and can draw
+        // (trace.jsonl, session 20261012-215722, the old walk_fall with the town's scene still
+        // loaded: 104 draws before the first room, then some between rooms; floor_sync_test's
+        // TraceEngine::FramePasses). The generation's own draws in those windows (an object's
+        // Awake or OnEnable in an Instantiate it makes) come from inside its coroutine: "gen".
+        // Opening it writes "frameWindow" (window "generation") into the floor's trace: a trace
+        // with it has every other script's draw in those frames, and the test takes no resync there.
+        [HarmonyPatch(typeof(DungeonGenerator), "GeneratChestRooms")]
+        private static class GenerationOpens
+        {
+            private static void Postfix()
+            {
+                if (Window != null || CaveOracle.inMirror) return;
+                Window = "generation";
+                Trace.Safe("frameWindow", () => Trace.Emit(Trace.Ev("frameWindow").Prop("window", Window)));
+            }
+        }
+
+        // Inside one of DungeonGenerator's coroutines (their MoveNext: GenerateDungeonCoroutine,
+        // the bundles' waits it starts are other classes'): the draws there are the generation's.
+        private static int inGenerator;
+        private static void GeneratorPrefix() => inGenerator++;
+        private static void GeneratorFinalizer() => inGenerator--;
+
+        private static void HookGenerator(Harmony harmony)
+        {
+            int n = 0;
+            foreach (Type t in typeof(DungeonGenerator).GetNestedTypes(BindingFlags.NonPublic | BindingFlags.Public))
+            {
+                if (!typeof(System.Collections.IEnumerator).IsAssignableFrom(t)) continue;
+                MethodInfo m = t.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (m == null) continue;
+                try
+                {
+                    harmony.Patch(m, prefix: new HarmonyMethod(typeof(FrameProbe), nameof(GeneratorPrefix)),
+                                  finalizer: new HarmonyMethod(typeof(FrameProbe), nameof(GeneratorFinalizer)));
+                    n++;
+                }
+                catch (Exception e)
+                {
+                    OraclePlugin.Log.LogWarning($"frame probe: can't hook {t.Name}.MoveNext: {e.Message}");
+                }
+            }
+            OraclePlugin.Log.LogInfo($"frame probe: {n} generator coroutines hooked");
         }
 
         // The boss room's Start frame: from AddBossRoom to SpawnSpecialRoomsAfterGeneration.

@@ -30,6 +30,10 @@ struct Collider2D {
     // A compound collider (a PolygonCollider2D made of tiles, the holes'): its world boxes, the
     // world box above being their bounds. Empty: just the box.
     std::vector<std::pair<Vector2, Vector2>> parts;
+    // Its shapes in the physics world when they aren't the parts: convex polygons, world
+    // vertices (a PolygonCollider2D as Unity cuts it for Box2D: unity/PolygonCollider2D.h). The
+    // queries here keep using the parts (the same outline).
+    std::vector<std::vector<Vector2>> shapes;
     // World box, without the skin.
     Vector2 Min() const;
     Vector2 Max() const;

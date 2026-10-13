@@ -44,6 +44,7 @@
 #include "unity/Animator.h"
 #include "unity/Physics2D.h"
 #include "unity/PhysicsWorld.h"
+#include "unity/PolygonCollider2D.h"
 #include "util/Json.h"
 
 using json::Value;
@@ -254,6 +255,8 @@ int main(int argc, char** argv)
                     if (j == 10) y1 += 10.0f;
                     c.parts.emplace_back(Vector2{c.position.x + x0, c.position.y + y0}, Vector2{c.position.x + x1, c.position.y + y1});
                 }
+            // In Box2D: the paths cut as Unity cuts a PolygonCollider2D (unity/PolygonCollider2D.h).
+            unity::SetPolygonColliderShapes(c, paths);
             holes.push_back(c);
         }
     }

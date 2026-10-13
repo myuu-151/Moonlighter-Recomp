@@ -19,8 +19,19 @@ if(MSVC)
     set_source_files_properties(${BOX2D_SOURCES} PROPERTIES COMPILE_OPTIONS /wd4456) # its shadowed locals
 endif()
 
+# libtess2 (third_party/libtess2/README.md): how Unity cuts a PolygonCollider2D into Box2D's
+# convex polygons (unity/PolygonCollider2D.h). Plain C.
+enable_language(C)
+file(GLOB LIBTESS2_SOURCES CONFIGURE_DEPENDS third_party/libtess2/Source/*.c)
+if(MSVC)
+    set_source_files_properties(${LIBTESS2_SOURCES} PROPERTIES COMPILE_OPTIONS "/W0")
+else()
+    set_source_files_properties(${LIBTESS2_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
+endif()
+
 add_library(mlcore STATIC
     ${BOX2D_SOURCES}
+    ${LIBTESS2_SOURCES}
     src/cs/Object.cpp
     src/cs/String.cpp
     src/cs/Text.cpp
@@ -84,8 +95,15 @@ add_library(mlcore STATIC
     src/game/EnemyRootCollider.cpp
     # MasterAudio's EventSounds on an enemy's objects: OnEnable's sounds and their draws.
     src/game/EnemyEventSounds.cpp
+    # The KamikazeGolem, Physics2D.OverlapCircleAll over the physics world.
+    src/game/KamikazeGolem.cpp
+    src/unity/Physics2DOverlap.cpp
+    # EnemyBehaviour.MakeJump (shared with the chest mimics).
+    src/game/EnemyJump.cpp
+    # A PolygonCollider2D's convex pieces in the physics world (libtess2).
+    src/unity/PolygonCollider2D.cpp
 )
-target_include_directories(mlcore PUBLIC src third_party/box2d)
+target_include_directories(mlcore PUBLIC src third_party/box2d third_party/libtess2/Include)
 
 add_executable(cave_oracle_test tests/cave_oracle_test.cpp)
 target_link_libraries(cave_oracle_test PRIVATE mlcore)
@@ -200,6 +218,13 @@ add_test(NAME enemy_broken_turret
 # draw), and against the game (`-oracle-enemy=FlyingKamikazeGolem`; skipped if there's none).
 add_test(NAME enemy_flyingkamikazegolem
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_FlyingKamikazeGolem.jsonl FlyingKamikazeGolem
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The KamikazeGolem (game/KamikazeGolem.h): kamikazes in a walled box (the wander, the jump, the
+# explosion and its OverlapCircleAll, SelfDestroy), and against the game
+# (`-oracle-enemy=KamikazeGolem`; skipped if there's none).
+add_test(NAME enemy_kamikazegolem
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_KamikazeGolem.jsonl KamikazeGolem
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The Tangle against the game (data/oracle/tangle.jsonl, `-oracle-tangle`; skipped if there's

@@ -59,6 +59,11 @@ public:
     void SetUnscaled(int id, bool unscaled);
     // A tween we only need the end of (OnComplete after `delay` + `duration`).
     int Timer(float duration, float delay, std::function<void()> onComplete);
+    // The tween's target (Tween.target: the transform a DOMove / DOMoveX moves; none: nullptr),
+    // and DOTween.Kill(target) / transform.DOKill(): every tween of that target killed, its
+    // OnComplete not run (one completing in this update included). Returns how many.
+    void SetTarget(int id, const void* target);
+    int KillTarget(const void* target);
 
     // DOTween's update for the frame: scaled tweens by deltaTime, the others by unscaledDeltaTime.
     void Update(float deltaTime, float unscaledDeltaTime);
@@ -72,6 +77,7 @@ private:
         float delay = 0.0f, elapsedDelay = 0.0f, duration = 0.0f, position = 0.0f;
         bool delayComplete = false, started = false, unscaled = false;
         bool fused = false; // To's: each component start + change * ease rounded once
+        const void* target = nullptr; // SetTarget's
         Ease ease = Ease::OutQuad;
         Vector2 start, change, end;
         std::function<Vector2()> get;
@@ -80,6 +86,7 @@ private:
     };
     std::vector<Tween> tweens_;
     std::vector<int> killedPending_; // killed while this update's callbacks run
+    std::vector<const void*> killedTargetsPending_; // KillTarget's while this update's callbacks run
     int nextId_ = 1;
 };
 

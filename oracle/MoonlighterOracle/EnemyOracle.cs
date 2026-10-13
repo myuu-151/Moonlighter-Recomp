@@ -29,8 +29,11 @@ namespace MoonlighterOracle
     /// recording starts at a frame's end:
     ///   - the start: the room, the enemy's name, the stats' context (level, night, difficulty,
     ///     NG+, the autoscale row), the hero's body and collider, PolyNavAgent.allAgents (enemy
-    ///     ids), when EnableEnemies ran and the targeting delay, Time.fixedDeltaTime;
-    ///   - "collider": every Collider2D in the scene (as the walk records them);
+    ///     ids), when EnableEnemies ran and the targeting delay, Time.fixedDeltaTime, the clocks
+    ///     around EnableEnemies ("enableClock": EnableClockProbe), "attackEnters" (the events
+    ///     have "attackEnter");
+    ///   - "collider": every Collider2D in the scene (as the walk records them; a
+    ///     PolygonCollider2D's pieces probed: PolygonProbe);
     ///   - "navMap": the PolyNav2D map (master and obstacle polygons, inflateRadius); again with
     ///     the frame if it's regenerated while recording;
     ///   - "rngProbe": Random.insideUnitCircle from the state then (put back after);
@@ -40,7 +43,9 @@ namespace MoonlighterOracle
     /// hero (position, layer, body); each fixed step's start (Time.fixedTime, the hero's
     /// transform, body position and velocity, layer, awake; each enemy's transform and body,
     /// and its AttackCollider: the box's enabled flag, size and offset, the object's local
-    /// position); what happened in order ("events": the attack trigger's AttackHit,
+    /// position; "fx": the fixtures Unity made since the step before, FixtureProbe); what
+    /// happened in order ("events": EnemyBehaviour.AttackHit, the attack collider's
+    /// OnTriggerEnter2D/OnCollisionEnter2D ("attackEnter"),
     /// DealDamageToPlayer, DealDamageToEnemy and Weapon.PushEnemyBackwards with the step they
     /// landed in (-1: not in physics), StartTargetingPlayer, OnDeath, OnDestroy, the dead sprite,
     /// and "anim": each call of a method an enemy's clip events name, with the Random state
@@ -302,6 +307,33 @@ namespace MoonlighterOracle
             }
         }
 
+        // The attack collider's own callbacks (EnemyAttackCollisionDetection: what it tells the
+        // behaviour it advises, AttackHit), "attackEnter" ("how": "trigger" or "collision"; in
+        // Ev.caller). "attackHit" above misses a behaviour whose AttackHit override doesn't call
+        // EnemyBehaviour's (HermitSlimeBehaviourNEW) and has the projectiles' calls too; the start
+        // line's "attackEnters" says a recording has these.
+        [HarmonyPatch(typeof(EnemyAttackCollisionDetection), "OnTriggerEnter2D")]
+        private static class AttackTriggerHook
+        {
+            private static void Prefix(EnemyAttackCollisionDetection __instance, Collider2D other) =>
+                AttackEnter(__instance, other != null ? other.gameObject : null, "trigger");
+        }
+
+        [HarmonyPatch(typeof(EnemyAttackCollisionDetection), "OnCollisionEnter2D")]
+        private static class AttackCollisionHook
+        {
+            private static void Prefix(EnemyAttackCollisionDetection __instance, Collision2D collision) =>
+                AttackEnter(__instance, collision != null ? collision.gameObject : null, "collision");
+        }
+
+        private static void AttackEnter(EnemyAttackCollisionDetection d, GameObject o, string how)
+        {
+            if (d.gameObjectToAdvise == null || d.gameObjectToAdvise.name.Contains("SlimeTrap")) return;
+            int id = Id(d.gameObjectToAdvise.GetComponent<EnemyBehaviour>());
+            if (id >= 0)
+                Add(new Ev { k = "attackEnter", s = id, step = Step, player = o != null && o.CompareTag("Player"), other = o != null ? o.name : null, caller = how });
+        }
+
         [HarmonyPatch(typeof(HeroMerchant), "DealDamageToPlayer")]
         private static class DamageToPlayerHook
         {
@@ -326,7 +358,7 @@ namespace MoonlighterOracle
                 int id = Id(__instance);
                 if (id < 0 || !recording) return;
                 __state = new Ev { k = "dmgToEnemy", s = id, step = Step, a = attackStrength, type = (int)enemyDamageReceivedType, hp0 = __instance.enemyStats.CurrentHealth, hero = HeroPos,
-                                   other = damageReceiver != null ? damageReceiver.name : null };
+                                   other = damageReceiver != null ? damageReceiver.name : null, caller = KamikazeOracle.DamageBy };
                 Add(__state);
             }
 
@@ -393,6 +425,7 @@ namespace MoonlighterOracle
                 if (__instance != targetRoom || targetRoom == null) return;
                 enableTime = Time.time;
                 enableFrame = Time.frameCount;
+                EnableClockProbe.OnEnable(__instance);
             }
         }
 
@@ -525,6 +558,7 @@ namespace MoonlighterOracle
                     j.Key("paths").Arr();
                     for (int i = 0; i < pc.pathCount; i++) Flat(j, pc.GetPath(i));
                     j.EndArr();
+                    PolygonProbe.Write(j, pc);
                 }
                 Emit(j);
             }
@@ -609,6 +643,7 @@ namespace MoonlighterOracle
             j.EndObj();
             TurretOracle.WriteEnemy(j, b);
             FlyKamiOracle.WriteEnemy(j, b);
+            KamikazeOracle.WriteEnemy(j, b);
             var mat = sr != null ? sr.material : null;
             j.Key("flash").Bits(mat != null && mat.HasProperty("_FlashAmount") ? mat.GetFloat("_FlashAmount") : 0f);
             Color col = mat != null && mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
@@ -678,6 +713,8 @@ namespace MoonlighterOracle
                 }
             j.EndArr();
             j.Key("enableTime").Bits(enableTime).Prop("enableFrame", enableFrame - Time.frameCount);
+            EnableClockProbe.Write(j);
+            j.Prop("attackEnters", true);
             j.Key("targetDelay").Bits(Traverse.Create(room).Field("enemyTimeToStartTargetingPlayer").GetValue<float>());
             j.Key("fixedDeltaTime").Bits(Time.fixedDeltaTime).Key("time").Bits(Time.time);
             j.Prop("dotweenEase", DG.Tweening.DOTween.defaultEaseType.ToString());
@@ -713,9 +750,11 @@ namespace MoonlighterOracle
             stepHero.Clear();
             stepSlimes.Clear();
             stepTime.Clear();
+            FixtureProbe.Clear();
             stepBoxes.Clear();
             TurretOracle.Clear();
             FlyKamiOracle.Clear();
+            KamikazeOracle.Clear();
         }
 
         private static void WriteFrame(int f)
@@ -753,6 +792,7 @@ namespace MoonlighterOracle
                 }
                 j.EndArr();
                 WriteStepBoxes(j, k);
+                FixtureProbe.WriteStep(j, k);
                 j.EndObj();
             }
             j.EndArr();
@@ -763,9 +803,11 @@ namespace MoonlighterOracle
                 switch (e.k)
                 {
                     case "attackHit": j.Prop("player", e.player).Prop("other", e.other); break;
+                    case "attackEnter": j.Prop("player", e.player).Prop("other", e.other).Prop("how", e.caller); break;
                     case "dmgToPlayer": j.Key("str").Bits(e.a).Prop("type", e.type); break;
                     case "dmgToEnemy":
                         j.Key("str").Bits(e.a).Prop("type", e.type).Key("hp0").Bits(e.hp0).Key("hp1").Bits(e.hp1).Prop("recv", e.other);
+                        if (e.caller != null) j.Prop("by", e.caller); // (a kamikaze's: KamikazeOracle.DamageBy)
                         j.Key("hero"); V2(j, e.hero);
                         break;
                     case "push":
@@ -808,6 +850,7 @@ namespace MoonlighterOracle
             j.EndArr();
             TurretOracle.WriteFrame(j);
             FlyKamiOracle.WriteFrame(j);
+            KamikazeOracle.WriteFrame(j);
             Emit(j);
         }
 
@@ -835,9 +878,11 @@ namespace MoonlighterOracle
                     list.Add(row.ToArray());
                 }
                 stepSlimes.Add(list);
+                FixtureProbe.OnStep();
                 StepBoxes();
                 TurretOracle.OnStep();
                 FlyKamiOracle.OnStep(slimes);
+                KamikazeOracle.OnStep();
             }
         }
 
@@ -930,6 +975,7 @@ namespace MoonlighterOracle
 
             // DungeonDoor.OnPlayerEnter: through the door into the room.
             targetRoom = room;
+            EnableClockProbe.Begin(room);
             enableTime = -1f;
             mapRegenerated = false;
             ctrl.StopMovement();
@@ -957,6 +1003,7 @@ namespace MoonlighterOracle
             HookAnimationEvents();
             TurretOracle.Begin(prefab);
             FlyKamiOracle.Begin(prefab);
+            KamikazeOracle.Begin(prefab);
             var rec = new GameObject("OracleEnemyRecorder").AddComponent<Recorder>();
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
             // The start, at a frame's end.
@@ -973,6 +1020,7 @@ namespace MoonlighterOracle
             }
             writer.Flush();
             ClearFrame();
+            FixtureProbe.Reset(() => slimes.Where(b => b != null).Select(b => b.transform));
             frameStartRng = Rng.Get();
             startFrame = Time.frameCount + 1;
             recording = true;
@@ -991,6 +1039,7 @@ namespace MoonlighterOracle
             Active = false;
             TurretOracle.End();
             FlyKamiOracle.End();
+            KamikazeOracle.End();
             UnityEngine.Object.Destroy(rec.gameObject);
             writer.Flush();
             writer.Close();

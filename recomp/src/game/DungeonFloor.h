@@ -30,6 +30,12 @@ public:
     // Around SpawnSpecialRoomsAfterGeneration (Desert hard-enemies shrine): hooks for checking.
     virtual void BeforeSpecialRooms() = 0;
     virtual void SpecialRoomsAfterGeneration() = 0;
+    // Frames pass here: GenerateDungeonCoroutine yields to the bundles' loading before the
+    // first room (and a corrupted room's culture's, after its pick) and `yield return new
+    // WaitForEndOfFrame()` ends each room's iteration. Other scripts' Updates run in those
+    // frames and can draw from UnityEngine.Random (none of the generation's own draws are
+    // there): the engine's to run (by default nothing does).
+    virtual void FramePasses() {}
 };
 
 struct PlacedCell {

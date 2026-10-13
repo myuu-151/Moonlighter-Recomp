@@ -32,6 +32,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "game/EnemyStats.h"
@@ -58,6 +59,7 @@ enum class EnemyDamageReceivedType { Normal, Effect, Familiar, Trick };
 
 // The layers enemies use (the project's TagManager).
 constexpr int kLayerTransparentFX = 1, kLayerGroundEnemy = 12, kLayerEnemyAttack = 23;
+constexpr int kLayerFlyingEnemy = 13; // (the KamikazeGolem's jump)
 
 // What an enemy sees of the hero (HeroMerchant.Instance) and does to him. The hero's own
 // lane fills it; the enemies only read and call.
@@ -75,6 +77,15 @@ struct EnemyHero {
     // DealDamageToPlayer with its DamageType (ItemDrain: the HermitSlime's; game/HeroDamage.h's
     // DealDamageToPlayer calls this, else dealDamage).
     std::function<void(float attackStrength, const std::string& damageSource, HeroDamageType type, Enemy& enemy)> dealTypedDamage;
+    // HeroMerchant.EnteredInCombat's subscribers, by owner (the KamikazeGolem's: game/KamikazeGolem.h):
+    // IsInCombat going true (DungeonRoom.EnterRoom into a room with enemies) calls them in order.
+    std::vector<std::pair<const void*, std::function<void()>>> enteredInCombat;
+    void EnteredInCombat() const
+    {
+        const auto subscribers = enteredInCombat; // (a handler may unsubscribe)
+        for (const auto& s : subscribers)
+            if (s.second) s.second();
+    }
 };
 
 // The scene an enemy lives in: the engine's schedulers, physics, the hero and the room.
@@ -184,6 +195,13 @@ public:
     unity::Rigidbody2DDef rigidbody;
     unity::Rigidbody2D* body = nullptr; // once EnemyPhysics::Add made it
     b2Fixture* attackFixture = nullptr;
+    // The AttackCollider child with a Rigidbody2D of its own (the KamikazeGolem's, Kinematic):
+    // its box is a sensor on that body, which sits at the child's world position (synced at
+    // each fixed step's start as the parent moves it; it doesn't move in the step), so making
+    // the box restarts that body's rest, not the root's. Without one, the box is on the root's body.
+    bool attackHasRigidbody = false;
+    unity::Rigidbody2DDef attackRigidbody;
+    unity::Rigidbody2D* attackBody = nullptr; // once EnemyPhysics::Add made it
     EnemyPhysics* physics = nullptr;
     // The root box as a trigger, its offset and size driven by the clips, and the child
     // hurtboxes (game/EnemyColliders.cpp; the HermitSlime's). A trigger root is a sensor with no
@@ -307,6 +325,11 @@ public:
     int deadForce = 100;
     bool subscribedToRoomEnter = false;
     bool hasConfusedEffect = false; // a ConfusedEffect below it (not ported: none)
+    // MakeJump's (game/EnemyJump.h; private in C#): its end, its time, its callback, read by
+    // ContinueJump and EndJump when the rise completes.
+    unity::Vector2 jumpEndPosition;
+    float jumpTime = 0.0f;
+    std::function<void()> jumpCallback;
 
     virtual void Init();
     // MonoBehaviour.Update.
@@ -325,6 +348,17 @@ public:
     // AttackHit(other): what touched the attack trigger; `otherIsPlayer`: it's the hero
     // (tag "Player").
     virtual void AttackHit(bool otherIsPlayer);
+    // What an attack trigger touched (AttackHit(GameObject other)): the hero, an enemy's root
+    // collider (its Enemy, its tag), a hurtbox, a room collider (its tag), or something else.
+    struct AttackOther {
+        bool player = false;
+        Enemy* enemy = nullptr;                  // its root collider's enemy
+        EnemyDamageReceiver* receiver = nullptr; // a child hurtbox
+        std::string tag;                         // the other's tag ("" unknown)
+    };
+    // What EnemyPhysics reports: AttackHit(other.player) unless a behaviour looks further
+    // (the KamikazeGolem's hits other enemies).
+    virtual void AttackHitOther(const AttackOther& other) { AttackHit(other.player); }
     void PushPlayerBackwards();
     void PushPlayerBackwards(float attackPushForce);
     virtual void EnemyDashTowardsThePlayer(float dashPushForce);
@@ -448,8 +482,15 @@ public:
         Enemy* enemy = nullptr;
         bool player = false;
         bool otherTrigger = false; // what it touched is a trigger itself (a breakable's)
+        const b2Fixture* other = nullptr; // what it touched
     };
     const std::vector<Hit>& LastHits() const { return hits_; }
+    // What a hit touched, as AttackHit's other (the enemy whose root box it is, a hurtbox, a
+    // room collider's tag).
+    EnemyBehaviour::AttackOther OtherOf(const Hit& hit);
+    // The enemy whose root collider (the GameObject with the EnemyBehaviour) this fixture is.
+    Enemy* RootOf(const b2Fixture* fixture) const;
+    unity::PhysicsWorld& World() { return world_; }
 
 private:
     class Listener;
