@@ -304,6 +304,7 @@ void EnemyProjectiles::Report()
     if (heroFollowsBody && hero_ && scene.hero) scene.hero->position = hero_->position();
     std::vector<std::pair<EnemyProjectile*, Collision2D>> enters = std::move(enters_);
     enters_.clear();
+    if (enters.size() > 1 && orderEnters) orderEnters(enters);
     for (auto& [p, collision] : enters) {
         if (onCollisionEnter) onCollisionEnter(*p, collision, false);
         p->OnCollisionEnter2D(collision);

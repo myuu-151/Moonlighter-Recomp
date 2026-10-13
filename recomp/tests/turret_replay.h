@@ -14,7 +14,9 @@
 //     points, none for a trigger);
 //   - each shot's OnCollisionEnter2D ("hit", in order within its step): which shot, what it hit
 //     (tag, name), from the game's Random state before it (resynced) and the hero's transform
-//     then, its draws compared after (the impact sound's);
+//     then, its draws compared after (the impact sound's); several in one step are called in the
+//     recording's order once they're the recording's enters (replay input: Box2D's pair order,
+//     from proxy ids the whole session sets; OnScene's orderEnters), counted in the summary;
 //   - per frame, in order: the looks' raycasts ("look": origin, direction, distance, mask, the
 //     collider hit; point, fraction and distance inform), ShootAnimation's runs ("shootAnim":
 //     which turret, which step: the Invokes' timing), the shots taken ("shot": turret, step,
@@ -66,6 +68,9 @@ struct TurretReplay : ReplayHooks {
     std::vector<std::pair<int, int>> destroys;     // (projectile, step)
     std::vector<std::string> hits;                 // "p/step/tag"
     int tcFrames = 0, tcGame = 0;
+    // Steps with several OnCollisionEnter2D called in the recording's order; of those, the ones
+    // the world's contact order had otherwise (orderEnters, OnScene).
+    int orderedSteps = 0, reorderedSteps = 0;
     float fixedDt = 0.0f; // (the start's Time.fixedDeltaTime: the probe's next step)
 
     int IdOf(const game::EnemyProjectile* p)
@@ -127,6 +132,52 @@ struct TurretReplay : ReplayHooks {
             heroHits++;
         };
         t.Add("projectile prefab and controller (ML_DATA)", projectilePrefab && projectileController, "");
+        // Several OnCollisionEnter2D starting in one fixed step: called in the recording's order.
+        // The order is replay input, not compared: Unity calls them in Box2D's broad-phase pair
+        // order, from proxy ids that every collider the session made or destroyed sets (the
+        // oracle's ContactOrderProbe; enemyfix-turret-3's 17 steps where two shots meet the same
+        // two walls, a trunk and a boundary, 11 in one order and 6 in the other), which a replay
+        // of one room can't rebuild. What's compared stays strict: the step's enters (which shot, on what tag) are
+        // the recording's exactly, or nothing is reordered and the row below fails; a step with
+        // one enter is never touched. The recording's order matters past the row: each crash
+        // schedules its shot's DestroyNow, whose order sets the pool's (enemyfix-turret-3, frame 337).
+        sys->orderEnters = [this](std::vector<std::pair<game::EnemyProjectile*, game::Collision2D>>& enters) {
+            const Value* tev = frameLine ? frameLine->Find("tev") : nullptr;
+            if (!tev) return;
+            // The step's game hits: the frame's next ones, in this step.
+            std::vector<const Value*> recorded;
+            size_t seen = 0;
+            for (const Value& e : tev->arr) {
+                if (e["k"].s != "hit") continue;
+                if (seen++ >= nextHit && e["step"].AsInt() == step) recorded.push_back(&e);
+            }
+            if (recorded.size() != enters.size()) return;
+            std::vector<std::pair<game::EnemyProjectile*, game::Collision2D>> ordered;
+            std::vector<bool> used(enters.size(), false);
+            for (const Value* g : recorded) {
+                const int p = static_cast<int>((*g)["p"].AsInt());
+                const std::string& tag = (*g)["tag"].s;
+                const std::string name = (*g)["other"].IsString() ? (*g)["other"].s : "";
+                size_t pick = enters.size();
+                for (size_t i = 0; i < enters.size(); i++) {
+                    if (used[i] || IdOf(enters[i].first) != p || enters[i].second.tag != tag) continue;
+                    if (pick == enters.size()) pick = i;
+                    if (enters[i].second.name == name) {
+                        pick = i; // (of two on one tag, the one on the object the game names)
+                        break;
+                    }
+                }
+                if (pick == enters.size()) return; // (not the recording's enters: left as they are)
+                used[pick] = true;
+                ordered.push_back(enters[pick]);
+            }
+            bool same = true;
+            for (size_t i = 0; i < enters.size() && same; i++)
+                same = ordered[i].first == enters[i].first && ordered[i].second.otherFixture == enters[i].second.otherFixture;
+            orderedSteps++;
+            if (!same) reorderedSteps++;
+            enters = std::move(ordered);
+        };
         // Each shot's OnCollisionEnter2D against the game's next "hit" of its step: the hero's
         // transform and the Random state the game had then; its draws compared after.
         sys->onCollisionEnter = [this, &t](game::EnemyProjectile& p, const game::Collision2D& c, bool after) {
@@ -489,6 +540,10 @@ struct TurretReplay : ReplayHooks {
     // After the replay: how often the turrets' transforms were touched after their Update.
     void Summary() const
     {
+        if (orderedSteps)
+            std::printf("shots' OnCollisionEnter2D: %d steps with several, called in the recording's order (replay input: Unity's is Box2D's "
+                        "broad-phase pair order, from proxy ids the whole session sets); %d of them in another order in this world\n",
+                        orderedSteps, reorderedSteps);
         if (tcFrames)
             std::printf("turret transform changed after its Update (the Animator's root motion) in %d of %d turret-frames (the port: never)\n",
                         tcGame, tcFrames);

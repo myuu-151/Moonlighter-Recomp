@@ -163,6 +163,12 @@ public:
 
     // OnCollisionEnter2D as it's called, before (after = false) and after (checks).
     std::function<void(EnemyProjectile&, const Collision2D&, bool after)> onCollisionEnter;
+    // The order of a step's OnCollisionEnter2D calls when several start in it (Report calls this
+    // with two or more, in the world's contact order, before calling them). Unity's order follows
+    // Box2D's broad-phase pairs, whose proxy ids every collider the session ever made or destroyed
+    // sets, so this world's contact order is Unity's only as far as its history is; a replay of
+    // one room sets the recording's order here (tests/turret_replay.h). None: the world's order.
+    std::function<void(std::vector<std::pair<EnemyProjectile*, Collision2D>>& enters)> orderEnters;
 
     // Rigidbody2D.GetContacts(ContactPoint2D[]) on a projectile's body between steps: how many
     // points it hands back. A ContactPoint2D per manifold point of the contacts the last
