@@ -59,6 +59,12 @@ float EaseEvaluate(Ease ease, float time, float duration)
         const double t = static_cast<double>(static_cast<float>(q));
         return static_cast<float>(q * t * t * t * t + 1.0);
     }
+    case Ease::OutCubic: {
+        // ((time = time / duration - 1) * time * time + 1)
+        const double q = static_cast<double>(time) / static_cast<double>(duration) - 1.0;
+        const double t = static_cast<double>(static_cast<float>(q));
+        return static_cast<float>(q * t * t + 1.0);
+    }
     }
     return time / duration;
 }

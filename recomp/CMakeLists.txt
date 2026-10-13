@@ -82,6 +82,9 @@ add_library(mlcore STATIC
     src/game/EnemyRootCollider.cpp
     # MasterAudio's EventSounds on an enemy's objects: OnEnable's sounds and their draws.
     src/game/EnemyEventSounds.cpp
+    # The KamikazeGolem, Physics2D.OverlapCircleAll over the physics world.
+    src/game/KamikazeGolem.cpp
+    src/unity/Physics2DOverlap.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -198,6 +201,13 @@ add_test(NAME enemy_broken_turret
 # draw), and against the game (`-oracle-enemy=FlyingKamikazeGolem`; skipped if there's none).
 add_test(NAME enemy_flyingkamikazegolem
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_FlyingKamikazeGolem.jsonl FlyingKamikazeGolem
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The KamikazeGolem (game/KamikazeGolem.h): kamikazes in a walled box (the wander, the jump, the
+# explosion and its OverlapCircleAll, SelfDestroy), and against the game
+# (`-oracle-enemy=KamikazeGolem`; skipped if there's none).
+add_test(NAME enemy_kamikazegolem
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_KamikazeGolem.jsonl KamikazeGolem
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The Tangle against the game (data/oracle/tangle.jsonl, `-oracle-tangle`; skipped if there's

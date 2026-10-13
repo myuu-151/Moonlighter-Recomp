@@ -205,6 +205,32 @@ Rigidbody2D& PhysicsWorld::AddBody(const Rigidbody2DDef& def, Vector2 position, 
     return rb;
 }
 
+Rigidbody2D& PhysicsWorld::AddBody(const Rigidbody2DDef& def, Vector2 position, int layer)
+{
+    bodies_.emplace_back();
+    Rigidbody2D& rb = bodies_.back();
+    rb.layer_ = layer;
+    b2BodyDef bd;
+    bd.type = def.bodyType == RigidbodyType2D::Dynamic ? b2_dynamicBody : def.bodyType == RigidbodyType2D::Kinematic ? b2_kinematicBody : b2_staticBody;
+    bd.position = B2(position);
+    bd.linearDamping = def.linearDrag;
+    bd.angularDamping = def.angularDrag;
+    bd.gravityScale = def.gravityScale;
+    bd.fixedRotation = (def.constraints & Rigidbody2DDef::FreezeRotation) != 0;
+    bd.bullet = def.collisionDetection == Rigidbody2DDef::Continuous;
+    bd.allowSleep = def.sleepingMode != Rigidbody2DDef::NeverSleep;
+    bd.awake = def.sleepingMode != Rigidbody2DDef::StartAsleep;
+    rb.body_ = world_->CreateBody(&bd);
+    if (def.bodyType == RigidbodyType2D::Dynamic) {
+        b2MassData md;
+        md.mass = def.mass;
+        md.center = def.hasCenterOfMass ? B2(def.centerOfMass) : b2Vec2(0.0f, 0.0f);
+        md.I = 0.0f;
+        rb.body_->SetMassData(&md);
+    }
+    return rb;
+}
+
 void PhysicsWorld::Refilter(int layer)
 {
     for (ColliderEntry& e : colliders_)

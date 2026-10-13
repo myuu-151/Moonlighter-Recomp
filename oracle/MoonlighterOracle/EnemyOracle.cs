@@ -326,7 +326,7 @@ namespace MoonlighterOracle
                 int id = Id(__instance);
                 if (id < 0 || !recording) return;
                 __state = new Ev { k = "dmgToEnemy", s = id, step = Step, a = attackStrength, type = (int)enemyDamageReceivedType, hp0 = __instance.enemyStats.CurrentHealth, hero = HeroPos,
-                                   other = damageReceiver != null ? damageReceiver.name : null };
+                                   other = damageReceiver != null ? damageReceiver.name : null, caller = KamikazeOracle.DamageBy };
                 Add(__state);
             }
 
@@ -609,6 +609,7 @@ namespace MoonlighterOracle
             j.EndObj();
             TurretOracle.WriteEnemy(j, b);
             FlyKamiOracle.WriteEnemy(j, b);
+            KamikazeOracle.WriteEnemy(j, b);
             var mat = sr != null ? sr.material : null;
             j.Key("flash").Bits(mat != null && mat.HasProperty("_FlashAmount") ? mat.GetFloat("_FlashAmount") : 0f);
             Color col = mat != null && mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
@@ -716,6 +717,7 @@ namespace MoonlighterOracle
             stepBoxes.Clear();
             TurretOracle.Clear();
             FlyKamiOracle.Clear();
+            KamikazeOracle.Clear();
         }
 
         private static void WriteFrame(int f)
@@ -766,6 +768,7 @@ namespace MoonlighterOracle
                     case "dmgToPlayer": j.Key("str").Bits(e.a).Prop("type", e.type); break;
                     case "dmgToEnemy":
                         j.Key("str").Bits(e.a).Prop("type", e.type).Key("hp0").Bits(e.hp0).Key("hp1").Bits(e.hp1).Prop("recv", e.other);
+                        if (e.caller != null) j.Prop("by", e.caller); // (a kamikaze's: KamikazeOracle.DamageBy)
                         j.Key("hero"); V2(j, e.hero);
                         break;
                     case "push":
@@ -808,6 +811,7 @@ namespace MoonlighterOracle
             j.EndArr();
             TurretOracle.WriteFrame(j);
             FlyKamiOracle.WriteFrame(j);
+            KamikazeOracle.WriteFrame(j);
             Emit(j);
         }
 
@@ -838,6 +842,7 @@ namespace MoonlighterOracle
                 StepBoxes();
                 TurretOracle.OnStep();
                 FlyKamiOracle.OnStep(slimes);
+                KamikazeOracle.OnStep();
             }
         }
 
@@ -957,6 +962,7 @@ namespace MoonlighterOracle
             HookAnimationEvents();
             TurretOracle.Begin(prefab);
             FlyKamiOracle.Begin(prefab);
+            KamikazeOracle.Begin(prefab);
             var rec = new GameObject("OracleEnemyRecorder").AddComponent<Recorder>();
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
             // The start, at a frame's end.
@@ -991,6 +997,7 @@ namespace MoonlighterOracle
             Active = false;
             TurretOracle.End();
             FlyKamiOracle.End();
+            KamikazeOracle.End();
             UnityEngine.Object.Destroy(rec.gameObject);
             writer.Flush();
             writer.Close();

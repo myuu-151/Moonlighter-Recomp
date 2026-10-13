@@ -80,6 +80,9 @@ FIELDS = {
     # MasterAudio's EventSounds (the FlyingKamikazeGolem's "SoundsFlyingKamikaze" child): its
     # OnEnable plays enableSound's sounds (PlaySound: Random draws) when useEnableSound is on.
     'EventSounds': ('m_Enabled', 'useEnableSound', 'enableSound'),
+    # The KamikazeGolem (an EnemyBehaviour; dashForce and distanceToPlayerToStartChasing are
+    # private, its own constants; stopCheckingHolesDelay: its push's DOVirtual.DelayedCall).
+    'GolemKamikazeBehaviour': ENEMY_BEHAVIOUR + ('stopCheckingHolesDelay',),
     # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
     'WeaponCollisionDetection': ('weaponAttackType',),
 }
