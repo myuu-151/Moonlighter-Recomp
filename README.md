@@ -13,9 +13,9 @@ It also builds for the GameCube:
 ![ported](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge.json)
 ![verified](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge_verified.json)
 
-**7.1%** of the game's own code is ported (11,418 of 160,682 lines of C#, 39 of 1,173 classes whole); **6.5%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
+**7.2%** of the game's own code is ported (11,598 of 160,682 lines of C#, 40 of 1,173 classes whole); **6.5%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
 
-<img src="progress/bars/total.svg" alt="7.1% ported, 6.5% verified">
+<img src="progress/bars/total.svg" alt="7.2% ported, 6.5% verified">
 
 <sub>gold: ported · green: verified against the game</sub>
 
@@ -23,7 +23,7 @@ It also builds for the GameCube:
 |---|---:|---:|---:|---|
 | Dungeon generation | 10,310 | 50.2% | 50.2% | <img src="progress/bars/dungeon_generation.svg" alt="50.2%"> |
 | Player | 9,277 | 22.0% | 20.9% | <img src="progress/bars/player.svg" alt="22.0%"> |
-| Enemies | 27,342 | 11.0% | 9.2% | <img src="progress/bars/enemies.svg" alt="11.0%"> |
+| Enemies | 27,342 | 11.6% | 9.2% | <img src="progress/bars/enemies.svg" alt="11.6%"> |
 | Dungeon runtime | 5,487 | 5.7% | 3.4% | <img src="progress/bars/dungeon_runtime.svg" alt="5.7%"> |
 | Bosses | 8,285 | 2.3% | 2.3% | <img src="progress/bars/bosses.svg" alt="2.3%"> |
 | Items & effects | 13,388 | 0.6% | 0.0% | <img src="progress/bars/items_effects.svg" alt="0.6%"> |
