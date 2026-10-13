@@ -161,7 +161,8 @@ last-freed-first), `HashSet` (slots, free list, reset when emptied), their enume
 version checks, `Keys`/`Values`, `KeyValuePair`, `EqualityComparer<T>.Default` /
 `Comparer<T>.Default`, the collection interfaces. `String` (UTF-16, interned literals,
 ordinal operations exact; culture ones per en-US, which OptionsPanel.Load sets on every
-thread: exact for ASCII), `StringBuilder`, number parsing with styles (the invariant
+thread: exact for ASCII letters and digits, see "Known approximations" for punctuation),
+`StringBuilder`, number parsing with styles (the invariant
 culture's symbols), `Array`, `Delegate`, `Box`/`Nullable`, `Type`, LINQ (eager operators so
 far), `Math`.
 
@@ -178,18 +179,27 @@ component and its GameObject, parents and children). The model:
   header);
 - **a precise mark-sweep at frame boundaries** (`Heap::Collect`): the translator generates each
   class's `cs_trace` (its reference fields, and structs' through `cs_trace_value`); the roots
-  are the static fields of translated classes (registered by the generated code), the
-  interned strings and types, the Unity layer's live objects (`UnityEngine::Object::Live`,
-  later the scenes, the scheduled coroutines, Invokes and tweens) and `cs::Root<T>` handles
-  hand-written code holds. Collecting only between frames means no C++ stack is scanned: no
-  translated code is running, every live object is reachable from those roots. A coroutine's
-  locals live in its state machine object, so they are traced too. Marks are epochs: nothing is
-  reset after a collection.
+  are the static fields and static field-like events of translated classes (registered by the
+  generated code; a generic type's per instantiation, by its `__si()` at its first static
+  access), the interned strings and types, the Unity layer's live objects
+  (`UnityEngine::Object::Live`), the scene's running coroutines (and the ones a WaitForSeconds
+  still holds), its pending Starts, destroys and Animators, the running tweens, and
+  `cs::Root<T>` handles hand-written code holds. Collecting only between frames means no C++
+  stack is scanned: no translated code is running, every live object is reachable from those
+  roots. A coroutine's locals live in its state machine object, so they are traced too,
+  including the struct enumerators a `foreach` around a `yield` keeps there (List's,
+  Dictionary's and its Keys'/Values', HashSet's: each traces its collection, which may be a copy
+  nothing else holds: `foreach (x in new List<T>(...))`). Marks are epochs: nothing is reset
+  after a collection.
 - `Heap::Clear` (a test's or a scene's heap) frees what the roots don't reach and moves what
   they do (a static list made during a test, a cached delegate) to the program's own heap;
   static constructors allocate there directly (`cs::StaticScope`).
 - objects without a generated `cs_trace` (the hand port's) are never collected, only cleared
-  with their heap.
+  with their heap; what they reference is kept only if something traced reaches it too.
+- checked by `cs_gc` (`tests/cs_gc_test.cpp`: each kind of field alone keeps its objects) and by
+  `slime_translated_gc` / `enemy_golem_soldier_translated_gc`: the enemy replays with a
+  collection at every frame end (`ML_GC_EVERY_FRAME=1`) and what it frees overwritten and never
+  reused (`ML_GC_POISON=1`): ALL MATCH, about 3,000 objects freed per replay.
 
 Why: it is exact (no finalizers in the game's code to observe a collection; no weak
 references in the counted classes), deterministic (a collection runs at a fixed point, never
@@ -249,7 +259,11 @@ use it; `progress/unity_api_gaps.tsv` lists every such API with the methods and 
   before compiling, and compiles `recomp/gen/cpp/*.cpp` (listed in `sources.cmake`) with the
   runtime and the facade; devkitPPC's GCC needs `-std=gnu++17 -fexceptions -frtti
   -ffp-contract=off` (exceptions: C# exceptions are C++ exceptions; RTTI: casts and catch
-  clauses). Nothing generated is committed, in either repository.
+  clauses). Nothing generated is committed, in either repository. (Not wired in yet: MLGC's
+  Makefile_GCN compiles recomp/src/cs but not gen/ or bind/. Checked by hand on 2026-10-13: the
+  proof's units, recomp/src/cs, recomp/src/bind and the translated tests pass devkitPPC GCC
+  15.2's front end, `-fsyntax-only -std=gnu++17` and `gnu++20` with the GameCube's machine flags
+  and PI defined as Octave's Maths.h defines it.)
 
 ## The proof
 
@@ -289,11 +303,14 @@ statistics and analytics, the item drops (their draws resynced by the replay, as
 | ctest | recording | result |
 |---|---|---|
 | `slime_translated` | slime.jsonl (4 BabySlimes, 728 frames) | ALL MATCH: 2542 fixed-step starts, 1416 frame ends per row, the attack triggers, hits, pushes, deaths |
-| `slime_bis_translated` | slime_bis.jsonl | ALL MATCH (today the same recording as slime.jsonl, byte for byte) |
+| `slime_bis_translated` | slime_bis.jsonl | ALL MATCH; on main's real recording of the second room (Golem_Enemies_15_Bis, 2026-10-13 17:10; until then a copy of slime.jsonl) too, row table identical to `slime_bis`'s |
 | `enemy_golem_soldier_translated` | enemy_GolemSoldier.jsonl (re-recorded 2026-10-13 16:54) | ALL MATCH: 1778 fixed-step starts, 968 frame ends, the swing's clip events and their Random draws, the look lock, the enable-clock probe |
 
 The row tables (every row, every count) are identical to the hand port's on the same data.
-The translated code and the hand port never disagreed; what the proof found was in the facade:
+(One line differs, for the better: "Random drawn by the game's other scripts (resynced)", 21 times
+against the hand port's 23 on slime.jsonl, 33 against 34 on enemy_GolemSoldier.jsonl: the
+translated code makes draws of the game's that the hand port leaves to the resync, e.g. in
+frames 300 and 394 of slime.jsonl.) The translated code and the hand port never disagreed; what the proof found was in the facade:
 an attack trigger activated after its body was made wasn't attached (bind/Physics now rescans
 a body's colliders at each sync), the Animator took its write-defaults values at its first pass,
 after the replay had restored a mid-swing attack box (it now binds at OnEnable, as Unity does),
@@ -336,7 +353,16 @@ What's left, in order:
 
 ## Known approximations (to verify or finish)
 
-- culture-sensitive string comparison past ASCII (Mono's collation tables);
+- culture-sensitive string comparison (String.Compare, CompareTo, Sort() of strings,
+  StartsWith/EndsWith/IndexOf(string)): lowercase code-unit order, ties broken lowercase first;
+  exact for ASCII letters and digits, unverified where punctuation decides (Mono's collator has
+  its own order for symbols, and word sort ignores the hyphen and the apostrophe at the first
+  level: "a-c" against "ab") and past ASCII. The game's culture-sensitive calls seen so far
+  compare plain names and prefixes such as "//", "[", "data:image", "Register_";
+- Math.Round(double): to even (nearbyint). Mono's icall (unless its JIT inlines a round-to-even
+  instruction) rounds through floor(x + 0.5) with a fix for halves: the same for every float
+  argument and every product of two floats, different only for a double whose x + 0.5 rounds
+  (Mathf.Round / RoundToInt take floats: exact);
 - float.ToString / double.ToString: 7 / 15 significant digits from the first 17 (Mono's
   NumberFormatter); `String.Format` without format strings yet;
 - string.GetHashCode is Mono's legacy algorithm, unverified (no counted class reads it);
@@ -352,6 +378,33 @@ What's left, in order:
   OnCollisionEnter2D/Exit/Stay messages yet; Instantiate copies every field as is (Unity remaps
   references into the copied tree); a prefab's component order is the extraction's (renderer,
   colliders, body, Animator, scripts);
+- the facade's scene: the Updates, FixedUpdates and LateUpdates run in the order the driver
+  calls them (the replays: the recorded order); Unity's own order (script execution order, then
+  its behaviour lists) and Start's moment for an object made mid-frame (`Scene::RunStarts`, when
+  the driver calls it) are not modelled yet. `yield return new WaitForEndOfFrame()` resumes as
+  after `yield return null` (the next frame, after the Updates), where Unity resumes it at the
+  end of the same frame (DungeonGenerator and GameManager use it). Destroy(gameObject): OnDisable
+  on the whole tree, then OnDestroy object by object, parents first: unverified;
+- the facade's Transform with a rotation or a scale: its own TRS math (double trigonometry,
+  float per component) in place of the engine's native float math; only translations (parents'
+  local positions added in order) are checked against the game;
+- UnityEngine.Object.GetInstanceID / GetHashCode: unique per object, not Unity's numbering (the
+  game uses them as tween ids and in logs only);
+- memory: every UnityEngine.Object is a root for as long as it exists (`Object::Live`),
+  destroyed ones too, so none is ever collected, nor what it references: a leak to close before
+  the full game (to do: a destroyed object stops being a root once the facade's tables, the
+  physics' and the drivers' drop it);
+  Resources.Load makes a new TextAsset at each call (Unity returns the same asset);
+- the enemy replays' stand-ins (units.txt `hand`) that are the game's logic rather than a scene
+  service: HeroMerchant.DealDamageToPlayer (recorded), HeroMerchantController's
+  CheckIfPlayerIsShieldProtected (false), AddForce (recorded) and CheckForHolesAfterPush (not
+  reached), CameraManager.Rumble (DOShakePosition's draws only), DungeonRoom.SpawnEnemyDeadSprite
+  (recorded; its Random.Range(0, 1) left to the resync), DungeonRoom.AddDropItems,
+  ItemDrop.DropItem (its Random.value / Range left to the resync), FamiliarsManager.GetEggItem
+  (false), EnemyStatManager.ReadFile (FullSerializer's reflection done by hand through
+  cs_SetField), TimeManagerV2 / OptionsManager / GameManager (the recording's values); the HUD,
+  health bars, statistics, analytics and achievements are no-ops. The draws they skip are what
+  the replays resync ("Random drawn by the game's other scripts");
 - `data/extracted/prefabs.json` has Enemy.itemDrops' entries as "min"/"max" until it is
   extracted again (tools/extract/prefabs.py now writes minDropRate/maxDropRate, the fields'
   names): harmless while ItemDrop.DropItem is stood in.
