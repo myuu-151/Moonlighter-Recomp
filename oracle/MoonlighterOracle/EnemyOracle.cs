@@ -1140,17 +1140,29 @@ namespace MoonlighterOracle
                 try { BiomeBegin(); } // (EnemyOracleBiome.cs: what the enemies made so far)
                 catch (Exception e) { log.LogError(Tag + ": the generic rows: " + e); biome = false; }
             }
-            WriteStart(room);
-            WriteColliders();
-            WriteMap(PolyNav2D.current, -1);
-            WriteProbes();
-            for (int i = 0; i < slimes.Count; i++)
+            // (A start that throws fails the run at once, FAILED and quit, rather than ending this
+            // coroutine and leaving the game up until the queue's timeout: recq
+            // biome-forest-VenomousTangle-1.)
+            try
             {
-                var j = new Json().Obj().Prop("ev", legacy ? "slime" : "enemy");
-                WriteSlime(j, i, slimes[i], true);
-                Emit(j);
+                WriteStart(room);
+                WriteColliders();
+                WriteMap(PolyNav2D.current, -1);
+                WriteProbes();
+                for (int i = 0; i < slimes.Count; i++)
+                {
+                    var j = new Json().Obj().Prop("ev", legacy ? "slime" : "enemy");
+                    WriteSlime(j, i, slimes[i], true);
+                    Emit(j);
+                }
+                writer.Flush();
             }
-            writer.Flush();
+            catch (Exception e)
+            {
+                writer.Close();
+                Fail("the start lines: " + e, quit);
+                yield break;
+            }
             ClearFrame();
             // (What the replay makes itself counts as the enemies' own, "fxOwn": the turrets' shots
             // too, pooled outside their hierarchies: TurretOracle.Held.)
@@ -1159,7 +1171,7 @@ namespace MoonlighterOracle
             startFrame = Time.frameCount + 1;
             recording = true;
             Active = true;
-            int frames = ScriptFrames;
+            int frames = ScriptFrames, framesLost = 0;
             for (int f = 0; f < frames; f++)
             {
                 yield return new WaitForEndOfFrame();
@@ -1167,8 +1179,22 @@ namespace MoonlighterOracle
                 {
                     if (biome) ScanSpawned(-1); // (EnemyOracleBiome.cs: what the frame made or ended)
                     WriteFrame(f);
+                    framesLost = 0;
                 }
-                catch (Exception e) { log.LogError(Tag + ": frame " + f + ": " + e); }
+                catch (Exception e)
+                {
+                    log.LogError(Tag + ": frame " + f + ": " + e);
+                    // (A frame lost now and then is logged; frames lost one after another fail the run.)
+                    if (++framesLost >= 30)
+                    {
+                        recording = false;
+                        Active = false;
+                        BiomeEnd();
+                        writer.Close();
+                        Fail("30 frames in a row lost (the last: " + e.GetType().Name + ")", quit);
+                        yield break;
+                    }
+                }
                 ClearFrame();
                 BiomeAfterFrame();
                 frameStartRng = Rng.Get();
