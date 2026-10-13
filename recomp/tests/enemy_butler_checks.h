@@ -7,8 +7,8 @@
 // ReactivationDown, holds it a second):
 //   - far (200 to its right): it looks his way (WalkRight), shoots ("ShootAttack": the shot
 //     state, its clip's ShootAttack and PlayShootSound), a shot every 1.6 s (RecoverShot), each
-//     the pool's first; the shot flies at him by DOMove (550 over 2 s, linear: start + change *
-//     t, Vector3 operators each rounded) and hits him (OnCollisionEnter2D: the damage, 10 from
+//     the pool's first; the shot flies at him by DOMove (550 over 2 s, linear: per component
+//     start + change * t in doubles, rounded once, as Vector3Plugin's IL has it) and hits him (OnCollisionEnter2D: the damage, 10 from
 //     "GolemButler", no push), crashes (the Crash state, its box a trigger) and is back in the
 //     pool 0.3 s later; invincible while it faces him in its walk, not while it shoots (its shot
 //     states face nowhere: he's behind it then);
@@ -167,11 +167,15 @@ ButlerRun RunButler(const ButlerData& data, Vector2 at, const std::function<Vect
         audio.now = time;
         audio.frameCount = f;
         tweens.Update(dt);
-        // The first shot's DOMove: start + (end - start) * (t / 2), each operator rounded.
+        // The first shot's DOMove: per component start + change * (t / 2) (change = end - start,
+        // rounded), one expression in doubles rounded once (Vector3Plugin's `startValue.x +=
+        // changeValue.x * easeVal`).
         if (run.first && run.crashFrame < 0 && run.first->active && !run.first->crashed && f > run.firstFrame) {
             elapsed += dt;
             const float e = unity::EaseEvaluate(unity::Ease::Linear, elapsed, 2.0f);
-            const Vector2 want = run.firstStart + (run.firstEnd - run.firstStart) * e;
+            const Vector2 change = run.firstEnd - run.firstStart;
+            const Vector2 want{static_cast<float>(static_cast<double>(run.firstStart.x) + static_cast<double>(change.x) * static_cast<double>(e)),
+                               static_cast<float>(static_cast<double>(run.firstStart.y) + static_cast<double>(change.y) * static_cast<double>(e))};
             if (std::getenv("ML_BUTLER_BOX") && !Same(run.first->position(), want))
                 std::printf("frame %d: the shot at %s, DOMove's %s\n", f, Str(run.first->position()).c_str(), Str(want).c_str());
             run.flightExact = run.flightExact && Same(run.first->position(), want);
@@ -300,7 +304,7 @@ void CheckGolemButler(const ButlerData& data)
         Check(shootState, "the shot state: ShootAttackRight");
         Check(run.firstInstance == 0 && Same(run.firstStart, at) && run.firstAngle == 90,
               "the first shot: the pool's first, at the butler, its PixelRotation 90 (0 + 90: aimed right)");
-        Check(run.flightFrames > 10 && run.flightExact, "its flight: DOMove's start + (end - start) * (t / 2), bit for bit (" + std::to_string(run.flightFrames) + " frames)");
+        Check(run.flightFrames > 10 && run.flightExact, "its flight: DOMove's start + (end - start) * (t / 2) rounded once, bit for bit (" + std::to_string(run.flightFrames) + " frames)");
         Check(run.crashFrame > run.firstFrame && run.triggerAfterCrash, "it crashes on him (OnCollisionEnter2D): its box a trigger");
         Check(run.crashStateFrame == run.crashFrame, "the Crash trigger: the crash state in the frame's animation pass");
         Check(run.backInPoolFrame >= run.crashFrame + 17 && run.backInPoolFrame <= run.crashFrame + 19, "DestroyNow 0.3 s after the crash: back in the pool");

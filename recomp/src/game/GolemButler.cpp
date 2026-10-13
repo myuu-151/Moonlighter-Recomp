@@ -204,7 +204,7 @@ bool GolemButlerBehaviour::IsPlayerInFieldOfVision() const
     // Mathf.Abs(Vector3.Angle(vector, heroMerchantTransform.position - transform.position)) < fieldOfVisionAngle.
     const Vector2 h = HeroPosition(), p = enemy.position();
     const bool in = Mathf::Abs(GolemButlerAngle(Facing(), h - p)) < fieldOfVisionAngle;
-    visionChecks.push_back(in);
+    if (recordChecks) visionChecks.push_back(in);
     return in;
 }
 
@@ -213,7 +213,7 @@ bool GolemButlerBehaviour::IsPlayerInBack() const
     // Vector3.Angle(vector, transform.position - heroMerchantTransform.position) < 55f.
     const Vector2 h = HeroPosition(), p = enemy.position();
     const bool back = GolemButlerAngle(Facing(), p - h) < kBackAngle;
-    backChecks.push_back(back);
+    if (recordChecks) backChecks.push_back(back);
     return back;
 }
 
@@ -252,8 +252,10 @@ void GolemButlerBehaviour::RearmEnemy()
 
 void GolemButlerBehaviour::AttackHit(bool otherIsPlayer)
 {
+    if (onAttackHit) onAttackHit(*this, otherIsPlayer, false);
     EnemyBehaviour::AttackHit(otherIsPlayer);
     if (!otherIsPlayer) PlayShotImpactSound();
+    if (onAttackHit) onAttackHit(*this, otherIsPlayer, true);
 }
 
 void GolemButlerBehaviour::OnDeath()
@@ -308,12 +310,16 @@ void GolemButlerProjectile::StartMove()
     SetTrigger(false);
     crashed = false;
     unity::Tweens* tweens = scene().tweens;
-    // transform.DOMove(transform.position + projectileDirection.normalized * 550f, 2f): the
-    // Vector3 operators, each rounded; from the position when it starts; linear, scaled time.
+    // transform.DOMove(transform.position + projectileDirection.normalized * 550f, 2f): the end
+    // from the Vector3 operators, each rounded; from the position when it starts (change = end -
+    // start, rounded); linear, scaled time. Each update is Vector3Plugin.EvaluateAndApply's
+    // default case (DOTween.dll's IL: ldflda x; dup; ldind.r4; ...; mul; add; stind.r4):
+    // `startValue.x += changeValue.x * easeVal`, in doubles, rounded once at the store, i.e.
+    // Tweens::To's fused update (Move rounds the product first).
     const Vector2 end = position() + unity::Normalized(projectileDirection) * kMoveReach;
     GolemButlerProjectile* self = this;
-    flyingMove = tweens ? tweens->Move([self] { return self->position(); }, [self](Vector2 p) { self->setPosition(p); }, end, kMoveTime,
-                                       unity::Ease::Linear, 0.0f, false)
+    flyingMove = tweens ? tweens->To([self] { return self->position(); }, [self](Vector2 p) { self->setPosition(p); }, end, kMoveTime,
+                                     unity::Ease::Linear, 0.0f, false)
                         : 0;
     // rotation.Angle = (int)Extensions.GetAngleFromVector(Vector3.right, projectileDirection) + 90.
     rotationAngle = static_cast<int>(GolemButlerAngleFromVector(Vector2::right(), projectileDirection)) + 90;

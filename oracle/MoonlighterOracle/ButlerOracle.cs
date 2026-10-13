@@ -23,8 +23,10 @@ namespace MoonlighterOracle
     ///     its body touches (Rigidbody2D.GetContacts)]];
     ///   - a frame's "tev": what happened in order, with the fixed step (-1: none) and Time.time:
     ///     "look" (EnemyBehaviour.LookToPosition on a butler: the hero's and its positions, its
-    ///     caller (TryShootAttack, or none: the Invoke), then distanceX / distanceY), "vision" and
-    ///     "back" (IsPlayerInFieldOfVision, IsPlayerInBack: the result, the state's shortNameHash,
+    ///     caller (TryShootAttack, or none: the Invoke), then distanceX / distanceY),
+    ///     "attackHit" (the butler's AttackHit from its AttackCollider, not a shot's: hero or not,
+    ///     the other's name and tag, the Random state before and after: the impact sound), "vision"
+    ///     and "back" (IsPlayerInFieldOfVision, IsPlayerInBack: the result, the state's shortNameHash,
     ///     the hero's position with z and its), "tryShoot" (TryShootAttack: shotEnabled before),
     ///     "recover" (RecoverShot runs), "wait" (the Invoke("LookToPosition", 2.5) made), "shot"
     ///     (ShootAttack: the projectile taken, where, the direction it was given (x, y, z), the
@@ -215,6 +217,11 @@ namespace MoonlighterOracle
                         j.Key("heroBody"); V2(j, e.heroBody);
                         j.Key("heroVel"); V2(j, e.heroVel);
                         j.Key("pos"); V2(j, e.pos);
+                        Rng.WriteState(j.Key("rng0"), e.rng0);
+                        Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
+                        break;
+                    case "attackHit":
+                        j.Prop("player", e.flag).Prop("other", e.other).Prop("tag", e.otherTag);
                         Rng.WriteState(j.Key("rng0"), e.rng0);
                         Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
                         break;
@@ -423,6 +430,7 @@ namespace MoonlighterOracle
             private static void Prefix(GolemButlerProjectile __instance, Collision2D other, out Ev __state)
             {
                 __state = null;
+                InShotHit = true;
                 if (!Recording || !ids.ContainsKey(__instance.gameObject)) return;
                 var hero = HeroMerchant.Instance;
                 var hrb = hero.GetComponent<Rigidbody2D>();
@@ -440,6 +448,44 @@ namespace MoonlighterOracle
             }
 
             // (Not run when the owner's GetComponent throws, once it's destroyed: rng1 is then rng0.)
+            private static void Postfix(Ev __state)
+            {
+                if (__state != null) __state.rng1 = Rng.Get();
+            }
+
+            // (Runs even when the owner's GetComponent throws.)
+            private static Exception Finalizer(Exception __exception)
+            {
+                InShotHit = false;
+                return __exception;
+            }
+        }
+
+        /// While a shot's OnCollisionEnter2D runs: its owner's AttackHit is the shot's, not the
+        /// AttackCollider's (EnemyOracle's AttackHit hook leaves it out: the common replay counts
+        /// its "attackHit" events as the attack trigger's OnTriggerEnter2D).
+        internal static bool InShotHit;
+
+        /// The butler's own AttackHit from its AttackCollider's OnTriggerEnter2D (not a shot's):
+        /// whether it's the hero, the other's name and tag, the Random state before and after (the
+        /// impact sound's draws on anything but the hero).
+        [HarmonyPatch(typeof(GolemButlerBehaviour), "AttackHit", new[] { typeof(GameObject) })]
+        private static class AttackHitHook
+        {
+            private static void Prefix(GolemButlerBehaviour __instance, GameObject other, out Ev __state)
+            {
+                __state = null;
+                if (!Recording || InShotHit) return;
+                int s = EnemyOracle.IdOf(__instance);
+                if (s < 0) return;
+                __state = new Ev
+                {
+                    k = "attackHit", s = s, step = Step, flag = other != null && other.CompareTag("Player"), other = other != null ? other.name : null,
+                    otherTag = other != null ? other.tag : null, rng0 = Rng.Get()
+                };
+                Add(__state);
+            }
+
             private static void Postfix(Ev __state)
             {
                 if (__state != null) __state.rng1 = Rng.Get();

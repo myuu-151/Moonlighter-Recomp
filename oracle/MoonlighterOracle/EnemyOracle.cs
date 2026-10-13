@@ -297,6 +297,7 @@ namespace MoonlighterOracle
         {
             private static void Prefix(EnemyBehaviour __instance, GameObject other)
             {
+                if (ButlerOracle.InShotHit) return; // (a butler's shot crashing: ButlerOracle's "hit", not the attack trigger)
                 int id = Id(__instance);
                 if (id >= 0) Add(new Ev { k = "attackHit", s = id, step = Step, player = other != null && other.CompareTag("Player"), other = other != null ? other.name : null });
             }

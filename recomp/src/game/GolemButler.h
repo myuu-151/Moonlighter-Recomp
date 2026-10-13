@@ -40,8 +40,10 @@
 // distanceY) picks, plus transform.position), aimed at the hero (his position minus that,
 // a Vector3: his z, taken as 0), its owner the butler; its StartMove.
 // The shot (GolemButlerProjectile): StartMove makes its box solid, DOMoves it by
-// direction.normalized * 550 over 2 s, linear (scaled time; DOMove's Vector3 operators, each
-// rounded), turns its PixelRotation to (int)GetAngleFromVector(right, direction) + 90;
+// direction.normalized * 550 over 2 s, linear (scaled time; the end from Vector3 operators, each
+// rounded; each update DOTween 1.2's Vector3Plugin sets `startValue.x += changeValue.x * easeVal`
+// per component, one expression in doubles rounded once, as its IL has it: Tweens::To, not Move),
+// turns its PixelRotation to (int)GetAngleFromVector(right, direction) + 90;
 // OnComplete DestroyNow. OnCollisionEnter2D with a LevelBoundary, Rock, Player or Shield: the
 // owner's AttackHit (its GetComponent on a destroyed owner throws: then nothing more), the
 // "Crash" trigger, the tween paused, the box a trigger, Invoke("DestroyNow", 0.3). DestroyNow:
@@ -128,10 +130,14 @@ public:
     unity::Vector2 Facing() const;
 
     // For checks (not the game's): called as each LookToPosition and each ShootAttack starts (a
-    // replay puts the hero where the game had him then), and with each shot taken; each vision
-    // check's and back check's result, in order.
+    // replay puts the hero where the game had him then), and with each shot taken; around each
+    // AttackHit (after = false before it runs: its impact sound's Random draws); each vision
+    // check's and back check's result, in order, while `recordChecks` is on (off in the game:
+    // they'd only grow).
     std::function<void(GolemButlerBehaviour&)> beforeLook, beforeShootAttack;
     std::function<void(GolemButlerBehaviour&, GolemButlerProjectile*)> onShot;
+    std::function<void(GolemButlerBehaviour&, bool otherIsPlayer, bool after)> onAttackHit;
+    bool recordChecks = false;
     mutable std::vector<bool> visionChecks, backChecks;
 
 protected:
