@@ -50,6 +50,7 @@ struct TurretReplay : ReplayHooks {
     int step = -1; // the fixed step running (-1: the frame's part)
     const Value* frameLine = nullptr;
     size_t nextHit = 0; // the frame's game "hit" events matched so far
+    size_t heroHits = 0; // DealDamageToPlayer calls in this step (or the frame's part) so far
     // The frame's "tev" (set before its first step and before its Updates), the looks per turret so far.
     const Value* frameEvents = nullptr;
     std::map<int, size_t> looks;
@@ -104,6 +105,27 @@ struct TurretReplay : ReplayHooks {
         scene.projectiles = sys.get();
         scene.queries = &roomColliders;
         h.addForce = [this](Vector2 force) { pushes.emplace_back(step, force); };
+        // DealDamageToPlayer is the hero's (not this replay's): his own Random draws in it (the
+        // will_damaged sound's, the rumble's) from the game's states around it ("dmgToPlayer"'s
+        // rng0 and rng1, where recorded), the state it starts from compared (the shot's draws
+        // before it), so a shot's OnCollisionEnter2D on him compares the turret's own draws.
+        auto dealDamage = h.dealDamage;
+        h.dealDamage = [this, dealDamage, &t](float strength, const std::string& source, game::Enemy& e) {
+            if (dealDamage) dealDamage(strength, source, e);
+            const Value* events = frameLine ? frameLine->Find("events") : nullptr;
+            if (!events) return;
+            size_t seen = 0;
+            for (const Value& ev : events->arr) {
+                if (ev["k"].s != "dmgToPlayer" || ev["step"].AsInt() != step || seen++ != heroHits) continue;
+                if (ev.Find("rng0")) {
+                    t.Add("Random state as DealDamageToPlayer starts (the hero's draws in it are his)",
+                          SameState(unity::Random::GetState(), State(ev["rng0"])), "frame " + std::to_string(frameLine->Find("f")->AsInt()));
+                    unity::Random::SetState(State(ev["rng1"]));
+                }
+                break;
+            }
+            heroHits++;
+        };
         t.Add("projectile prefab and controller (ML_DATA)", projectilePrefab && projectileController, "");
         // Each shot's OnCollisionEnter2D against the game's next "hit" of its step: the hero's
         // transform and the Random state the game had then; its draws compared after.
@@ -199,11 +221,13 @@ struct TurretReplay : ReplayHooks {
     {
         frameLine = &f;
         frameEvents = f.Find("tev");
+        heroHits = 0;
     }
 
     void BeforeStep(long long fn, size_t k, const Value& f, Tally& t) override
     {
         step = static_cast<int>(k);
+        heroHits = 0;
         const Value* psteps = f.Find("psteps");
         if (!psteps || k >= psteps->size()) return;
         const Value& rows = (*psteps)[k];
@@ -234,7 +258,11 @@ struct TurretReplay : ReplayHooks {
                       "frame " + std::to_string(fn) + " step " + std::to_string(k) + " projectile " + std::to_string(IdOf(p)) + ": active in the port only");
     }
 
-    void AfterStep(long long, size_t, const Value&, Tally&) override { step = -1; }
+    void AfterStep(long long, size_t, const Value&, Tally&) override
+    {
+        step = -1;
+        heroHits = 0;
+    }
 
     void BeforeAnimators(float dt) override { sys->UpdateAnimators(dt); }
 
