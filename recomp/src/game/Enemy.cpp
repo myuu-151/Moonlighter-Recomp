@@ -85,6 +85,7 @@ void Enemy::SetActive(bool value)
     active = value;
     if (!value) {
         navAgent.OnDisable();
+        if (enemyBehaviour && enemyBehaviour->enabled) enemyBehaviour->OnDisable(); // (after the agent's: component order)
         if (physics) physics->SetBodyActive(*this, false);
         if (scene.calls) scene.calls->StopCoroutines(enemyBehaviour.get());
     } else {
@@ -204,6 +205,7 @@ void Enemy::Destroy()
     if (destroyed) return;
     // OnDisable first (the agent leaves allAgents, the body its world), then OnDestroy.
     navAgent.OnDisable();
+    if (active && enemyBehaviour && enemyBehaviour->enabled) enemyBehaviour->OnDisable(); // (the behaviour's own, if it's on)
     if (physics) physics->SetBodyActive(*this, false);
     if (enemyBehaviour && !enemyBehaviour->IsBoss()) {
         if (!enemyStats.isAlive()) {

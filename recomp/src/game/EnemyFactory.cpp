@@ -5,6 +5,7 @@
 #include "game/FlyingKamikazeGolem.h"
 #include "game/GolemSoldier.h"
 #include "game/HermitSlime.h"
+#include "game/Slime2_0.h"
 #include "game/Tangle.h"
 
 namespace game {
@@ -50,6 +51,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour && b.cls == "FlyingKamikazeGolemBehaviour") { // (game/FlyingKamikazeGolem.h)
             enemy->enemyBehaviour = MakeFlyingKamikazeGolemBehaviour(*enemy, b);
+            behaviourFields = &b;
+        } else if (!enemy->enemyBehaviour && b.cls == "Slime2_0Behaviour") { // (game/Slime2_0.h: the Golem dungeon's Slime)
+            enemy->enemyBehaviour = MakeSlime2_0Behaviour(*enemy, b, prefab);
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour) {
             if (auto behaviour = MakeBehaviour(b.cls, prefab.name, *enemy)) {

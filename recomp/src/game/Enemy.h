@@ -53,6 +53,7 @@ class EnemyBehaviour;
 class EnemyPhysics;
 class EnemyProjectiles;
 class MasterAudio;
+struct HeroTrap; // (game/HeroTrap.h: the Slime's)
 
 enum class EnemyDamageReceivedType { Normal, Effect, Familiar, Trick };
 
@@ -75,6 +76,9 @@ struct EnemyHero {
     // DealDamageToPlayer with its DamageType (ItemDrain: the HermitSlime's; game/HeroDamage.h's
     // DealDamageToPlayer calls this, else dealDamage).
     std::function<void(float attackStrength, const std::string& damageSource, HeroDamageType type, Enemy& enemy)> dealTypedDamage;
+    // The Slime's trap: his controller's isTrapped, his stick, the calls it makes on him
+    // (game/HeroTrap.h); none: no slime traps him.
+    HeroTrap* trap = nullptr;
 };
 
 // The scene an enemy lives in: the engine's schedulers, physics, the hero and the room.
@@ -346,6 +350,9 @@ public:
     virtual void OnEnemyDestroyed();
     virtual void OnPlayerLeaveRoom();
     virtual bool IsBoss() const { return false; }
+    // MonoBehaviour.OnDisable: the object switched off (Enemy::SetActive(false)) or destroyed
+    // while on, with the behaviour enabled (the Slime's releases the hero).
+    virtual void OnDisable() {}
     // CameraManager.Rumble with the enemy attacks' shake (a random direction: Random.insideUnitSphere,
     // then DOShakePosition's draws).
     void DoScreenShakeFromEnemyAnimation();

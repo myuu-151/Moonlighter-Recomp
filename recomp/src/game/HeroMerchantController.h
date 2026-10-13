@@ -66,6 +66,7 @@
 namespace game {
 
 struct Prefab;
+struct HeroTrap; // (the Slime's trap: game/HeroMerchantTrap.h)
 
 class HeroMerchantController {
 public:
@@ -199,6 +200,8 @@ public:
     bool IsPlayingRollAnimation() const { return IsTag("Ability"); }
 
 private:
+    // The Slime's trap binds to his private calls (game/HeroMerchantTrap.cpp).
+    friend void BindHeroTrap(HeroTrap& trap, HeroMerchantController& controller);
     void UpdateMoveAnimations(unity::Vector2 stick, float deltaTime);
     Direction ParseInputToDirection(unity::Vector2 stick, float x, float y) const;
     EightDirection ParseInputToEightDirection(unity::Vector2 stick, float x, float y) const;

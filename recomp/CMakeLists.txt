@@ -82,6 +82,9 @@ add_library(mlcore STATIC
     src/game/EnemyRootCollider.cpp
     # MasterAudio's EventSounds on an enemy's objects: OnEnable's sounds and their draws.
     src/game/EnemyEventSounds.cpp
+    # The Golem dungeon's Slime (Slime2_0Behaviour) and the hero's side of its trap.
+    src/game/Slime2_0.cpp
+    src/game/HeroMerchantTrap.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
