@@ -60,7 +60,8 @@ namespace MoonlighterOracle
     /// nearest one, then 8 times: 15 frames toward the nearest, an attack (Action1) with the
     /// stick on it, 30 frames standing; 120 frames standing (360 in the generic mode: more of
     /// the enemies' own attacks). He doesn't die: his health is refilled after every hit
-    /// (RecoverAllHealth, after DealDamageToPlayer has run).
+    /// (RecoverAllHealth, after DealDamageToPlayer has run). With `-oracle-hero-off-holes` he
+    /// lets go of the stick for the rest of a segment once he pushes into a hole (no fall).
     ///
     /// Not deterministic: the frame times (60 fps asked, real time measured: deltaTime is
     /// recorded), and so how many fixed steps each frame has (recorded too); the hit-stop
@@ -213,6 +214,33 @@ namespace MoonlighterOracle
             return to.normalized;
         }
 
+        // `-oracle-hero-off-holes`: the hero's stick lets go for the rest of a segment once he
+        // pushes into a hole (HeroMerchantController.timePushingHoles above 0, as his last Update
+        // left it: past maxTimePushingHoles, 0.6 s, he falls in). A hole can lead out of the room:
+        // Golem_Enemies_3's into its secret room, which switches its BrokenGolemTurrets off for the
+        // rest of the recording. Only the input changes; the start line says "heroOffHoles".
+        internal static bool OffHoles;
+        private static int stickHeldUntil = -1; // (Time.frameCount)
+
+        // The first frame after the current segment.
+        private static int SegmentEnd()
+        {
+            int f = Time.frameCount - startFrame, end = startFrame;
+            foreach (var s in Script)
+            {
+                end += s.frames;
+                if (f < s.frames) break;
+                f -= s.frames;
+            }
+            return end;
+        }
+
+        private static bool PushingHole()
+        {
+            var ctrl = HeroMerchant.Instance != null ? HeroMerchant.Instance.heroMerchantController : null;
+            return ctrl != null && Traverse.Create(ctrl).Field("timePushingHoles").GetValue<float>() > 0f;
+        }
+
         [HarmonyPatch(typeof(TwoAxisInputControl), "UpdateWithAxes")]
         private static class StickHook
         {
@@ -222,6 +250,8 @@ namespace MoonlighterOracle
                 var actions = InputActionsManager.Instance != null ? InputActionsManager.Instance.actions : null;
                 if (actions == null || __instance != actions.LeftStick) return;
                 lastStick = Current(out Segment s, out _) ? StickFor(s) : Vector2.zero;
+                if (OffHoles && lastStick != Vector2.zero && PushingHole()) stickHeldUntil = SegmentEnd();
+                if (OffHoles && Time.frameCount < stickHeldUntil) lastStick = Vector2.zero;
                 x = lastStick.x;
                 y = lastStick.y;
             }
@@ -749,6 +779,7 @@ namespace MoonlighterOracle
             // played variation's AudioSource starts (game/MasterAudio.h's "not playing yet").
             var ma = DarkTonic.MasterAudio.MasterAudio.SafeInstance;
             j.Prop("maFollower", ma != null ? (int)ma.variationFollowerType : -1);
+            if (OffHoles) j.Prop("heroOffHoles", true); // (-oracle-hero-off-holes)
             TurretOracle.WriteStart(j, room);
             CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
             Emit(j);
@@ -956,6 +987,7 @@ namespace MoonlighterOracle
             prefab = enemy;
             legacy = legacyNames;
             Script = BuildScript(legacy ? 120 : 360);
+            stickHeldUntil = -1;
             string fileName = legacy ? "slime.jsonl" : "enemy_" + prefab + ".jsonl";
             string doneName = legacy ? "SLIME_DONE" : "ENEMY_" + prefab + "_DONE";
             var log = OraclePlugin.Log;
