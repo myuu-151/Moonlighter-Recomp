@@ -11,11 +11,11 @@ namespace MoonlighterOracle
     ///     each), as far as its bounds' diagonal, Physics2D.RaycastNonAlloc with
     ///     queriesStartInColliders off, on its layer: the hits on this collider, each ray as
     ///     [origin x, y, direction x, y, distance, [fraction, point x, y, normal x, y], ...] (rays
-    ///     without one are left out). A ray starting inside a piece doesn't hit that piece; if
-    ///     Unity drops only that piece's hit (per fixture), the hits are where the ray enters the
-    ///     collider's other pieces: the cuts between pieces, which the port's cut
+    ///     without one are left out). Unity keeps one hit per collider, the smallest fraction
+    ///     among its fixtures (Raycast2DQuery::ReportFixture), and a ray starting inside a piece
+    ///     doesn't hit that piece (b2PolygonShape::RayCast): each ray's hit is where it enters the
+    ///     nearest of the collider's other pieces, a cut between pieces, which the port's cut
     ///     (recomp/src/unity/PolygonCollider2D.h) must reproduce (recomp/tests/polygon_probe.h).
-    ///     If Unity drops the whole collider, there are none and only shapeCount tells.
     /// Physics2D.queriesStartInColliders and queriesHitTriggers are put back right after; no game
     /// script runs in between.
     internal static class PolygonProbe

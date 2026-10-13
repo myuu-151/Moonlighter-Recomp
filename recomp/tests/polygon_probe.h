@@ -4,11 +4,16 @@
 // (enemy_replay.h, tangle_test.cpp):
 //   - "shapeCount" (Collider2D.shapeCount) against the number of pieces the port makes: fails if
 //     they differ (the pieces are the collider's fixtures, whose contacts the replays compare);
-//   - "rays": each recorded ray (from inside the collider, queriesStartInColliders off) through
-//     the port's pieces as Box2D casts it (b2PolygonShape::RayCast, a piece holding the origin
-//     skipped): the same hits in the same order, the normals' bits equal and the fractions
-//     within 1e-5. Informs without failing: whether Unity drops the hits of only the piece the ray
-//     starts in (then they show the cuts) is the probe's own assumption.
+//   - "rays": each recorded ray (from inside the collider, queriesStartInColliders off) cast as
+//     Unity casts it: PhysicsQuery2D::RaycastAll normalizes the direction and ends the ray at
+//     direction * distance + origin; b2PolygonShape::RayCast on each piece (one the ray starts in
+//     gives no hit); Raycast2DQuery::ReportFixture keeps one hit per collider, a later fixture's
+//     replacing it only if its fraction is smaller (UnityPlayer.dll 2019.2, read with its public
+//     symbols: recomp/third_party/box2d/README.md). So a ray reports the nearest piece it enters
+//     other than its own, where the cut puts that piece's face: the fraction, point and normal must
+//     be the game's bit for bit. Where two pieces meet the ray at the same fraction (at a vertex
+//     they share) Unity keeps the one its broad-phase tree reports first, which these pieces alone
+//     don't give (the tree holds every fixture of the floor): the game's hit must be one of them.
 // Recordings from before the probe have neither, and nothing is checked.
 
 #include <Box2D/Box2D.h>
@@ -53,7 +58,7 @@ void CheckPolygonProbe(Checks& t, const json::Value& line, const unity::Collider
     }
     b2Transform identity;
     identity.SetIdentity();
-    int same = 0, differ = 0;
+    int same = 0, differ = 0, tied = 0;
     std::string first;
     for (const json::Value& ray : rays->arr) {
         if (ray.size() < 5) continue;
@@ -61,28 +66,36 @@ void CheckPolygonProbe(Checks& t, const json::Value& line, const unity::Collider
         const float reach = PolygonProbeBits(ray[4]);
         b2RayCastInput in;
         in.p1 = o;
-        in.p2 = b2Vec2(o.x + reach * d.x, o.y + reach * d.y);
+        const float len2 = d.x * d.x + d.y * d.y, inv = len2 != 0.0f ? 1.0f / std::sqrt(len2) : len2;
+        in.p2 = b2Vec2(d.x * inv * reach + o.x, d.y * inv * reach + o.y);
         in.maxFraction = 1.0f;
-        std::vector<std::pair<float, b2Vec2>> port;
+        // The pieces' hits at the smallest fraction.
+        std::vector<b2RayCastOutput> nearest;
         for (const b2PolygonShape& p : pieces) {
-            if (p.TestPoint(identity, o)) continue;
             b2RayCastOutput out;
-            if (p.RayCast(&out, in, identity, 0)) port.emplace_back(out.fraction, out.normal);
+            if (!p.RayCast(&out, in, identity, 0)) continue;
+            if (!nearest.empty() && out.fraction > nearest[0].fraction) continue;
+            if (!nearest.empty() && out.fraction < nearest[0].fraction) nearest.clear();
+            nearest.push_back(out);
         }
-        std::sort(port.begin(), port.end(), [](const std::pair<float, b2Vec2>& a, const std::pair<float, b2Vec2>& b) { return a.first < b.first; });
-        bool ok = port.size() + 5 == ray.size();
-        for (size_t k = 0; ok && k < port.size(); k++) {
-            const json::Value& h = ray[k + 5];
-            ok = std::fabs(port[k].first - PolygonProbeBits(h[0])) <= 1e-5f && port[k].second.x == PolygonProbeBits(h[3]) &&
-                 port[k].second.y == PolygonProbeBits(h[4]);
+        bool ok = false;
+        if (ray.size() == 6) {
+            const json::Value& h = ray[5];
+            for (const b2RayCastOutput& out : nearest) {
+                const b2Vec2 point = (1.0f - out.fraction) * in.p1 + out.fraction * in.p2; // (b2WorldRayCastWrapper)
+                ok = ok || (out.fraction == PolygonProbeBits(h[0]) && point.x == PolygonProbeBits(h[1]) && point.y == PolygonProbeBits(h[2]) &&
+                            out.normal.x == PolygonProbeBits(h[3]) && out.normal.y == PolygonProbeBits(h[4]));
+            }
         }
         (ok ? same : differ)++;
+        tied += nearest.size() > 1;
         if (!ok && first.empty())
             first = "from (" + std::to_string(o.x) + ", " + std::to_string(o.y) + ") along (" + std::to_string(d.x) + ", " + std::to_string(d.y) +
-                    "): port " + std::to_string(port.size()) + " hits, game " + std::to_string(ray.size() - 5);
+                    "): the port's nearest pieces " + std::to_string(nearest.size()) + ", the game's hits " + std::to_string(ray.size() - 5);
     }
-    t.Info("PolygonCollider2D cuts (rays from inside meet the same pieces)", differ == 0,
-           c.path + ": " + std::to_string(same) + " rays alike, " + std::to_string(differ) + " not" + (first.empty() ? "" : "; first " + first));
+    t.Add("PolygonCollider2D cuts (the nearest piece rays from inside meet, bit for bit)", differ == 0,
+          c.path + ": " + std::to_string(same) + " rays alike (" + std::to_string(tied) + " at a vertex two pieces share), " + std::to_string(differ) +
+              " not" + (first.empty() ? "" : "; first " + first));
 }
 
 } // namespace
