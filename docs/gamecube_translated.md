@@ -103,7 +103,7 @@ The live heap is small and allocation per frame is light (4 objects, 1 KB). Two 
 |---|---:|
 | the game (`make`) | 2,774,548 |
 | the game with `TRANSLATED=1` (the translated code compiled; the game doesn't call it yet) | 2,792,500 |
-| the test disc (`TTEST=1`: both replays, the translated proof's closure) | 4,490,220 |
+| the test disc (`TTEST=1`: both replays, the translated proof's closure) | 4,493,132 |
 
 In the test disc, from the link map (KB of 1,024 bytes): the translated code is 942 KB (704 KB code,
 74 KB read-only data, 159 KB exception tables), the scene facade 146 KB, the .NET runtime 89 KB
