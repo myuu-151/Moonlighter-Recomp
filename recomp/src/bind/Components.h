@@ -41,15 +41,22 @@ namespace UnityEngine {
 
 // ---- assets --------------------------------------------------------------------------------------
 
-// Textures: their size (their pixels are presentation).
+enum class FilterMode : int32_t { Point = 0, Bilinear = 1, Trilinear = 2 };
+
+// Textures: their size and settings (their pixels are presentation).
 class Texture : public Object {
 public:
     const char* cs_typename() const override { return "UnityEngine.Texture"; }
     static const char* cs_static_typename() { return "UnityEngine.Texture"; }
     int32_t get_width() { return width_; }
     int32_t get_height() { return height_; }
+    FilterMode get_filterMode() { return filterMode_; }
+    void set_filterMode(FilterMode m) { filterMode_ = m; }
     int32_t width_ = 0, height_ = 0;
+    FilterMode filterMode_ = FilterMode::Bilinear;
 };
+// A texture's pixels are presentation: none are kept (GetPixel reads transparent, SetPixel and
+// Apply change nothing), its size and settings are.
 class Texture2D : public Texture {
 public:
     const char* cs_typename() const override { return "UnityEngine.Texture2D"; }
@@ -59,15 +66,28 @@ public:
         width_ = width;
         height_ = height;
     }
+    Color GetPixel(int32_t x, int32_t y)
+    {
+        (void)x, (void)y;
+        return Color{};
+    }
+    void SetPixel(int32_t x, int32_t y, Color c) { (void)x, (void)y, (void)c; }
+    void Apply() {}
 };
 
 class Sprite : public Object {
 public:
     const char* cs_typename() const override { return "UnityEngine.Sprite"; }
     static const char* cs_static_typename() { return "UnityEngine.Sprite"; }
+    void cs_trace(cs::Tracer& t) override;
     // A sprite by name (the extracted sprites'), one object per name.
     static Sprite* Named(const std::string& name);
+    // Sprite.texture: its texture (the size isn't extracted: 0 x 0, its pixels presentation).
+    Texture2D* get_texture();
+    // Sprite.Create(texture, rect, pivot, pixelsPerUnit): a new sprite of the texture.
+    static Sprite* Create(Texture2D* texture, unity::Rect rect, Vector2 pivot, float pixelsPerUnit);
     std::string spriteName;
+    Texture2D* texture_ = nullptr;
 };
 
 class Material : public Object {
@@ -150,6 +170,20 @@ public:
     const char* cs_typename() const override { return "UnityEngine.MeshRenderer"; }
     static const char* cs_static_typename() { return "UnityEngine.MeshRenderer"; }
     Object* cs_Clone() override;
+};
+
+// A camera: what scripts read and set of it (its rendering is presentation).
+class Camera : public Behaviour {
+public:
+    const char* cs_typename() const override { return "UnityEngine.Camera"; }
+    static const char* cs_static_typename() { return "UnityEngine.Camera"; }
+    bool get_orthographic() { return orthographic_; }
+    void set_orthographic(bool o) { orthographic_ = o; }
+    float get_orthographicSize() { return orthographicSize_; }
+    void set_orthographicSize(float s) { orthographicSize_ = s; }
+    Object* cs_Clone() override;
+    bool orthographic_ = true;
+    float orthographicSize_ = 5.0f;
 };
 
 // A particle system: presentation (its particles aren't simulated), the calls do nothing.

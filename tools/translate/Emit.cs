@@ -294,6 +294,8 @@ public sealed class Emitter
         {
             var r = tr.Methods[m];
             sb.Append("    ").Append(MethodDecl(m, o, inClass: true)).Append('\n');
+            // (units.txt's `wrap`: the game's body under its own name, the driver's around it)
+            if (r.Wrap) sb.Append($"    {(m.IsStatic ? "static " : "")}{TypeOrGap(m.ReturnType)} {N.Method(m)}__game({Params(m)});\n");
         }
 
         // interface implementations that forward to the C# implementing member
@@ -735,7 +737,7 @@ public sealed class Emitter
             if (m.AssociatedSymbol is IPropertySymbol p && tr.IsAutoProperty(p)) continue;
             if (m.AssociatedSymbol is IEventSymbol e && tr.IsFieldLikeEvent(e)) continue;
             if (m.IsAbstract || t.TypeKind == TypeKind.Interface) continue;
-            string name = N.Method(m);
+            string name = N.Method(m) + (r.Wrap ? "__game" : "");
             string ret = m.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor ? "void" : TypeOrGap(m.ReturnType);
             string mt = m.IsGenericMethod ? "template <" + string.Join(", ", m.TypeParameters.Select(tp => "typename " + N.TypeParam(tp))) + "> " : "";
             // a generic method's definition is a template: in the header, for every user
@@ -784,7 +786,7 @@ public sealed class Emitter
         var sb = new StringBuilder("# tools/translate: every translated method. status: ok, error (an unsupported construct), gaps (bindings missing)\n# type\tmethod\tstatus\tdetail\n");
         foreach (var (m, r) in tr.Methods.OrderBy(kv => Names.FullName(kv.Key.ContainingType), StringComparer.Ordinal).ThenBy(kv => kv.Key.Name, StringComparer.Ordinal))
         {
-            string status = r.Hand ? "hand" : r.Stub ? "stub" : r.Error != null ? "error" : r.Gaps.Count > 0 ? "gaps" : "ok";
+            string status = r.Hand ? "hand" : r.Stub ? "stub" : r.Error != null ? "error" : r.Gaps.Count > 0 ? "gaps" : r.Wrap ? "ok (wrapped)" : "ok";
             string detail = r.Error ?? string.Join("; ", r.Gaps);
             sb.Append($"{Names.FullName(m.ContainingType)}\t{m.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}\t{status}\t{detail.Replace('\t', ' ').Replace('\n', ' ')}\n");
         }

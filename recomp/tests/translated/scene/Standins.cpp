@@ -39,21 +39,9 @@ void HeroMerchant::DealDamageToPlayer(float p_attackStrength, cs::String* p_dama
     if (S().dealDamageToPlayer) S().dealDamageToPlayer(p_attackStrength, p_damageSource, static_cast<int>(p_type), p_enemySource);
 }
 
-// No shield up (the enemy replays' hero: the hand port's isShieldProtected unset).
-bool HeroMerchantController::CheckIfPlayerIsShieldProtected(UnityEngine::GameObject* p_enemy)
-{
-    (void)p_enemy;
-    return false;
-}
-
 // The hero's hole check after a push (EnemyBehaviour.PushPlayerBackwards' WaitAndCheckForHoles): his
 // fall is his own doing, in the recording: none here.
 bool HeroMerchantController::CheckForHolesAfterPush() { return false; }
-
-void HeroMerchantController::AddForce(unity::Vector2 p_force)
-{
-    if (S().heroAddForce) S().heroAddForce(p_force);
-}
 
 unity::Vector2 HeroMerchantController::GetColliderOffsset() { return S().heroColliderOffset; }
 
@@ -96,17 +84,6 @@ DigitalSunGames::Platforms::IAchievementController* DigitalSunGames::Platforms::
         return cs::gcnew<standins::Achievements>();
     }();
     return a;
-}
-
-// ---- the camera: DOShakePosition's Random draws (the shake itself is presentation) ---------------------
-
-// Rumble(duration, strength, direction, vibration): DOShakePosition(duration, strength * (x, y, 0),
-// vibration, randomness 0): a Vector3 strength (vectorBased), as the hand port's EnemyBehaviour has it.
-DG::Tweening::Tweener* CameraManager::Rumble(float p_duration, float p_strength, UnityEngine::Vector3 p_direction, int32_t p_vibration)
-{
-    (void)p_strength, (void)p_direction;
-    unity::ShakeDraws(p_duration, p_vibration, 0.0f, true, false);
-    return nullptr;
 }
 
 // ---- the game's managers ------------------------------------------------------------------------------
@@ -152,13 +129,15 @@ int64_t OptionsManager::Get(cs::String* p_section, cs::String* p_key, int64_t p_
 TimeManagerV2* TimeManagerV2::get_Instance() { return S().timeManager; }
 DayTime TimeManagerV2::get_CurrrentDayTime() { return S().afternoon ? DayTime::Afternoon : DayTime::Morning; }
 
-// ---- the room: the dead sprite's stamp (the replay compares where), the drops' bookkeeping -------------
+// ---- the room -----------------------------------------------------------------------------------------
 
+// The dead sprite's stamp (units.txt's `wrap`): the game's (its Random draw for the flip, the stamp's
+// pixels: presentation), the replay told where it goes.
 void DungeonRoom::SpawnEnemyDeadSprite(UnityEngine::Sprite* p_s, UnityEngine::Vector3 p_position)
 {
     if (S().spawnEnemyDeadSprite) S().spawnEnemyDeadSprite(this, p_s, p_position);
+    SpawnEnemyDeadSprite__game(p_s, p_position);
 }
-void DungeonRoom::AddDropItems(cs::List<ItemStack*>* p_items) { (void)p_items; }
 
 // UnLockRoomChests: each of roomChests unlocked (isLocked = false: its Animator's trigger, the
 // analytics) and its PlayUnlockChestSound: the chests are the room's, not the replays' (game/EnemyRoom.h's
@@ -175,14 +154,21 @@ void HUDManager::__ctor() {}
 void MinimapPanel::__ctor() {}
 void MinimapPanel::UpdateRoom(DungeonRoom* p_room) { (void)p_room; }
 
-// ---- the items (the drops' draws are resynced by the replays; their items aren't recorded) --------------
+// ---- the items: an item dropped on the floor (ItemDrop.DropItem's draws are the game's) ---------------
 
-cs::List<ItemStack*>* ItemDrop::DropItem(UnityEngine::Vector3 p_position, float p_radius, int32_t p__minDropRate, UnityEngine::Transform* p_parent)
+// SpawnItem(prefabName, position, radius, parent): the item's object (ItemStack.Create: its prefab, its
+// UI) isn't made; its ItemStack.Drop's one Random draw is (the direction: Range(0, 360); the raycast
+// and the jump's tweens after it draw nothing). Every item an enemy of the Golem dungeon drops is in
+// the item database (data/extracted/items.json), so it always gets there.
+ItemStack* ItemDrop::SpawnItem(cs::String* p_prefabName, UnityEngine::Vector3 p_position, float p_radius, UnityEngine::Transform* p_parent)
 {
-    (void)p_position, (void)p_radius, (void)p__minDropRate, (void)p_parent;
-    return cs::New<cs::List<ItemStack*>>();
+    (void)p_prefabName, (void)p_position, (void)p_radius, (void)p_parent;
+    (void)unity::Random::Range(0, 360);
+    return nullptr;
 }
 
+// The familiar's egg: it reads the save (the kills of the enemy's kind, the game slot's familiars)
+// and the item database, which the recordings don't carry: no egg (and so none of its Random.value).
 bool FamiliarsManager::GetEggItem(cs::String* p_name, FamiliarsManager_SpawnEggInfo& p_spawnEggInfo)
 {
     (void)p_name;

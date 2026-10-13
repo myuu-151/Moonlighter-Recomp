@@ -522,6 +522,13 @@ int Replay(const std::string& file, Data& data)
     auto* heroCollider = cs::gcnew<UnityEngine::BoxCollider2D>();
     heroGo->Attach(heroCollider);
     physics.Register(heroBody.Body()->GetFixtureList(), heroCollider);
+    // His controller's Rigidbody2D (AddForce's: the enemies' pushes): outside the world, his body
+    // being the recording's; the pushes are reported (bind::PhysicsScene::onAddForce).
+    auto* heroRigidbody = cs::gcnew<UnityEngine::Rigidbody2D>();
+    heroController->characterRigidbody = heroRigidbody;
+    physics.onAddForce = [&](UnityEngine::Rigidbody2D* body, Vector2 force, UnityEngine::ForceMode2D) {
+        if (body == heroRigidbody && standins::S().heroAddForce) standins::S().heroAddForce(force);
+    };
     auto setHeroPosition = [&](Vector2 p) { heroGo->transform_->set_position(UnityEngine::Vector3{p.x, p.y, 0.0f}); };
     setHeroPosition(V2(h["pos"]));
     if (const Value* off = h.Find("getColliderOffset")) standins::S().heroColliderOffset = V2(*off);
@@ -537,6 +544,11 @@ int Replay(const std::string& file, Data& data)
     standins::S().timeManager = cs::gcnew<gen::TimeManagerV2>();
     standins::S().gameManager = nullptr; // (its slot: not New Game+, no DLC)
     gen::CameraManager::_instance = cs::gcnew<gen::CameraManager>();
+    // Its camera (CameraManager.Rumble shakes its transform: presentation, the shake's draws aren't).
+    GameObject* cameraGo = GameObject::Create("Main Camera");
+    auto* camera = cs::gcnew<UnityEngine::Camera>();
+    cameraGo->Attach(camera);
+    gen::CameraManager::_instance->_camera = camera;
     gen::HUDManager::Instance = cs::gcnew<gen::HUDManager>();
     gen::HUDManager::Instance->minimap = cs::gcnew<gen::MinimapPanel>();
     // MasterAudio's groups: the first scene's permanent creators' ("Sounds - Will" has the chests'
@@ -567,6 +579,11 @@ int Replay(const std::string& file, Data& data)
         if (!Same(XY(roomGo->transform_->get_position()), V2(*rp)))
             std::printf("note: the room's transform %s isn't the recording's roomPos %s\n", Str(XY(roomGo->transform_->get_position())).c_str(),
                         Str(V2(*rp)).c_str());
+    // Its middle detail (DungeonRoom.SpawnEnemyDeadSprite stamps a dead enemy's sprite on its
+    // SpriteRenderer's): without one, as the recordings show it (no Random draw for the stamp's flip
+    // where an enemy dies: slime.jsonl frames 310, 402 and 448, tangle.jsonl's).
+    GameObject* middleDetail = GameObject::Create("MiddleDetail", roomGo->transform_);
+    room->middleDetail = middleDetail->transform_;
     GameObject* levelEnemies = GameObject::Create("DungeonLevelEnemies", roomGo->transform_);
     at(levelEnemies, V2(chain0[2]));
     auto* dungeonManager = cs::New<gen::DungeonManager>();
@@ -873,6 +890,12 @@ int Replay(const std::string& file, Data& data)
     cs::Root<gen::Weapon> weaponRoot(weapon);
 
     int rngElsewhere = 0;
+    // ML_RESYNC_DEBUG=1: each resync, where, and how many draws the game made that the replay didn't
+    // (or the other way: -1, the replay's state isn't behind the game's within 64).
+    const bool resyncDebug = std::getenv("ML_RESYNC_DEBUG") != nullptr;
+    auto ResyncNote = [](long long frame, const std::string& where, const unity::Random::State& ours, const unity::Random::State& game) {
+        std::printf("resync: frame %lld before %s: the game drew %d more\n", frame, where.c_str(), unity::Random::DrawsBetween(ours, game, 64));
+    };
     // Whether the recording has the fixtures Unity made per step (fixture_probe.h).
     bool fixturesRecorded = false;
     for (const Value& fr : frames)
@@ -910,6 +933,7 @@ int Replay(const std::string& file, Data& data)
         }
         if (!SameState(unity::Random::GetState(), State(f["rng"]))) {
             rngElsewhere++;
+            if (resyncDebug) ResyncNote(fn, "the frame's start", unity::Random::GetState(), State(f["rng"]));
             unity::Random::SetState(State(f["rng"]));
         }
         // Time.frameCount: the frame's from its start, its fixed steps' sounds included (a
@@ -1129,6 +1153,7 @@ int Replay(const std::string& file, Data& data)
             setHeroPosition(V2(u["hero"]));
             if (!SameState(unity::Random::GetState(), State(u["rng0"]))) {
                 rngElsewhere++;
+                if (resyncDebug) ResyncNote(fn, "enemy " + std::to_string(u["s"].AsInt()) + "'s Update", unity::Random::GetState(), State(u["rng0"]));
                 unity::Random::SetState(State(u["rng0"]));
             }
             t.Add("Update called on an enabled enemy", !s->Gone() && s->behaviour->get_isActiveAndEnabled(), "frame " + std::to_string(fn));

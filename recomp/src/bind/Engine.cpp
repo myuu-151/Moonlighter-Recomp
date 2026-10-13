@@ -79,6 +79,7 @@ Object* Renderer::cs_Clone() { return Copy(this); }
 Object* SpriteRenderer::cs_Clone() { return Copy(this); }
 Object* MeshRenderer::cs_Clone() { return Copy(this); }
 Object* ParticleSystem::cs_Clone() { return Copy(this); }
+Object* Camera::cs_Clone() { return Copy(this); }
 Object* Animator::cs_Clone()
 {
     auto* n = cs::gcnew<Animator>();

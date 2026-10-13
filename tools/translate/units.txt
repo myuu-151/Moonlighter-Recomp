@@ -47,14 +47,16 @@ file AStar.cs
 file Heap.cs
 file IHeapItem.cs
 type Extensions DiamondDistance NormalizeOneDimensional GetAngleFromVector GetOrAddComponent ToList ToArray Any ForEachIndexed
-type MoonlighterEffectRegistry Instance GetEffects .ctor
+type MoonlighterEffectRegistry Instance GetEffects GetEffect .ctor
 # the scene the enemies live in: the parts of its classes they reach, translated
 type HeroMerchant .ctor Instance
-type HeroMerchantController .ctor comboCounter
+type HeroMerchantController .ctor comboCounter CheckIfPlayerIsShieldProtected AddForce
 type HeroMerchantStats .ctor
-type CameraManager .ctor Instance
+type CameraManager .ctor Instance Rumble
 type DungeonManager .ctor Instance culture level
-type DungeonRoom .ctor EnemyDefeated AreAllEnemiesDefeated areAllEnemiesDefeated TranslatePositionToTile DisableEnemies
+type DungeonRoom .ctor EnemyDefeated AreAllEnemiesDefeated areAllEnemiesDefeated TranslatePositionToTile DisableEnemies AddDropItems
+# the dead sprite's stamp: the game's, the replays observing where it goes (recomp/tests/translated/scene/Standins.cpp)
+wrap DungeonRoom SpawnEnemyDeadSprite
 type DungeonRoomInfo .ctor
 type DungeonRoomDetailsGenerationInfo .ctor
 # the other Golem enemies (enemy_hermit_slime_translated, enemy_kamikazegolem_translated,
@@ -75,22 +77,21 @@ type MoonlighterEffect .ctor
 # the hero's weapon push (the replays drive it where the recording has it)
 type Weapon PushEnemyBackwards
 # the prefab's drops (Enemy.itemDrops, [Serializable]: made by the prefab's loader; DropItem stood in for)
-type ItemDrop .ctor
+type ItemDrop .ctor DropItem
 # ... and stood in for (the hero's own code, the camera, the HUD, the save's statistics and
 # analytics, the items: what the enemy replays don't compare, or take from the recording)
 hand HeroMerchant DealDamageToPlayer
-hand HeroMerchantController CheckIfPlayerIsShieldProtected CheckForHolesAfterPush AddForce VibrateForTime GetColliderOffsset
+hand HeroMerchantController CheckForHolesAfterPush VibrateForTime GetColliderOffsset
 hand HeroStatistics Instance RegisterGolemBabySlimeDeath RegisterForestBabySlimeDeath RegisterDesertBabySlimeDeath RegisterTechBabySlimeDeath RegisterGolemSoldierDeath RegisterGolemHermitDeath RegisterGolemKamikazeDeath RegisterFlyingKamikazeDeath RegisterGolemTurretDeath RegisterGolemTangleDeath RegisterForestTangleDeath
 hand MoonlighterAnalytics EnemySpawnLogEvent EnemyKilledLogEvent
-hand CameraManager Rumble
 hand GameManager Instance SetGameSpeedForTime
 hand OptionsManager Get
 hand TimeManagerV2 Instance CurrrentDayTime
-hand DungeonRoom SpawnEnemyDeadSprite AddDropItems UnLockRoomChests
+hand DungeonRoom UnLockRoomChests
 hand DungeonManager SpawnWanderer
 hand HUDManager .ctor
 hand MinimapPanel .ctor UpdateRoom
-hand ItemDrop DropItem
+hand ItemDrop SpawnItem
 hand FamiliarsManager GetEggItem
 hand QuantitytIndicatorManager Instance InstantiateFloatingDamageIndicator
 hand EnemiesPrefabRegister GetPrefabByName

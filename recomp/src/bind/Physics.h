@@ -266,6 +266,9 @@ public:
     // Each Physics2D.Raycast as made: its arguments and what it hit (the room collider; none: null).
     std::function<void(UnityEngine::Vector2 origin, UnityEngine::Vector2 direction, float distance, int32_t layerMask, const unity::RaycastHit2D& hit)>
         onRaycast;
+    // Each Rigidbody2D.AddForce, before it's applied (a body not in the world included: the
+    // replays' hero, whose body is the recording's).
+    std::function<void(UnityEngine::Rigidbody2D* rb, UnityEngine::Vector2 force, UnityEngine::ForceMode2D mode)> onAddForce;
     // Each OverlapCircleAll: what it found, in order.
     std::function<void(UnityEngine::Vector2 point, float radius, const std::vector<UnityEngine::Collider2D*>& found)> onOverlapCircle;
     // Each OnCollisionEnter2D before (after = false) and after the scripts of `self`'s object got it.

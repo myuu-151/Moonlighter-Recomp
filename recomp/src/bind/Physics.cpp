@@ -93,6 +93,7 @@ void Rigidbody2D::set_velocity(Vector2 v)
 
 void Rigidbody2D::AddForce(Vector2 force, ForceMode2D mode)
 {
+    if (P() && P()->onAddForce) P()->onAddForce(this, force, mode);
     if (!body_ || !gameObject_->get_activeInHierarchy() || destroyed_) return;
     b2Body* b = body_->Body();
     if (mode == ForceMode2D::Impulse) b->ApplyLinearImpulse(b2Vec2(force.x, force.y), b->GetWorldCenter(), true);

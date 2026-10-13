@@ -132,6 +132,18 @@ inline void V3Normalize(Vector3& v) { v = V3Normalized(v); }
 inline float V3Distance(Vector3 a, Vector3 b) { return V3Magnitude(V3Sub(a, b)); }
 inline float V3Dot(Vector3 a, Vector3 b) { return detail::F(detail::D(a.x) * b.x + detail::D(a.y) * b.y + detail::D(a.z) * b.z); }
 // Lerp: t = Clamp01(t); new Vector3(a.x + (b.x - a.x) * t, ...)
+// Angle (2019.2): float num = (float)Math.Sqrt(from.sqrMagnitude * to.sqrMagnitude); if (num <
+// kEpsilonNormalSqrt) return 0; float num2 = Mathf.Clamp(Dot(from, to) / num, -1f, 1f); return
+// (float)Math.Acos(num2) * 57.29578f.
+inline float V3Angle(Vector3 from, Vector3 to)
+{
+    using detail::D;
+    using detail::F;
+    const float num = F(std::sqrt(D(V3SqrMagnitude(from)) * V3SqrMagnitude(to)));
+    if (num < kEpsilonNormalSqrt) return 0.0f;
+    const float num2 = unity::Mathf::Clamp(F(D(V3Dot(from, to)) / num), -1.0f, 1.0f);
+    return F(D(F(std::acos(D(num2)))) * 57.29578f);
+}
 inline Vector3 V3Lerp(Vector3 a, Vector3 b, float t)
 {
     using detail::D;

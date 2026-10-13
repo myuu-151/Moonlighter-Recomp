@@ -30,6 +30,29 @@ Sprite* Sprite::Named(const std::string& name)
     return s;
 }
 
+void Sprite::cs_trace(cs::Tracer& t)
+{
+    Object::cs_trace(t);
+    t.Mark(texture_);
+}
+
+Texture2D* Sprite::get_texture()
+{
+    if (!texture_) {
+        texture_ = cs::gcnew<Texture2D>();
+        texture_->name_ = name_;
+    }
+    return texture_;
+}
+
+Sprite* Sprite::Create(Texture2D* texture, unity::Rect rect, Vector2 pivot, float pixelsPerUnit)
+{
+    (void)rect, (void)pivot, (void)pixelsPerUnit;
+    auto* s = cs::gcnew<Sprite>();
+    s->texture_ = texture;
+    return s;
+}
+
 float Material::GetFloat(cs::String* name) { return Float(cs::nc(name)->ToUtf8()); }
 void Material::SetFloat(cs::String* name, float value) { floats_[cs::nc(name)->ToUtf8()] = value; }
 Color Material::GetColor(cs::String* name) { return ColorOf(cs::nc(name)->ToUtf8()); }

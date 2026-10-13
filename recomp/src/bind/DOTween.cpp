@@ -321,6 +321,20 @@ Tweener* ShortcutExtensions::DOFade(UnityEngine::SpriteRenderer* target, float e
     return t;
 }
 
+Tweener* ShortcutExtensions::DOShakePosition(UnityEngine::Transform* target, float duration, Vector3 strength, int32_t vibrato, float randomness,
+                                             bool snapping, bool fadeOut)
+{
+    (void)strength, (void)fadeOut;
+    (void)cs::nc(target);
+    if (snapping) cs::NotTranslated("DOShakePosition with snapping");
+    unity::ShakeDraws(duration, vibrato, randomness, true, false);
+    auto* t = Make<Tweener>();
+    t->keep = {target};
+    t->ids.push_back(Tw()->Timer(duration, 0.0f, [] {}));
+    Targets(t, target);
+    return t;
+}
+
 // target.DOKill(complete): every tween whose target it is (a shortcut's), killed (its OnComplete
 // not run); complete: run to its end first (not yet needed).
 int32_t ShortcutExtensions::DOKill(UnityEngine::Component* target, bool complete)

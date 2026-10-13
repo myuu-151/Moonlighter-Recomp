@@ -224,6 +224,13 @@ int Replay(const std::string& file, const Data& data)
     auto* heroCollider = cs::gcnew<UnityEngine::BoxCollider2D>();
     heroGo->Attach(heroCollider);
     physics.Register(heroBody.Body()->GetFixtureList(), heroCollider);
+    // His controller's Rigidbody2D (AddForce's: the enemies' pushes): outside the world, his body
+    // being the recording's; the pushes are reported (bind::PhysicsScene::onAddForce).
+    auto* heroRigidbody = cs::gcnew<UnityEngine::Rigidbody2D>();
+    heroController->characterRigidbody = heroRigidbody;
+    physics.onAddForce = [&](UnityEngine::Rigidbody2D* body, Vector2 force, UnityEngine::ForceMode2D) {
+        if (body == heroRigidbody && standins::S().heroAddForce) standins::S().heroAddForce(force);
+    };
     auto setHeroPosition = [&](Vector2 p) { heroGo->transform_->set_position(UnityEngine::Vector3{p.x, p.y, 0.0f}); };
     setHeroPosition(V2(h["pos"]));
     standins::S().heroColliderOffset = V2(h["getColliderOffset"]);
@@ -239,6 +246,11 @@ int Replay(const std::string& file, const Data& data)
     standins::S().timeManager = cs::gcnew<gen::TimeManagerV2>();
     standins::S().gameManager = nullptr;
     gen::CameraManager::_instance = cs::gcnew<gen::CameraManager>();
+    // Its camera (CameraManager.Rumble shakes its transform: presentation, the shake's draws aren't).
+    GameObject* cameraGo = GameObject::Create("Main Camera");
+    auto* camera = cs::gcnew<UnityEngine::Camera>();
+    cameraGo->Attach(camera);
+    gen::CameraManager::_instance->_camera = camera;
     gen::HUDManager::Instance = cs::gcnew<gen::HUDManager>();
     gen::HUDManager::Instance->minimap = cs::gcnew<gen::MinimapPanel>();
     // (tangle_test's replay has no MasterAudio: the Tangles' sounds' draws are resynced.)
@@ -262,6 +274,11 @@ int Replay(const std::string& file, const Data& data)
         room->roomFloorHeight = static_cast<int32_t>((*rf)[1].AsInt());
         room->roomCenterYOffset = static_cast<int32_t>((*rf)[2].AsInt());
     }
+    // Its middle detail (DungeonRoom.SpawnEnemyDeadSprite stamps a dead enemy's sprite on its
+    // SpriteRenderer's): without one, as the recordings show it (no Random draw for the stamp's flip
+    // where an enemy dies: slime.jsonl frames 310, 402 and 448, tangle.jsonl's).
+    GameObject* middleDetail = GameObject::Create("MiddleDetail", roomGo->transform_);
+    room->middleDetail = middleDetail->transform_;
     GameObject* levelEnemies = GameObject::Create("DungeonLevelEnemies", roomGo->transform_);
     at(levelEnemies, V2(chain0[2]));
     auto* dungeonManager = cs::New<gen::DungeonManager>();

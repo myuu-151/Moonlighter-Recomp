@@ -158,6 +158,7 @@ call	UnityEngine.Vector3.Lerp(UnityEngine.Vector3,UnityEngine.Vector3,float)	::U
 call	UnityEngine.Vector3.Project(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Project({0}, {1})	pure
 call	UnityEngine.Vector3.Distance(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Distance({0}, {1})	pure
 call	UnityEngine.Vector3.Dot(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Dot({0}, {1})	pure
+call	UnityEngine.Vector3.Angle(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Angle({0}, {1})	pure
 call	UnityEngine.Vector3.MoveTowards(UnityEngine.Vector3,UnityEngine.Vector3,float)	::UnityEngine::V3MoveTowards({0}, {1}, {2})	pure
 call	UnityEngine.Vector3.Scale(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Scale({0}, {1})	pure
 type	UnityEngine.Quaternion	::UnityEngine::Quaternion	include=bind/UnityEngine.h
@@ -259,7 +260,7 @@ members	UnityEngine.Renderer	get_enabled set_enabled get_material set_material g
 members	UnityEngine.SpriteRenderer	get_sprite set_sprite get_color set_color get_flipX set_flipX get_flipY set_flipY
 members	UnityEngine.MeshRenderer	
 members	UnityEngine.Material	GetFloat SetFloat GetColor SetColor get_color set_color HasProperty
-members	UnityEngine.Sprite	
+members	UnityEngine.Sprite	get_texture Create
 members	UnityEngine.ParticleSystem	Play Stop Clear get_isPlaying
 members	UnityEngine.Application	get_isPlaying get_isEditor
 members	UnityEngine.Gizmos	DrawLine DrawWireSphere DrawSphere DrawWireCube DrawCube get_color set_color
@@ -313,7 +314,7 @@ members	DG.Tweening.DOTween	To Kill
 type	DG.Tweening.DOVirtual	::DG::Tweening::DOVirtual	conv	include=bind/UnityEngine.h
 members	DG.Tweening.DOVirtual	DelayedCall
 type	DG.Tweening.ShortcutExtensions	::DG::Tweening::ShortcutExtensions	conv	include=bind/UnityEngine.h
-members	DG.Tweening.ShortcutExtensions	DOMoveX DOMoveY DOMove DOLocalMoveX DOLocalMoveY DOScale DORotate DOColor DOFloat DOFade DOKill
+members	DG.Tweening.ShortcutExtensions	DOMoveX DOMoveY DOMove DOLocalMoveX DOLocalMoveY DOScale DORotate DOColor DOFloat DOFade DOKill DOShakePosition
 type	DG.Tweening.TweenSettingsExtensions	::DG::Tweening::TweenSettingsExtensions	conv	include=bind/UnityEngine.h
 members	DG.Tweening.TweenSettingsExtensions	SetEase SetUpdate OnComplete SetDelay
 type	DG.Tweening.TweenExtensions	::DG::Tweening::TweenExtensions	conv	include=bind/UnityEngine.h
@@ -373,6 +374,9 @@ get	UnityEngine.RaycastHit2D.distance	{this}.distance	pure
 get	UnityEngine.RaycastHit2D.fraction	{this}.fraction	pure
 op	UnityEngine.RaycastHit2D.op_Implicit(UnityEngine.RaycastHit2D)	::UnityEngine::RaycastHit2D::op_Implicit({0})	pure
 type	UnityEngine.Texture	::UnityEngine::Texture	conv	include=bind/UnityEngine.h
-members	UnityEngine.Texture	get_width get_height
+members	UnityEngine.Texture	get_width get_height get_filterMode set_filterMode
 type	UnityEngine.Texture2D	::UnityEngine::Texture2D	conv	include=bind/UnityEngine.h
-members	UnityEngine.Texture2D	.ctor get_width get_height
+members	UnityEngine.Texture2D	.ctor get_width get_height GetPixel SetPixel Apply
+type	UnityEngine.FilterMode	::UnityEngine::FilterMode	include=bind/UnityEngine.h
+type	UnityEngine.Camera	::UnityEngine::Camera	conv	include=bind/UnityEngine.h
+members	UnityEngine.Camera	get_orthographic set_orthographic get_orthographicSize set_orthographicSize

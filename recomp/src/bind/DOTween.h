@@ -102,6 +102,12 @@ struct ShortcutExtensions {
     static Tweener* DOColor(UnityEngine::Material* target, UnityEngine::Color endValue, float duration);
     static Tweener* DOFloat(UnityEngine::Material* target, float endValue, cs::String* property, float duration);
     static Tweener* DOFade(UnityEngine::SpriteRenderer* target, float endValue, float duration);
+    // transform.DOShakePosition(duration, Vector3 strength, vibrato, randomness, snapping, fadeOut):
+    // DOTween.Shake's Random draws as it makes the tween (unity::ShakeDraws: vectorBased, z not
+    // ignored); the offsets it gives the transform are presentation (a camera's shake): a tween of
+    // its duration that moves nothing, its OnComplete on time.
+    static Tweener* DOShakePosition(UnityEngine::Transform* target, float duration, UnityEngine::Vector3 strength, int32_t vibrato, float randomness,
+                                    bool snapping, bool fadeOut);
     static int32_t DOKill(UnityEngine::Component* target, bool complete);
 };
 
