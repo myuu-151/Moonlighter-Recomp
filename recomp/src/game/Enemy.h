@@ -516,6 +516,9 @@ private:
     std::vector<Hit> hits_;
     // What remade attack fixtures were touching: no new enter with these in the next step.
     std::vector<std::pair<const b2Fixture*, const b2Fixture*>> carried_;
+    // The attack fixtures this step's sync remade: what they touch in its collide starts its rest
+    // over (EnemyPhysics::Listener).
+    std::vector<const b2Fixture*> remade_;
     std::vector<Companion*> companions_;
 };
 

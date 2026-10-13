@@ -162,6 +162,7 @@ public:
     // awake already (what Unity does when it syncs a moved transform, or remakes a collider of
     // the body's: enemy_GolemSoldier.jsonl), its velocities kept.
     void RestartRest(Rigidbody2D& body);
+    static void RestartRest(b2Body* body);
     // b2World::Step at the project's iterations (after SyncColliders).
     void Step(float dt);
     // One fixed step of Unity's for `body` whose transform is at `position`: sync it, step,

@@ -326,11 +326,12 @@ void PhysicsWorld::SyncWrittenTransform(Rigidbody2D& body, Vector2 position)
     if (options_.contactsOnSync) const_cast<b2ContactManager&>(world_->GetContactManager()).FindNewContacts();
 }
 
-void PhysicsWorld::RestartRest(Rigidbody2D& body)
+void PhysicsWorld::RestartRest(Rigidbody2D& body) { RestartRest(body.body_); }
+
+void PhysicsWorld::RestartRest(b2Body* b)
 {
     // Box2D's SetAwake(true) only resets a sleeping body's time at rest, so: asleep, then awake,
     // keeping the velocities.
-    b2Body* b = body.body_;
     const b2Vec2 v = b->GetLinearVelocity();
     const float32 w = b->GetAngularVelocity();
     b->SetAwake(false);
