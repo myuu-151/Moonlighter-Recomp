@@ -80,6 +80,8 @@ add_library(mlcore STATIC
     # The FlyingKamikazeGolem, and a root box a script switches on and off.
     src/game/FlyingKamikazeGolem.cpp
     src/game/EnemyRootCollider.cpp
+    # MasterAudio's EventSounds on an enemy's objects: OnEnable's sounds and their draws.
+    src/game/EnemyEventSounds.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 

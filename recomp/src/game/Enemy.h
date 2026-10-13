@@ -197,6 +197,12 @@ public:
     // game/EnemyRootCollider.cpp); rootUserData keeps its layer slot meanwhile.
     bool colliderEnabled = true;
     void* rootUserData = nullptr;
+    // MasterAudio's EventSounds on its objects (the FlyingKamikazeGolem's "SoundsFlyingKamikaze"):
+    // what their OnEnable plays (useEnableSound's PlaySound events), each a MasterAudio.PlaySound
+    // with its Random draws, at Instantiate (if active) and SetActive(true), after the root's
+    // own components. game/EnemyEventSounds.cpp.
+    std::vector<std::string> enableSounds;
+    void PlayEnableSounds();
 
     // transform.position (through the parents) and its setter.
     unity::Vector2 position() const { return navAgent.position(); }

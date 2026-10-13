@@ -77,6 +77,9 @@ FIELDS = {
     # (HeroMerchantController.Direction), the attack object it switches on and off (its path),
     # its trails (how many: particles, presentation).
     'FlyingKamikazeGolemBehaviour': ENEMY_BEHAVIOUR + ('enemyDirection', 'Attack', 'Trails'),
+    # MasterAudio's EventSounds (the FlyingKamikazeGolem's "SoundsFlyingKamikaze" child): its
+    # OnEnable plays enableSound's sounds (PlaySound: Random draws) when useEnableSound is on.
+    'EventSounds': ('m_Enabled', 'useEnableSound', 'enableSound'),
     # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
     'WeaponCollisionDetection': ('weaponAttackType',),
 }
@@ -102,6 +105,12 @@ def vector2_list(value, go_path, sprite):
     return [[v['x'], v['y']] for v in value]
 
 
+def play_sound_types(value, go_path, sprite):
+    """An EventSounds AudioEventGroup: the sound types of its PlaySound events
+    (EventSoundFunctionType.PlaySound, 0), in order."""
+    return [e['soundType'] for e in value.get('SoundEvents', []) if e.get('currentSoundFunctionType', 0) == 0]
+
+
 def breakable_skins(value, go_path, sprite):
     """BreakableObjectBehaviour.skins: each skin's whole and broken sprites."""
     return [{'full': sprite(k['fullHealthSprite']), 'broken': sprite(k['breakSprite'])} for k in value]
@@ -119,6 +128,7 @@ STRUCTURED = {
     ('BrokenGolemTurretBehaviour', 'spawnProyectilePositions'): vector2_list,
     ('BrokenGolemTurretProjectile', 'projectileArt'): object_path,
     ('FlyingKamikazeGolemBehaviour', 'Attack'): object_path,
+    ('EventSounds', 'enableSound'): play_sound_types,
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 

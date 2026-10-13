@@ -57,6 +57,7 @@ void Enemy::Instantiate(const std::vector<Vector2>& parents)
     navAgent.localPosition = Vector2::zero();
     navAgent.Awake();
     if (active) navAgent.OnEnable();
+    if (active) PlayEnableSounds(); // (the children's EventSounds.OnEnable: game/EnemyEventSounds.cpp)
     synced_ = position();
 }
 
@@ -89,6 +90,7 @@ void Enemy::SetActive(bool value)
     } else {
         navAgent.OnEnable();
         if (physics) physics->SetBodyActive(*this, true);
+        PlayEnableSounds(); // (the children's EventSounds.OnEnable: game/EnemyEventSounds.cpp)
         // The Animator starts over: its default state, its parameters' defaults.
         ResetAnimator();
         animatorEnabled = true;

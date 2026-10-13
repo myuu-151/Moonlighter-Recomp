@@ -35,9 +35,12 @@
 // each component; the aim's turned components and `angle` are one expression each. The
 // transforms' z is taken as 0 (the oracle's "fly" event records the hero's and the golem's).
 //
-// Its charge (300 a second) is the first body past Physics2DSettings.maxTranslationSpeed (100):
-// the port's Box2D takes that per second (b2_maxTranslation 1 a 0.01 s step), so the charge
-// covers 1 a step; if enemy_FlyingKamikazeGolem.jsonl shows it faster, Unity's cap is per step.
+// Its charge (300 a second) is the first body past Physics2DSettings.maxTranslationSpeed (100)
+// read per second: the port's Box2D takes that cap per step (b2_maxTranslation 100, b2Settings.h,
+// where the reasons are), so the charge isn't held back; if enemy_FlyingKamikazeGolem.jsonl shows
+// it covering 1 a 0.01 s step, Unity's cap is per second (b2_maxTranslation 1).
+// Its "SoundsFlyingKamikaze" child's EventSounds plays golem_dungeon_flyingrepair_loop each time
+// the golem is switched on (Enemy::enableSounds, game/EnemyEventSounds.cpp: its draws).
 
 #include <functional>
 #include <memory>

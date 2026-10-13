@@ -14,7 +14,11 @@
 //     (EnableCharge's Range(2, 6)) against the game's after;
 //   - per frame, in order: the golems' PrepareChargeAttack, MakeChargeAttack, EndCharge, the
 //     return's OnComplete and EnableCharge (whose, which fixed step: the Invokes' timing);
-//   - each frame's end: each golem's "fly" fields, its pending Invokes.
+//   - each frame's end: each golem's "fly" fields, its pending Invokes;
+//   - its child's EventSounds.OnEnable ("enSnd": the golem switched on, mostly before the
+//     recording, by EnableEnemies): that the game drew exactly when the port's golem has an
+//     enable sound (Enemy::enableSounds); the port's draws from the game's state are printed
+//     (the replay's MasterAudio pools aren't the game's then).
 
 #include <map>
 #include <string>
@@ -22,6 +26,7 @@
 
 #include "enemy_replay.h"
 #include "game/FlyingKamikazeGolem.h"
+#include "game/MasterAudio.h"
 
 namespace {
 
@@ -31,6 +36,7 @@ struct FlyKamiReplay : ReplayHooks {
 
     game::EnemyHero* hero = nullptr;
     unity::DelayedCalls* calls = nullptr;
+    game::MasterAudio* audio = nullptr;
     Tally* tally = nullptr;
     std::map<int, game::Enemy*> enemies;
     int step = -1; // the fixed step running (-1: the frame's part)
@@ -83,7 +89,29 @@ struct FlyKamiReplay : ReplayHooks {
     {
         hero = &h;
         calls = scene.calls;
+        audio = scene.audio;
         tally = &t;
+    }
+
+    void CheckEnableSounds(const game::Enemy& e, const Value& fl, const std::string& at, Tally& t)
+    {
+        const Value* snd = fl.Find("enSnd");
+        if (!snd) return;
+        for (const Value& s : snd->arr) {
+            const unity::Random::State r0 = State(s["rng0"]), r1 = State(s["rng1"]);
+            const int game = unity::Random::DrawsBetween(r0, r1, 64);
+            t.Add("EventSounds.OnEnable: the golem's enable sound draws (Enemy::enableSounds)", (game > 0) == !e.enableSounds.empty(),
+                  at + " (frameCount " + std::to_string(s["fc"].AsInt()) + "): the game " + std::to_string(game) + " draws, the port's sounds " +
+                      std::to_string(e.enableSounds.size()));
+            if (!audio) continue;
+            const unity::Random::State saved = unity::Random::GetState();
+            game::MasterAudio copy = *audio;
+            unity::Random::SetState(r0);
+            for (const std::string& name : e.enableSounds) copy.PlaySound(name);
+            std::printf("%s: OnEnable's sound: the port %d draws from the game's state (the replay's pools), the game %d\n", at.c_str(),
+                        unity::Random::DrawsBetween(r0, unity::Random::GetState(), 64), game);
+            unity::Random::SetState(saved);
+        }
     }
 
     void OnEnemy(game::Enemy& e, int id, const Value& line, Tally& t) override
@@ -104,6 +132,7 @@ struct FlyKamiReplay : ReplayHooks {
             e.colliderEnabled = (*fl)["colOn"].b; // (before EnemyPhysics::Add makes the body)
             if ((*fl)["invEnd"].b || (*fl)["invEnable"].b || golem->isReturning)
                 std::printf("note: golem %d starts with EndCharge, EnableCharge or its return pending (not replayable)\n", id);
+            CheckEnableSounds(e, *fl, "golem " + std::to_string(id) + " before the recording", t);
         } else {
             std::printf("note: no \"fly\" in the recording (FlyKamiOracle.cs): the golems' own rows skipped\n");
         }
@@ -222,6 +251,7 @@ struct FlyKamiReplay : ReplayHooks {
                     t.Add("golem's Invokes pending (EndCharge, EnableCharge)",
                           calls->IsInvoking(g, "EndCharge") == (*fl)["invEnd"].b && calls->IsInvoking(g, "EnableCharge") == (*fl)["invEnable"].b, who);
                 t.Add("golem's z (the port's 2D transforms: 0)", Bits((*fl)["z"]) == 0.0f, who + ": " + std::to_string(Bits((*fl)["z"])));
+                CheckEnableSounds(e, *fl, who, t);
             }
         portEvents.clear();
         charges.clear();

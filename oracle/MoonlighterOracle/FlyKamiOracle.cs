@@ -12,7 +12,11 @@ namespace MoonlighterOracle
     ///   - each enemy ("enemy", a frame's "enemies"): "fly": isCharging, isReturning,
     ///     desiredDirection, angle, bounds (x, y, width, height), chargePosition, enemyDirection,
     ///     the root collider's enabled flag (_collider.enabled), the Attack object's activeSelf,
-    ///     IsInvoking("EndCharge") / ("EnableCharge"), its transform's z;
+    ///     IsInvoking("EndCharge") / ("EnableCharge"), its transform's z; "enSnd": its
+    ///     "SoundsFlyingKamikaze" child's EventSounds.OnEnable calls since the last row (its
+    ///     enable sound, MasterAudio.PlaySound's draws), each with Time.frameCount, Time.time and
+    ///     the Random state before and after (kept from before the recording too: EnableEnemies
+    ///     switches the golems on before it starts);
     ///   - a frame's "fsteps": per fixed step (as "steps"), each golem at the step's start:
     ///     [id, root collider enabled, Attack active];
     ///   - a frame's "fev": what happened in order, with the fixed step (-1: none) and Time.time:
@@ -26,6 +30,14 @@ namespace MoonlighterOracle
         private static bool active, lambdaHooked;
         private static readonly List<List<string>> stepRows = new List<List<string>>();
         private static readonly List<Ev> events = new List<Ev>();
+        private static readonly Dictionary<FlyingKamikazeGolemBehaviour, List<EnableSnd>> enableSnds = new Dictionary<FlyingKamikazeGolemBehaviour, List<EnableSnd>>();
+
+        private class EnableSnd
+        {
+            public int frame;
+            public float time;
+            public uint[] rng0, rng1;
+        }
 
         private class Ev
         {
@@ -110,6 +122,19 @@ namespace MoonlighterOracle
             j.Prop("attackActive", golem.Attack != null && golem.Attack.activeSelf);
             j.Prop("invEnd", golem.IsInvoking("EndCharge")).Prop("invEnable", golem.IsInvoking("EnableCharge"));
             j.Key("z").Bits(golem.transform.position.z);
+            if (enableSnds.TryGetValue(golem, out var snds) && snds.Count > 0)
+            {
+                j.Key("enSnd").Arr();
+                foreach (var e in snds)
+                {
+                    j.Obj().Prop("fc", e.frame).Key("time").Bits(e.time);
+                    Rng.WriteState(j.Key("rng0"), e.rng0);
+                    Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
+                    j.EndObj();
+                }
+                j.EndArr();
+                snds.Clear();
+            }
             j.EndObj();
         }
 
@@ -201,6 +226,29 @@ namespace MoonlighterOracle
         private static class EnableHook
         {
             private static void Prefix(FlyingKamikazeGolemBehaviour __instance) => Simple(__instance, "enable");
+        }
+
+        /// EventSounds.OnEnable on a golem's child (always patched: the golems are switched on
+        /// before the recording starts), its draws for the golem's next "fly".
+        [HarmonyPatch(typeof(DarkTonic.MasterAudio.EventSounds), "OnEnable")]
+        private static class EventSoundsEnableHook
+        {
+            private static void Prefix(DarkTonic.MasterAudio.EventSounds __instance, out EnableSnd __state)
+            {
+                __state = null;
+                Transform parent = __instance.transform.parent;
+                FlyingKamikazeGolemBehaviour golem = parent != null ? parent.GetComponent<FlyingKamikazeGolemBehaviour>() : null;
+                if (golem == null) return;
+                __state = new EnableSnd { frame = Time.frameCount, time = Time.time, rng0 = Rng.Get() };
+                if (!enableSnds.TryGetValue(golem, out var list)) enableSnds[golem] = list = new List<EnableSnd>();
+                if (list.Count >= 16) list.RemoveAt(0);
+                list.Add(__state);
+            }
+
+            private static void Postfix(EnableSnd __state)
+            {
+                if (__state != null) __state.rng1 = Rng.Get();
+            }
         }
 
         [HarmonyPatch(typeof(FlyingKamikazeGolemBehaviour), "MakeChargeAttack")]

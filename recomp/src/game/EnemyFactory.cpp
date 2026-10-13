@@ -124,6 +124,19 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
         // Enemy.enemySprite: the first SpriteRenderer below the root (GetComponentInChildren).
         if (enemy->sprite.empty() && n.HasRenderer() && !n.sprite.empty()) enemy->sprite = n.sprite;
     }
+    // EventSounds' enable sounds on the objects that are on (game/EnemyEventSounds.cpp).
+    for (const PrefabNode& n : prefab.nodes) {
+        bool on = n.active;
+        for (const PrefabNode& m : prefab.nodes) // (its parents below the root)
+            on = on && (m.path.empty() || n.path.compare(0, m.path.size() + 1, m.path + "/") != 0 || m.active);
+        for (const Behaviour& b : n.behaviours) {
+            if (!on || b.cls != "EventSounds" || b.Field("m_Enabled", 1.0) == 0.0 || b.Field("useEnableSound", 0.0) == 0.0) continue;
+            const auto it = b.raw.find("enableSound");
+            if (it != b.raw.end())
+                for (const json::Value& s : it->second.arr)
+                    if (s.IsString()) enemy->enableSounds.push_back(s.s);
+        }
+    }
     // The Animator binds its write defaults to the object as the prefab has it.
     enemy->ResetAnimator();
     enemy->hasNavAgent = true;

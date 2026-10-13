@@ -4,7 +4,8 @@
 // FlyingKamikazeGolem.json, enemy_stats.json, sound_groups.json):
 //   - OutQuint as DOTween's IL computes it (0 at 0, 1 at the end, 1 - 0.5^5 halfway);
 //   - the prefab: the behaviour and its fields, the root box off (no fixture), the attack child
-//     inactive (no fixture), mass 12;
+//     inactive (no fixture), mass 12; its child's EventSounds enable sound
+//     (golem_dungeon_flyingrepair_loop), played with its draws at Instantiate and SetActive(true);
 //   - a golem in a walled box (the room's bounds inside the walls) with the hero standing:
 //       - it targets him a second after, prepares (the Attack trigger) and drifts towards the
 //         origin (bounds still empty) until the clip's MakeChargeAttack 0.333 s on;
@@ -108,7 +109,9 @@ void CheckFlyingKamikazeGolem(const game::Prefab& prefab, const unity::AnimatorC
     scene.playSound = [&](game::Enemy&, const std::string& s) { sounds += s == "golem_dungeon_flyingkamikazegolem_attack"; };
     unity::Random::InitState(2024);
 
+    const unity::Random::State beforeMake = unity::Random::GetState();
     auto golem = game::MakeEnemy(prefab, scene, &controller, {{-100.0f, 50.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}});
+    const int makeDraws = unity::Random::DrawsBetween(beforeMake, unity::Random::GetState(), 64);
     golemEnemy = golem.get();
     auto* b = dynamic_cast<Golem*>(golem->enemyBehaviour.get());
     Check(b != nullptr, "the FlyingKamikazeGolem prefab makes a FlyingKamikazeGolemBehaviour");
@@ -126,6 +129,23 @@ void CheckFlyingKamikazeGolem(const game::Prefab& prefab, const unity::AnimatorC
               "its fields (prefabs.py FIELDS): push 100, two trails, looking left");
     else
         std::printf("(prefabs.json without FlyingKamikazeGolemBehaviour's fields: rerun tools/extract/prefabs.py)\n");
+    bool hasEventSounds = false;
+    for (const game::PrefabNode& n : prefab.nodes)
+        for (const game::Behaviour& f : n.behaviours) hasEventSounds = hasEventSounds || (f.cls == "EventSounds" && f.raw.count("enableSound"));
+    if (hasEventSounds) {
+        Check(golem->enableSounds == std::vector<std::string>{"golem_dungeon_flyingrepair_loop"},
+              "its SoundsFlyingKamikaze child's EventSounds: golem_dungeon_flyingrepair_loop on enable");
+        if (haveAudio) {
+            Check(makeDraws > 0, "Instantiate (active): the enable sound's draws (" + std::to_string(makeDraws) + ")");
+            golem->SetActive(false);
+            const unity::Random::State beforeOn = unity::Random::GetState();
+            golem->SetActive(true);
+            const int onDraws = unity::Random::DrawsBetween(beforeOn, unity::Random::GetState(), 64);
+            Check(onDraws > 0, "SetActive(true): the enable sound's draws again (" + std::to_string(onDraws) + ")");
+        }
+    } else {
+        std::printf("(prefabs.json without EventSounds' fields: rerun tools/extract/prefabs.py)\n");
+    }
     game::EnemyStatModificator m;
     game::EnemyStatModificator::FromJson(enemyStats, "FlyingKamikazeGolem", m);
     golem->Init("FlyingKamikazeGolem", m, game::EnemyStatsContext{});
