@@ -23,7 +23,8 @@ namespace MoonlighterOracle
     ///                                            popup (GUIManager's), whether a press was refused
     ///   {"ev":"node","id","parent","name","path","rect","comps"}
     ///                                            an object the first time it's seen (id: its
-    ///                                            Transform's instance id; parent 0 at the scene's root)
+    ///                                            Transform's instance id; parent 0 at the scene's root),
+    ///                                            and again ("reparented") when its parent changed
     ///   {"ev":"x","f","id","t":[...]}            a plain Transform above a root canvas (its local
     ///                                            position, rotation, scale), when it changes
     ///   {"ev":"e","f","id","rt":[...], ...}      an active object under an active root canvas,
@@ -98,8 +99,9 @@ namespace MoonlighterOracle
         // The main menu from its closed doors ("press any key"): Y opens them (GUIManager hands
         // any button to the panel's OnAnyKeyPressed; Y isn't the input module's submit), the
         // selection moved through Continue, NewGame and Options; Options opened (A, checked to be
-        // on Options), its rows walked up and down and its tabs switched with the bumpers, closed
-        // with B (closing saves the options: blocked); NewGame's slot panel opened, its slots
+        // on Options), its first tab's rows walked up and down, closed with B (closing saves the
+        // options: blocked; its tabs aren't switched: showing the Graphics tab again sets the
+        // screen's resolution from its list); NewGame's slot panel opened, its slots
         // walked, back with B; the stick held down (the input module's repeat, 0.2 s then every
         // 0.2 s) down to Exit, never pressed; B closes the doors. Never X or the bumpers while
         // the news viewer is up (its Read More and paging), never A on Continue, Exit or a slot,
@@ -110,8 +112,7 @@ namespace MoonlighterOracle
             Press("gui.Action4", 150),
             Tap(0f, -1f), Tap(0f, -1f), Tap(0f, 1f), Tap(0f, 1f), Tap(0f, -1f), Tap(0f, -1f),
             Submit("Options", 90),
-            Tap(0f, -1f), Tap(0f, -1f), Tap(0f, -1f), Tap(0f, 1f),
-            Press("gui.RightBumper", 60), Tap(0f, -1f), Press("gui.RightBumper", 60), Tap(0f, -1f), Press("gui.LeftBumper", 60),
+            Tap(0f, -1f), Tap(0f, -1f), Tap(0f, -1f), Tap(0f, 1f), Tap(0f, 1f),
             Press("gui.Action2", 120),
             Tap(0f, 1f),
             Submit("NewGame", 120),
@@ -189,9 +190,21 @@ namespace MoonlighterOracle
         private static bool strayed;
 
         /// A step that expects a selection: is that object selected? (Logged once when not.)
+        private static int expectFrame = -1;
+        private static bool expectOk;
+
         private static bool SelectionAsExpected(Step s)
         {
             if (s.expect == null) return true;
+            int stepStart = Time.frameCount - (Current(out _, out int inStep) ? inStep : 0);
+            if (expectFrame == stepStart) return expectOk;
+            expectFrame = stepStart;
+            expectOk = Check(s);
+            return expectOk;
+        }
+
+        private static bool Check(Step s)
+        {
             var es = EventSystem.current;
             var selected = es != null ? es.currentSelectedGameObject : null;
             if (selected != null && selected.name == s.expect) return true;
@@ -283,16 +296,17 @@ namespace MoonlighterOracle
             public int f;
             public string header;
             public readonly List<string> nodes = new List<string>();
-            public readonly HashSet<int> nodeIds = new HashSet<int>();
+            public readonly Dictionary<int, int> nodeIds = new Dictionary<int, int>();
             public readonly List<KeyValuePair<int, string>> items = new List<KeyValuePair<int, string>>(); // id -> "e"/"x" + body
             public readonly HashSet<int> ids = new HashSet<int>();
         }
 
         private static readonly Dictionary<int, string> lastRow = new Dictionary<int, string>();
-        private static readonly HashSet<int> known = new HashSet<int>();
+        private static readonly Dictionary<int, int> known = new Dictionary<int, int>(); // id -> parent id written
         private static HashSet<int> activeLast = new HashSet<int>();
         private static readonly Vector3[] corners = new Vector3[4];
         private static Snap pending;
+        private static int startW, startH;
         private static int rows;
 
         private static void Emit(Json j) => writer.WriteLine(j.EndObj().ToString());
@@ -306,14 +320,20 @@ namespace MoonlighterOracle
 
         private static string Name(UnityEngine.Object o) => o != null ? o.name : null;
 
-        /// The object's "node" line (and its parents' first) if it hasn't been written yet.
+        /// The object's "node" line (and its parents' first) if it hasn't been written yet, or
+        /// again if its parent changed since ("reparented": true).
         private static void Node(Snap snap, Transform t)
         {
             int id = t.GetInstanceID();
-            if (known.Contains(id) || !snap.nodeIds.Add(id)) return;
+            int parent = t.parent != null ? t.parent.GetInstanceID() : 0;
+            if (snap.nodeIds.ContainsKey(id)) return;
+            bool seen = known.TryGetValue(id, out int was);
+            if (seen && was == parent) return;
+            snap.nodeIds[id] = parent;
             if (t.parent != null) Node(snap, t.parent);
-            var j = new Json().Obj().Prop("ev", "node").Prop("id", id).Prop("parent", t.parent != null ? t.parent.GetInstanceID() : 0)
+            var j = new Json().Obj().Prop("ev", "node").Prop("id", id).Prop("parent", parent)
                 .Prop("name", t.name).Prop("path", PathOf(t)).Prop("rect", t is RectTransform);
+            if (seen) j.Prop("reparented", true);
             j.Key("comps").Arr();
             foreach (var c in t.GetComponents<Component>())
                 if (c != null && !(c is Transform)) j.Val(c.GetType().FullName);
@@ -446,6 +466,11 @@ namespace MoonlighterOracle
             j.Key("dt").Bits(Time.deltaTime).Key("udt").Bits(Time.unscaledDeltaTime).Key("ts").Bits(Time.timeScale)
                 .Key("rt").Bits(Time.realtimeSinceStartup);
             j.Prop("sw", Screen.width).Prop("sh", Screen.height);
+            if (Screen.width != startW || Screen.height != startH)
+            {
+                if (!strayed) OraclePlugin.Log.LogError($"ui: the screen changed to {Screen.width}x{Screen.height} (from {startW}x{startH})");
+                strayed = true;
+            }
             j.Key("in").Arr().Bits(stick.x).Bits(stick.y);
             if (inStep < step.hold && (step.expect == null || !strayed))
                 foreach (var b in step.buttons) j.Val(b);
@@ -480,7 +505,7 @@ namespace MoonlighterOracle
         {
             writer.WriteLine(snap.header);
             foreach (string n in snap.nodes) writer.WriteLine(n);
-            foreach (int id in snap.nodeIds) known.Add(id);
+            foreach (var n in snap.nodeIds) known[n.Key] = n.Value;
             foreach (var item in snap.items)
             {
                 if (lastRow.TryGetValue(item.Key, out string last) && last == item.Value) continue;
@@ -634,6 +659,8 @@ namespace MoonlighterOracle
             // After CanvasUpdateRegistry's own handler (made with the registry, long before now):
             // what's recorded is the frame's layout as it's drawn.
             Canvas.willRenderCanvases += OnWillRenderCanvases;
+            startW = Screen.width;
+            startH = Screen.height;
             startFrame = Time.frameCount + 1;
             Active = true;
             while (Active && Time.frameCount - startFrame < frames + 2) yield return null;
@@ -648,7 +675,7 @@ namespace MoonlighterOracle
             if (strayed)
             {
                 failed = true;
-                File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "FAILED"), "ui: the script strayed (a press refused: see the log)");
+                File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "FAILED"), "ui: the script strayed (a press refused, or the screen changed: see the log)");
             }
             if (!failed)
             {
