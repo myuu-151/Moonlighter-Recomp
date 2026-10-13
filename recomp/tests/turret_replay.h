@@ -410,8 +410,10 @@ struct TurretReplay : ReplayHooks {
     // (not set from the clip's delta, not pinned where the clip puts it).
     void AfterFrames(const std::vector<Value>& lines, Tally& t) override
     {
+        bool probed = false;
         for (const Value& l : lines) {
             if (l["ev"].s != "rootMotionProbe") continue;
+            probed = true;
             const auto it = enemies.find(static_cast<int>(l["s"].AsInt()));
             const unity::AnimatorController* c = it != enemies.end() ? it->second->Controller() : nullptr;
             t.Add("rootMotionProbe: applyRootMotion as the port's controller has it (animators.py)",
@@ -427,6 +429,11 @@ struct TurretReplay : ReplayHooks {
                       Str(V2(before["pos"])) + " -> " + Str(V2(step["pos"])) + " v " + Str(V2(step["vel"])) +
                       (step["awake"].b ? " awake" : " asleep") + " (updateMode " + std::to_string(l["updateMode"].AsInt()) + ")");
         }
+        // (The probe needs a turret still active when the recording ends: none after the hero
+        // leaves the room, as he falls into its secret room at frame 208 of the first recording.)
+        if (!probed)
+            std::printf("note: no \"rootMotionProbe\" line (TurretRootMotionProbe.cs: no turret active at the recording's end): the root "
+                        "motion's model (game/EnemyRootMotion.cpp) unchecked\n");
     }
 
     // After the replay: how often the turrets' transforms were touched after their Update.

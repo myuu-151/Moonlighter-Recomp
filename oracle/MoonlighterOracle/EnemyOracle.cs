@@ -686,6 +686,10 @@ namespace MoonlighterOracle
             var independent = AccessTools.Field(typeof(DG.Tweening.DOTween), "defaultTimeScaleIndependent");
             if (independent != null) j.Prop("dotweenIndependent", (bool)independent.GetValue(null));
             j.Key("dotweenTimeScale").Bits(DG.Tweening.DOTween.timeScale);
+            // MasterAudio's variationFollowerType (0 LateUpdate, 1 FixedUpdate; -1 none): where a
+            // played variation's AudioSource starts (game/MasterAudio.h's "not playing yet").
+            var ma = DarkTonic.MasterAudio.MasterAudio.SafeInstance;
+            j.Prop("maFollower", ma != null ? (int)ma.variationFollowerType : -1);
             TurretOracle.WriteStart(j, room);
             CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
             Emit(j);

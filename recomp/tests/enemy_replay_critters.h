@@ -10,9 +10,10 @@
 //     hits on them are compared with the others ("attack trigger: OnTriggerEnter2D (whose, on the
 //     hero or a collider)");
 //   - one without (the recordings before CritterOracle.cs): the hits the game reports on a
-//     critter (an object of the room on a Dynamic body that isn't one of the recorded enemies)
-//     can't be made, and fail on a row of their own ("... on the room's critters (their moves
-//     unrecorded: record again)") until the recording is made again.
+//     critter (a trigger box on a Dynamic body, its object right under the room's and not one of
+//     the recorded enemies: Wormy(Clone), Bugy(Clone)) can't be made, and fail on a row of their
+//     own ("... on the room's critters (their moves unrecorded: record again)") until the
+//     recording is made again.
 // Included by enemy_replay.h inside its anonymous namespace (its helpers: Value, V2, Bits).
 
 struct CritterReplay {
@@ -39,9 +40,14 @@ struct CritterReplay {
             }
             return false;
         };
+        // (A critter is a trigger box on a Dynamic body, an object right under the room: not a
+        // breakable pot (a solid box) nor a critter's own "AttackCollider" child, whose hits stay
+        // on the strict rows as before.)
         for (const Value& c : colliders) {
             const std::string& path = c["path"].s;
-            if (!c.Find("body") || c["body"].s != "Dynamic" || path.compare(0, roomPath.size(), roomPath) != 0 || underEnemy(path)) continue;
+            if (!c.Find("body") || c["body"].s != "Dynamic" || !c["trigger"].b || path.compare(0, roomPath.size(), roomPath) != 0 ||
+                path.find('/', roomPath.size()) != std::string::npos || underEnemy(path))
+                continue;
             const std::string name = path.substr(path.rfind('/') + 1);
             if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
         }

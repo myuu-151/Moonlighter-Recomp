@@ -329,6 +329,12 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     RoomExitReplay roomExit; // (tests/enemy_replay_room.h)
     roomExit.Scan(frames);
     std::printf("recording: room %s, %zu %s, %zu frames\n", start["room"].s.c_str(), enemyLines.size(), start["enemy"].s.c_str(), frames.size());
+    // MasterAudio's variationFollowerType where the recording has it (EnemyOracle.cs "maFollower"):
+    // LateUpdate (0), which game/MasterAudio.h's "a variation played in this frame isn't playing
+    // until its LateUpdate" takes; FixedUpdate (1) would start it in the next fixed step.
+    if (const Value* ma = start.Find("maFollower"))
+        t.Add("MasterAudio.variationFollowerType is LateUpdate (game/MasterAudio.h's same-frame plays)", ma->AsInt() == 0,
+              "game " + std::to_string(ma->AsInt()));
 
     // insideUnitCircle from the game's states.
     for (const Value& p : probes) {
