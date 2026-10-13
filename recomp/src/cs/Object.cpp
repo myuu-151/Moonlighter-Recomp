@@ -15,23 +15,28 @@
 namespace cs {
 
 namespace {
-Heap gDefaultHeap;
-Heap* gCurrent = &gDefaultHeap;
+// The program's own heap: never destroyed (at exit, other statics may still point into it).
+Heap& DefaultHeap()
+{
+    static Heap* h = new Heap();
+    return *h;
+}
+Heap* gCurrent = nullptr;
 
 std::vector<RootSource>& Sources()
 {
-    static std::vector<RootSource> s;
-    return s;
+    static auto* s = new std::vector<RootSource>(); // never destroyed (used until exit)
+    return *s;
 }
 RootBase* gRoots = nullptr;
 uint32_t gNextHash = 0x2545F491u;
 } // namespace
 
-Heap& CurrentHeap() { return *gCurrent; }
+Heap& CurrentHeap() { return gCurrent ? *gCurrent : DefaultHeap(); }
 
-void SetCurrentHeap(Heap* heap) { gCurrent = heap ? heap : &gDefaultHeap; }
+void SetCurrentHeap(Heap* heap) { gCurrent = heap ? heap : &DefaultHeap(); }
 
-StaticScope::StaticScope() : saved_(gCurrent) { gCurrent = &gDefaultHeap; }
+StaticScope::StaticScope() : saved_(gCurrent) { gCurrent = &DefaultHeap(); }
 StaticScope::~StaticScope() { gCurrent = saved_; }
 
 // ---- Object ------------------------------------------------------------------------------------
@@ -73,7 +78,8 @@ void Heap::Clear()
     Object* o = head_;
     head_ = nullptr;
     count_ = 0;
-    if (this == &gDefaultHeap) {
+    Heap& program = DefaultHeap();
+    if (this == &program) {
         while (o) {
             Object* next = o->gc_next_;
             delete o;
@@ -89,9 +95,9 @@ void Heap::Clear()
     while (o) {
         Object* next = o->gc_next_;
         if (o->gc_mark_ == t.Epoch()) {
-            o->gc_next_ = gDefaultHeap.head_;
-            gDefaultHeap.head_ = o;
-            gDefaultHeap.count_++;
+            o->gc_next_ = program.head_;
+            program.head_ = o;
+            program.count_++;
         } else {
             dead.push_back(o);
         }

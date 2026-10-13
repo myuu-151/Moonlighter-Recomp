@@ -74,6 +74,7 @@ public:
     cs::String* get_name() { return name_ ? name_ : cs::String::get_Empty(); }
     void set_name(cs::String* n) { name_ = n; }
     static void Destroy(Object* o);
+    static void Destroy(Object* o, float delay);
     static void DestroyImmediate(Object* o) { Destroy(o); }
     void __ctor() {}
 
@@ -139,6 +140,8 @@ struct Resources {
             cs::NotTranslated("UnityEngine.Resources.Load<T> for this T");
         }
     }
+    // Resources.Load(path): untyped (a TextAsset when the path names one).
+    static Object* Load(cs::String* path) { return LoadText(path); }
     template <typename T>
     static cs::Array<T>* FindObjectsOfTypeAll()
     {
@@ -155,6 +158,9 @@ struct Debug {
     static void Log(cs::Object* message);
     static void LogWarning(cs::Object* message);
     static void LogError(cs::Object* message);
+    static void Log(cs::Object* message, Object* context) { (void)context, Log(message); }
+    static void LogWarning(cs::Object* message, Object* context) { (void)context, LogWarning(message); }
+    static void LogError(cs::Object* message, Object* context) { (void)context, LogError(message); }
     static void LogFormat(cs::String* format, cs::Array<cs::Object*>* args);
     static void LogErrorFormat(cs::String* format, cs::Array<cs::Object*>* args);
 };

@@ -230,6 +230,7 @@ public sealed class Emitter
         }
         foreach (var i in t.Interfaces)
         {
+            if (!InterfaceMapped(i)) continue; // an unbound interface (a gap): not a base, its members plain methods
             string it = TryType(i);
             if (it != null) bases.Add("public virtual " + it);
         }
@@ -352,9 +353,17 @@ public sealed class Emitter
             string op = m.MethodKind == MethodKind.EventAdd ? "Combine" : "Remove";
             return $"{(m.IsStatic ? "static " : AccessorVirtual(m))}void {name}({dt}* value) {{ {f} = {dt}::{op}({f}, value); }}{Override(m)}";
         }
+        if (m.IsGenericMethod && (m.IsVirtual || m.IsAbstract || m.IsOverride || t.TypeKind == TypeKind.Interface || m.ExplicitInterfaceImplementations.Length > 0))
+        {
+            // C++ has no virtual templates: a plain template here; calls that would dispatch
+            // are reported as unsupported (Body.CallCode). Abstract ones throw if reached.
+            if (t.TypeKind == TypeKind.Interface || m.IsAbstract)
+                return $"{tmpl}{ret} {name}({Params(m)}) {{ ::cs::NotTranslated(\"{Names.FullName(t)}::{m.Name} (a virtual generic method)\"); }}";
+            return $"{tmpl}{ret} {name}({Params(m)});";
+        }
         string mods = "";
         if (m.IsStatic || m.MethodKind == MethodKind.StaticConstructor) mods = "static ";
-        else if ((m.IsVirtual || m.IsAbstract || m.IsOverride) && !m.IsGenericMethod) mods = "virtual ";
+        else if (m.IsVirtual || m.IsAbstract || m.IsOverride) mods = "virtual ";
         else if (t.TypeKind == TypeKind.Interface) mods = "virtual ";
         if (m.MethodKind == MethodKind.ExplicitInterfaceImplementation || m.ExplicitInterfaceImplementations.Length > 0) mods = "virtual ";
         string tail = "";
@@ -367,9 +376,16 @@ public sealed class Emitter
 
     // `override` when the C++ base declares the method: a translated override, an explicit
     // interface implementation, or System.Object's ToString/Equals/GetHashCode.
+    // Is the interface a C++ base: a game interface, or one bindings.tsv maps.
+    bool InterfaceMapped(INamedTypeSymbol i) => N.IsGame(i) || tr.Bind.FindType(i) != null;
+
     string Override(IMethodSymbol m)
     {
-        if (m.ExplicitInterfaceImplementations.Length > 0) return " override";
+        if (m.ExplicitInterfaceImplementations.Length > 0)
+        {
+            var im = m.ExplicitInterfaceImplementations[0];
+            return InterfaceMapped(im.ContainingType) && !im.IsGenericMethod ? " override" : "";
+        }
         if (!m.IsOverride) return "";
         var o = m.OverriddenMethod;
         if (o == null) return "";
@@ -393,9 +409,11 @@ public sealed class Emitter
         var done = new HashSet<string>(StringComparer.Ordinal);
         foreach (var i in direct)
         {
+            if (!InterfaceMapped(i)) continue;
             foreach (var im in i.GetMembers().OfType<IMethodSymbol>())
             {
                 if (N.IsGame(im) && !tr.Methods.ContainsKey(im.OriginalDefinition)) continue;
+                if (im.IsGenericMethod) continue; // C++ has no virtual templates: not dispatched through the interface
                 var impl = t.FindImplementationForInterfaceMember(im) as IMethodSymbol;
                 if (impl == null) { sb.Append($"    // no implementation of {im}\n"); continue; }
                 if (impl.ExplicitInterfaceImplementations.Any(x => SymbolEqualityComparer.Default.Equals(x.OriginalDefinition, im.OriginalDefinition))

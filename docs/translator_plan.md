@@ -132,10 +132,12 @@ forward declaration).
 | `typeof(T)`, `GetType()` | canonical `cs::Type` objects | `==` between types works |
 | `default(T)`, `x == null` on a type parameter | `T{}`, `cs::IsNullT(x)` | |
 
-Not supported yet (the whole game has 14 such methods): tuples, `new T()` on a type
-parameter, multi-dimensional array initializers, array covariance, `decimal`, ref locals,
-user-defined `++`, exception filters, one decompiler artifact (a delegate built from a
-function pointer).
+Not supported yet (the whole game has 36 such methods): calls to virtual generic methods
+(C++ has no virtual templates; 22 methods), tuples, `new T()` on a type parameter,
+multi-dimensional array initializers, array covariance, `decimal`, ref locals, user-defined
+`++`, exception filters, one decompiler artifact (a delegate built from a function pointer).
+A type with no binding yet compiles as a placeholder (`cs::UnmappedRef<hash>`) in declarations;
+the methods that use it are stubbed.
 
 ## The runtime (recomp/src/cs)
 
@@ -232,13 +234,19 @@ layer's GameObjects). Result: rng 130/130, floor info (ResetValues) 3000/3000, l
 
 From `mltranslate survey` (progress/class_deps.tsv, progress/unity_api_gaps.tsv):
 
-- of the 160,682 counted lines (1,173 classes), **57,698 lines (35.9%) translate today**
-  (each class's lines times the share of its methods' lines that translate); 10,443 of 17,172
-  methods (60.8%); 278 classes translate whole (7,800 lines);
-- the constructs are nearly done: 14 methods of the whole game hit an unsupported construct;
-- the rest is bindings: 1,285 APIs missing, Unity's (780 APIs) first: Component.transform /
+- of the 160,682 counted lines (1,173 classes), **54,833 lines (34.1%) translate today**
+  (each class's lines times the share of its methods' lines that translate); 10,076 of 17,172
+  methods (58.7%); 270 classes translate whole (7,336 lines). "Translates" means: every
+  construct supported and every API the method calls bound (to a member the runtime or the
+  facade has: `members` lines keep the convention-mapped types honest);
+- the whole translated game (3,328 types, 21,660 methods, 270,000 lines of C++, the methods
+  that don't translate stubbed) compiles with MSVC 2022 (PCH, unity build) and passes GCC 15's
+  front end (`-std=gnu++17 -fsyntax-only`); the proof's build also runs under GCC: ALL MATCH;
+- the constructs are nearly done: 36 methods of the whole game hit an unsupported construct
+  (22 of them calls to virtual generic methods);
+- the rest is bindings: about 1,300 APIs missing, Unity's first: Component.transform /
   gameObject, Transform.position, GetComponent, SetActive, Vector3 arithmetic, coroutines;
-  then DOTween (113), Unity UI (115), mscorlib (163), MasterAudio (46).
+  then DOTween, Unity UI, mscorlib, MasterAudio.
 
 The GameObject/Transform/Component model alone unblocks most of it: the next step of the
 hand-written work, then the enemies' Rigidbody2D/Animator/coroutines (the BabySlime end to end).

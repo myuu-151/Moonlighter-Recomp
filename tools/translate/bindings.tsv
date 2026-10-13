@@ -148,3 +148,36 @@ members	UnityEngine.Debug	Log LogWarning LogError LogFormat LogErrorFormat
 members	UnityEngine.Time	get_realtimeSinceStartup get_time get_deltaTime get_fixedDeltaTime get_frameCount
 members	UnityEngine.Mathf	Min Max Abs Sign Clamp Clamp01 Lerp Floor FloorToInt Ceil CeilToInt Round RoundToInt Sqrt Pow Atan2 Sin Cos Repeat DeltaAngle MoveTowards PI Infinity Epsilon
 members	UnityEngine.Color	.ctor r g b a
+type	System.Type	::cs::Type	conv
+members	System.Type	get_FullName get_Name ToString op_Equality op_Inequality Equals GetHashCode
+# what the runtime's convention-mapped types have (recomp/src/cs)
+members	System.Collections.Generic.List<T>	.ctor Add AddRange Insert InsertRange IndexOf LastIndexOf Contains Remove RemoveAt RemoveRange RemoveAll Clear Find FindLast FindIndex FindLastIndex FindAll Exists TrueForAll ForEach ConvertAll ToArray GetRange Reverse CopyTo TrimExcess Sort GetEnumerator get_Count get_Capacity set_Capacity get_Item set_Item
+members	System.Collections.Generic.List<T>.Enumerator	MoveNext get_Current Dispose
+members	System.Collections.Generic.Dictionary<TKey,TValue>	.ctor get_Count get_Item set_Item Add ContainsKey ContainsValue TryGetValue Remove Clear GetEnumerator get_Keys get_Values
+members	System.Collections.Generic.Dictionary<TKey,TValue>.Enumerator	MoveNext get_Current Dispose
+members	System.Collections.Generic.Dictionary<TKey,TValue>.KeyCollection	GetEnumerator get_Count CopyTo
+members	System.Collections.Generic.Dictionary<TKey,TValue>.ValueCollection	GetEnumerator get_Count CopyTo
+members	System.Collections.Generic.Dictionary<TKey,TValue>.KeyCollection.Enumerator	MoveNext get_Current Dispose
+members	System.Collections.Generic.Dictionary<TKey,TValue>.ValueCollection.Enumerator	MoveNext get_Current Dispose
+members	System.Collections.Generic.KeyValuePair<TKey,TValue>	.ctor get_Key get_Value
+members	System.Collections.Generic.HashSet<T>	.ctor Add Contains Remove Clear UnionWith TrimExcess GetEnumerator get_Count CopyTo
+members	System.Collections.Generic.HashSet<T>.Enumerator	MoveNext get_Current Dispose
+members	System.Text.StringBuilder	.ctor ToString get_Length set_Length get_Chars set_Chars Append AppendLine Insert Remove Clear
+members	System.Globalization.CultureInfo	get_InvariantCulture get_CurrentCulture
+members	System.StringComparer	get_Ordinal get_OrdinalIgnoreCase Equals GetHashCode Compare
+members	System.Linq.Enumerable	Count Any ToList ToArray Contains First FirstOrDefault
+members	System.Math	Sqrt Pow Floor Ceiling Truncate Sin Cos Tan Asin Acos Atan Atan2 Exp Log Log10 Round Abs Max Min Sign PI E
+members	System.Exception	.ctor get_Message ToString
+members	System.Collections.IEnumerator	MoveNext get_Current Reset
+members	System.Collections.IEnumerable	GetEnumerator
+members	System.IDisposable	Dispose
+members	System.Collections.Generic.IEnumerator<T>	get_Current
+members	System.Collections.Generic.IEnumerable<T>	GetEnumerator
+members	System.Collections.Generic.ICollection<T>	get_Count get_IsReadOnly Add Clear Contains CopyTo Remove
+members	System.Collections.Generic.IList<T>	get_Item set_Item IndexOf Insert RemoveAt
+members	System.Collections.Generic.IComparer<T>	Compare
+members	System.Collections.Generic.IEqualityComparer<T>	Equals GetHashCode
+members	System.IComparable	CompareTo
+members	System.IComparable<T>	CompareTo
+members	System.IEquatable<T>	Equals
+type	System.SystemException	::cs::SystemException	conv

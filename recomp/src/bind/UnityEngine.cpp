@@ -32,8 +32,8 @@ void Print(const char* level, cs::Object* message)
 
 std::vector<Object*>& Object::Live()
 {
-    static std::vector<Object*> live;
-    return live;
+    static auto* live = new std::vector<Object*>(); // never destroyed: objects outlive it at exit
+    return *live;
 }
 
 Object::Object()
@@ -52,6 +52,13 @@ Object::~Object()
 void Object::Destroy(Object* o)
 {
     if (o) o->destroyed_ = true;
+}
+
+// Destroy(obj, t): a delayed destroy needs the scene's scheduler (not bound yet): reaching it is an error.
+void Object::Destroy(Object* o, float delay)
+{
+    (void)o, (void)delay;
+    cs::NotTranslated("UnityEngine.Object.Destroy(obj, t) (needs the scene's delayed calls)");
 }
 
 void Resources::SetTextRoot(const std::string& dir) { gTextRoot = dir; }

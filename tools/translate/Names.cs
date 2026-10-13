@@ -180,12 +180,22 @@ public sealed class Names
     public string ExternalType(INamedTypeSymbol nt)
     {
         var b = tr.Bind.FindType(nt);
-        if (b == null) return tr.Gap(nt, "type");
+        if (b == null)
+        {
+            // A placeholder that still compiles in declarations (the methods using it are
+            // reported and stubbed): one distinct type per C# type, so overloads stay apart.
+            tr.Gap(nt, "type");
+            uint h = 2166136261;
+            foreach (char c in TypeKeyOf(nt)) h = (h ^ c) * 16777619;
+            return nt.IsReferenceType ? $"::cs::UnmappedRef<0x{h:X8}u>" : $"::cs::UnmappedValue<0x{h:X8}u>";
+        }
         tr.UseBinding(b);
         return Substitute(b.Template, null, AllTypeArguments(nt), null);
     }
 
     public bool ExternalIsValue(INamedTypeSymbol nt) => !nt.IsReferenceType;
+
+    static string TypeKeyOf(INamedTypeSymbol nt) => nt.ToDisplayString();
 
     // {T0}.. from type arguments, {M0}.. from method type arguments.
     public string Substitute(string template, string receiver, IReadOnlyList<ITypeSymbol> typeArgs, IReadOnlyList<ITypeSymbol> methodArgs)
@@ -298,7 +308,27 @@ public sealed class Names
 
     public static string StringLiteral(string s)
     {
-        var sb = new StringBuilder("CS_LIT(u\"");
+        // C++ compilers cap a string literal's length (MSVC: 16 KB a piece, 64 KB in all):
+        // long ones are pieces joined once at run time.
+        const int piece = 1500;
+        if (s.Length > piece)
+        {
+            var parts = new List<string>();
+            for (int i = 0; i < s.Length;)
+            {
+                int n = Math.Min(piece, s.Length - i);
+                if (i + n < s.Length && char.IsHighSurrogate(s[i + n - 1])) n--; // keep a pair together
+                parts.Add(PieceLiteral(s.Substring(i, n)));
+                i += n;
+            }
+            return "CS_LIT_CHUNKS(" + string.Join(", ", parts) + ")";
+        }
+        return "CS_LIT(" + PieceLiteral(s) + ")";
+    }
+
+    static string PieceLiteral(string s)
+    {
+        var sb = new StringBuilder("u\"");
         bool lastHex = false;
         foreach (char c in s)
         {
@@ -320,7 +350,7 @@ public sealed class Names
             else sb.Append("\\u").Append(((int)c).ToString("X4"));
             lastHex = false;
         }
-        sb.Append("\")");
+        sb.Append('"');
         return sb.ToString();
     }
 }

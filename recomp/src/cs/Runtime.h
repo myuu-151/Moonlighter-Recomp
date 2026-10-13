@@ -69,6 +69,14 @@ inline T UnboxAny(Object* o)
     else return Unbox<T>(o);
 }
 
+// `o as T` for a type parameter T (a class pointer; a value type can't be `as`'s target).
+template <typename T>
+inline T AsT(Object* o)
+{
+    static_assert(std::is_pointer<T>::value, "`as` to a value type");
+    return As<typename std::remove_pointer<T>::type>(o);
+}
+
 // System.Object's virtuals on any receiver (a reference, or a value as its box would answer).
 template <typename T>
 inline String* ObjectCall_ToString(T* o)
@@ -108,6 +116,13 @@ inline bool ObjectEquals(Object* a, Object* b)
     if (!a || !b) return false;
     return a->Equals(b);
 }
+
+// Stand-ins for a C# type with no C++ mapping yet (tools/translate/bindings.tsv), so the
+// declarations that name it compile; the methods that use it are reported and not translated.
+template <uint32_t H>
+class UnmappedRef : public Object {};
+template <uint32_t H>
+struct UnmappedValue {};
 
 // A method the translator could not translate (an unsupported construct, a missing binding):
 // reaching it at run time is an error the report (recomp/gen/cpp/report.tsv) explains.
