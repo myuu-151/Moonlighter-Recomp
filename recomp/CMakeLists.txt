@@ -110,6 +110,9 @@ add_library(mlcore STATIC
     src/unity/PolygonCollider2D.cpp
     # RectTransform layout, the canvases' own RectTransforms, Transform's matrices (Unity's float math).
     src/unity/RectTransform.cpp
+    # UGUI's text: the fonts' glyphs (the font probe's) and Unity's TextGenerator layout.
+    src/unity/Font.cpp
+    src/unity/TextGenerator.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d third_party/libtess2/Include)
 
@@ -267,6 +270,17 @@ add_executable(ui_rect_test tests/ui_rect_test.cpp)
 target_link_libraries(ui_rect_test PRIVATE mlcore)
 add_test(NAME ui_rect
          COMMAND ui_rect_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/ui_title.jsonl ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/ui_dungeon.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# UGUI text layout against the game (data/oracle/text.jsonl, `-oracle-text`; skipped if there's
+# none): TextGenerator.Populate on the game's Texts in every language, its items and a synthetic
+# grid, redone by unity::TextGenerator from the fonts' metrics (data/extracted/ui/fonts.json) and
+# the recorded glyphs, bit for bit; and the glyphs against the font probe's (fonts.jsonl,
+# `-oracle-fonts`).
+add_executable(ui_text_test tests/ui_text_test.cpp)
+target_link_libraries(ui_text_test PRIVATE mlcore)
+add_test(NAME ui_text
+         COMMAND ui_text_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/text.jsonl ${CMAKE_CURRENT_SOURCE_DIR}/../data/extracted/ui/fonts.json ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/fonts.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
