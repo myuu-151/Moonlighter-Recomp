@@ -54,7 +54,7 @@ type HeroMerchantController .ctor comboCounter
 type HeroMerchantStats .ctor
 type CameraManager .ctor Instance
 type DungeonManager .ctor Instance culture level
-type DungeonRoom .ctor EnemyDefeated AreAllEnemiesDefeated areAllEnemiesDefeated TranslatePositionToTile
+type DungeonRoom .ctor EnemyDefeated AreAllEnemiesDefeated areAllEnemiesDefeated TranslatePositionToTile DisableEnemies
 type DungeonRoomInfo .ctor
 type DungeonRoomDetailsGenerationInfo .ctor
 # the hero's weapon push (the replays drive it where the recording has it)

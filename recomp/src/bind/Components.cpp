@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <unordered_map>
 
+#include <Box2D/Box2D.h>
+
 namespace UnityEngine {
 
 namespace {
@@ -329,6 +331,12 @@ void Animator::UpdatePass(float deltaTime)
     if (!anim_ || destroyed_ || !enabled_ || !gameObject_ || !gameObject_->get_activeInHierarchy()) return;
     if (!bound_) Bind();
     anim_->Update(deltaTime);
+    // Its root motion (applyRootMotion on, the BrokenGolemTurret's): the clips move nothing, but a
+    // Dynamic body on its object starts its rest over every pass (game/EnemyRootMotion.cpp).
+    if (controller_->applyRootMotion == 1 && S() && S()->physics)
+        if (auto* rb = gameObject_->GetComponent<Rigidbody2D*>())
+            if (rb->body_ && !rb->destroyed_ && rb->body_->bodyType() == unity::RigidbodyType2D::Dynamic && rb->body_->Body()->IsActive())
+                S()->physics->world.RestartRest(*rb->body_);
     Apply();
 }
 
