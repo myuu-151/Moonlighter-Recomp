@@ -260,9 +260,9 @@ add_test(NAME tangle
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # RectTransform layout against the game (data/oracle/ui_<script>.jsonl, `-oracle-ui=<script>`;
-# skipped if there's none): each recorded row's rect, localPosition, world corners and position, the
-# root canvases' RectTransforms and the CanvasScaler's factor, then the hierarchy replayed through
-# unity::RectTransform's setters, bit for bit.
+# skipped if there's none; recorded as recq ui-title-3 and ui-dungeon-2): each recorded row's rect,
+# localPosition, world corners and position, the root canvases' RectTransforms and the CanvasScaler's
+# factor, then the hierarchy replayed through unity::RectTransform's setters, bit for bit.
 add_executable(ui_rect_test tests/ui_rect_test.cpp)
 target_link_libraries(ui_rect_test PRIVATE mlcore)
 add_test(NAME ui_rect
