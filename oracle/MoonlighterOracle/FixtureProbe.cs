@@ -16,7 +16,10 @@ namespace MoonlighterOracle
     /// Each recorded fixed step gets "fx": [made, reshaped, staticMoved, childMoved, trigger,
     /// body], counts of colliders that, since the step before (this step's recorder FixedUpdate
     /// against the last one's: what other scripts' FixedUpdates change after it lands a step
-    /// late):
+    /// late; one made and gone again between two of them isn't seen), outside the recorded
+    /// enemies' hierarchies (what the replays don't hold), and "fxOwn", the same counts for the
+    /// recorded enemies' own colliders (the replays make those themselves, as the port does: they
+    /// are only for checking):
     ///   made         are active and enabled and weren't (new, enabled, their object activated);
     ///   reshaped     changed their shape (box size/offset/edge radius, circle radius, capsule
     ///                size/direction, polygon points, edge points, offset);
@@ -31,17 +34,20 @@ namespace MoonlighterOracle
     {
         private struct State
         {
-            public bool on, trigger, hasBody, simulated;
+            public bool on, trigger, hasBody, simulated, own;
             public int bodyType;
             public string shape, place;
         }
 
         private static Dictionary<int, State> last;
         private static readonly List<int[]> steps = new List<int[]>();
+        private static System.Func<IEnumerable<Transform>> recorded; // the recorded enemies' roots
 
         /// A recording starts: the colliders now are what its first step is compared with.
-        internal static void Reset()
+        /// `enemies`: the recorded enemies' root transforms (their colliders count in "fxOwn").
+        internal static void Reset(System.Func<IEnumerable<Transform>> enemies)
         {
+            recorded = enemies;
             last = TakeAll();
             steps.Clear();
         }
@@ -52,22 +58,23 @@ namespace MoonlighterOracle
         internal static void OnStep()
         {
             Dictionary<int, State> now = TakeAll();
-            var fx = new int[6];
+            var fx = new int[12]; // [0, 6): the others', [6, 12): the recorded enemies' own
             if (last != null)
                 foreach (var kv in now)
                 {
                     State s = kv.Value;
                     if (!s.on) continue;
+                    int o = s.own ? 6 : 0;
                     if (!last.TryGetValue(kv.Key, out State p) || !p.on)
                     {
-                        fx[0]++;
+                        fx[o]++;
                         continue;
                     }
-                    if (s.shape != p.shape) fx[1]++;
-                    if (!s.hasBody && s.place != p.place) fx[2]++;
-                    if (s.hasBody && s.place != p.place) fx[3]++;
-                    if (s.trigger != p.trigger) fx[4]++;
-                    if (s.hasBody != p.hasBody || s.bodyType != p.bodyType || s.simulated != p.simulated) fx[5]++;
+                    if (s.shape != p.shape) fx[o + 1]++;
+                    if (!s.hasBody && s.place != p.place) fx[o + 2]++;
+                    if (s.hasBody && s.place != p.place) fx[o + 3]++;
+                    if (s.trigger != p.trigger) fx[o + 4]++;
+                    if (s.hasBody != p.hasBody || s.bodyType != p.bodyType || s.simulated != p.simulated) fx[o + 5]++;
                 }
             last = now;
             steps.Add(fx);
@@ -78,15 +85,27 @@ namespace MoonlighterOracle
         {
             if (k < 0 || k >= steps.Count) return;
             j.Key("fx").Arr();
-            foreach (int n in steps[k]) j.Val(n);
+            for (int n = 0; n < 6; n++) j.Val(steps[k][n]);
+            j.EndArr();
+            j.Key("fxOwn").Arr();
+            for (int n = 6; n < 12; n++) j.Val(steps[k][n]);
             j.EndArr();
         }
 
         private static Dictionary<int, State> TakeAll()
         {
             var all = new Dictionary<int, State>();
+            var roots = new List<Transform>();
+            if (recorded != null)
+                foreach (Transform r in recorded())
+                    if (r != null) roots.Add(r);
             foreach (Collider2D c in Object.FindObjectsOfType<Collider2D>())
-                if (c != null) all[c.GetInstanceID()] = Snapshot(c);
+                if (c != null)
+                {
+                    State s = Snapshot(c);
+                    foreach (Transform r in roots) s.own |= c.transform.IsChildOf(r);
+                    all[c.GetInstanceID()] = s;
+                }
             return all;
         }
 

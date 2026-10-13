@@ -1014,7 +1014,7 @@ namespace MoonlighterOracle
             }
             writer.Flush();
             ClearFrame();
-            FixtureProbe.Reset();
+            FixtureProbe.Reset(() => slimes.Where(b => b != null).Select(b => b.transform));
             frameStartRng = Rng.Get();
             startFrame = Time.frameCount + 1;
             recording = true;

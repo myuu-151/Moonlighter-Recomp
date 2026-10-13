@@ -10,8 +10,11 @@
 // new, its object activated), reshaped, or moved where Unity must remake its shapes (one without
 // a Rigidbody2D, in world space; one below its body's object). A trigger switch and a body's
 // type or simulated flag aren't counted: whether Unity remakes fixtures for those isn't known,
-// and the recordings will show it. Recordings from before the probe have no "fx": the replays
-// then guess from the weapon's hits (the hero's hitbox switched on in the frame).
+// and the recordings will show it. "fx" leaves out the recorded enemies' own colliders (they are
+// in "fxOwn"): the port remakes those itself (Box2D's CreateFixture sets e_newFixture), and taking
+// them from the recording would hide a remake the port misses. Recordings from before the probe
+// have no "fx": the replays then guess from the weapon's hits (the hero's hitbox switched on in
+// the frame).
 
 #include "util/Json.h"
 

@@ -644,7 +644,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         std::printf("note: no \"fx\" in the steps (recorded before the oracle's FixtureProbe): the fixtures Unity made for objects "
                     "this replay doesn't hold are guessed from the weapon's hits\n");
     // The game's attack-trigger enters: the attack collider's own OnTriggerEnter2D ("attackEnter"
-    // with "how" "trigger", in recordings whose start line has "attackEnters"), or, in recordings
+    // with "how" "trigger", in recordings whose start line has "attackEnters"; its
+    // OnCollisionEnter2D, "how" "collision", is compared on its own below), or, in recordings
     // from before, the calls of EnemyBehaviour.AttackHit ("attackHit", the oracle's only hook
     // then). A behaviour whose AttackHit override doesn't call the base one
     // (HermitSlimeBehaviourNEW, BrokenGolemTurretBehaviour: AttackHitSkipsBase) never reaches that:
@@ -762,6 +763,16 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                 if (triggers) t.Info("attack trigger: OnTriggerEnter2D on the room's triggers (breakables)", mine == theirs, which);
                 else t.Add("attack trigger: OnTriggerEnter2D (whose, on the hero or a collider)", mine == theirs, which);
             }
+            // The attack collider's OnCollisionEnter2D ("attackEnter" with "how" "collision"): it
+            // calls AttackHit too (EnemyAttackCollisionDetection), and the port has none (its attack
+            // colliders are triggers, as every enemy's ported so far): each one the game had fails.
+            if (entersRecorded)
+                for (const Value& ev : events.arr) {
+                    if (ev["k"].s != "attackEnter" || ev["step"].AsInt() != static_cast<long long>(k) || ev["how"].s == "trigger") continue;
+                    t.Add("attack collider: OnCollisionEnter2D (none in the port)", false,
+                          "frame " + std::to_string(fn) + " step " + std::to_string(k) + ": enemy " + std::to_string(ev["s"].AsInt()) + " on " +
+                              (ev["other"].IsString() ? ev["other"].s : std::string("?")));
+                }
             // The weapon's hits in this step, in the game's order; the enemies' own hits on him.
             std::vector<std::pair<int, float>> gameDamage;
             for (const Value& ev : events.arr) {

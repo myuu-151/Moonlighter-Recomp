@@ -19,8 +19,10 @@
 //     second after 178.269150 isn't yet due in; tangle.jsonl the same (77.345261, 77.34: the
 //     frame at 78.343430). When EnableEnemies ran in a step's pass the two are the same clock.
 // Not settled by these recordings: why Time.time and the clock the Invoke was made on differ (an
-// EnableEnemies run in the frame at 178.269150 should count from there), and earlier recordings
-// (replaced since) had a frame-made targeting start in a fixed step, which this rule can't give.
+// EnableEnemies run in the frame at 178.269150 should count from there). Earlier recordings
+// (replaced since) had a frame-made targeting start in a fixed step's pass; this rule gives that
+// too when no frame comes between the fixed step a second on and the one after it, and whether
+// it fit them can no longer be checked.
 // One explanation the recordings can't rule out: EnableEnemies ran twice (the oracle keeps the
 // last one's Time.time), the targeting counting from the first. The oracle's EnableClockProbe
 // settles it: the start line's "enableClock" has the clocks at the first EnableEnemies ("enable":

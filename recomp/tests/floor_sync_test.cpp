@@ -759,6 +759,7 @@ int main(int argc, char** argv)
     std::map<std::string, int> resyncKinds;
     int floorsWithoutResync = 0;
     long long generationFrameDraws = 0; // other scripts' draws in the generation's frames, from the trace
+    std::vector<std::string> frameResyncFloors; // the floors that took the frames' resync, and how often
     int shrinesMatch = 0, shrinesDiffer = 0;
     int wndPinned = 0, wndAmbiguous = 0, wndNoSolution = 0, wndRoomOk = 0, wndRoomDiffer = 0;
     std::map<std::string, int> sceneMatch, sceneDiffer; // rooms, per object category
@@ -1075,6 +1076,11 @@ int main(int argc, char** argv)
             if (engine.resyncs.empty()) floorsWithoutResync++;
             for (const std::string& r : engine.resyncs) resyncKinds[r.substr(0, r.find(" ("))]++;
             generationFrameDraws += engine.frameDraws;
+            int frameResyncs = 0;
+            for (const std::string& r : engine.resyncs) frameResyncs += r.rfind("other scripts' draws in a frame", 0) == 0 ? 1 : 0;
+            if (frameResyncs)
+                frameResyncFloors.push_back(std::string(cultureNames[static_cast<int>(culture)]) + " floor " + std::to_string(level + 1) + " (#" +
+                                            std::to_string(key.second) + ", session " + session + "): " + std::to_string(frameResyncs));
         } else {
             differ++;
             if (notes.size() < 8)
@@ -1087,6 +1093,7 @@ int main(int argc, char** argv)
     std::printf("floors in sync (layout to last room)  %4d match  %4d differ   (of %d recorded with every hook)\n", inSync, differ, checked);
     std::printf("  with no resync at all                %4d\n", floorsWithoutResync);
     for (const auto& kv : resyncKinds) std::printf("  resynced at: %-40s %d times\n", kv.first.c_str(), kv.second);
+    for (const std::string& f : frameResyncFloors) std::printf("    other scripts' draws in the generation's frames, resynced in %s\n", f.c_str());
     if (generationFrameDraws) std::printf("  other scripts' draws in the generation's frames, from the trace: %lld\n", generationFrameDraws);
     std::printf("Desert shrines (room and tile)         %4d match  %4d differ\n", shrinesMatch, shrinesDiffer);
     std::printf("Wanderer DLC host room (shuffle)       %4d match  %4d differ   (%d pinned to a unique start)\n", wndPinned + wndAmbiguous, wndNoSolution, wndPinned);
