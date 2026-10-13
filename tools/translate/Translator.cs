@@ -180,6 +180,9 @@ public sealed class Translator
             var f = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
             switch (f[0])
             {
+                case "all":
+                    AddAll();
+                    break;
                 case "file":
                 {
                     var tree = GC.Tree(f[1]);
@@ -208,6 +211,17 @@ public sealed class Translator
                 default:
                     throw new UsageException($"{path}:{n}: want `file <path>` or `type <name> [members]`");
             }
+        }
+    }
+
+    // Every type of the game (the survey's measure of what translates).
+    public void AddAll()
+    {
+        foreach (var (rel, tree) in GC.Trees.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            var model = GC.Model(tree);
+            foreach (var decl in tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
+                if (model.GetDeclaredSymbol(decl) is INamedTypeSymbol t && t.ContainingType == null) AddWhole(t);
         }
     }
 

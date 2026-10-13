@@ -136,3 +136,15 @@ type	UnityEngine.Component	::UnityEngine::Component	conv	include=bind/UnityEngin
 type	UnityEngine.TextAsset	::UnityEngine::TextAsset	conv	include=bind/UnityEngine.h
 type	UnityEngine.Resources	::UnityEngine::Resources	conv	include=bind/UnityEngine.h
 type	UnityEngine.Color	::UnityEngine::Color	conv	include=bind/UnityEngine.h
+# what the facade's convention-mapped types have (recomp/src/bind/UnityEngine.h)
+members	UnityEngine.Object	op_Implicit op_Equality op_Inequality get_name set_name Destroy DestroyImmediate .ctor
+members	UnityEngine.ScriptableObject	CreateInstance .ctor
+members	UnityEngine.MonoBehaviour	.ctor
+members	UnityEngine.Behaviour	get_enabled set_enabled .ctor
+members	UnityEngine.Component	.ctor
+members	UnityEngine.TextAsset	get_text .ctor
+members	UnityEngine.Resources	Load FindObjectsOfTypeAll
+members	UnityEngine.Debug	Log LogWarning LogError LogFormat LogErrorFormat
+members	UnityEngine.Time	get_realtimeSinceStartup get_time get_deltaTime get_fixedDeltaTime get_frameCount
+members	UnityEngine.Mathf	Min Max Abs Sign Clamp Clamp01 Lerp Floor FloorToInt Ceil CeilToInt Round RoundToInt Sqrt Pow Atan2 Sin Cos Repeat DeltaAngle MoveTowards PI Infinity Epsilon
+members	UnityEngine.Color	.ctor r g b a

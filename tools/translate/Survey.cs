@@ -68,6 +68,7 @@ public static class Survey
         public bool UsesScene, UsesNonValueUnity, UsesThirdParty, UsesUnity, UsesAssetsOnly = true;
         public bool IsBehaviour, IsScriptable, IsSerializable;
         public bool Closed; // translatable with only plain/values/data game classes around it
+        public TranslationSurvey.FileStats T = new();
     }
 
     public static int Run(Options o)
@@ -111,9 +112,18 @@ public static class Survey
             }
         }
 
+        // What translates today: every method of the game through the translator.
+        var ts = TranslationSurvey.Run(gc, bindings ?? throw new UsageException($"no {o.Bindings}"));
+        foreach (var fi in files)
+            if (ts.Files.TryGetValue(fi.Path, out var st)) fi.T = st;
+        var counted = new HashSet<string>(files.Select(f => f.Path), StringComparer.Ordinal);
+        string gapsPath = Path.Combine(Path.GetDirectoryName(o.Out ?? Path.Combine(o.Repo, "progress", "x")), "unity_api_gaps.tsv");
+        ts.WriteGaps(gapsPath, counted.Contains);
+        Console.Error.WriteLine($"wrote {gapsPath}");
+
         string outPath = o.Out ?? Path.Combine(o.Repo, "progress", "class_deps.tsv");
         WriteTsv(outPath, files);
-        string summary = Summarise(files, bindings);
+        string summary = TranslationSummary(files, ts) + Summarise(files, bindings);
         if (o.Summary != null) File.WriteAllText(o.Summary, summary, new UTF8Encoding(false));
         else Console.Write(summary);
         Console.Error.WriteLine($"wrote {outPath} ({files.Count} classes)");
@@ -436,16 +446,51 @@ public static class Survey
         sb.Append("# kind: plain (no engine or library API), values (plus Unity value types/math/Random only),\n");
         sb.Append("#   data (ScriptableObject / [Serializable] data, asset references), unity (MonoBehaviour or scene code).\n");
         sb.Append("# closed: y if it and every game class it reaches are plain/values/data (translatable without new Unity layer).\n");
+        sb.Append("# translates: y when every method of the file translates today (tools/translate: no unsupported construct,\n");
+        sb.Append("#   every API bound), part when some do, n when none; translated: the share of its methods' lines that do;\n");
+        sb.Append("#   methods: translated/all; blockers: what stops the rest (most lines first; progress/unity_api_gaps.tsv).\n");
         sb.Append("# features: C# semantics the translator must reproduce in it. apis: Library:Type(members) used, BCL left out.\n");
-        sb.Append("# path\tlines\tkind\tbase\tclosed\tfeatures\tapis\n");
+        sb.Append("# path\tlines\tkind\tbase\tclosed\ttranslates\ttranslated\tmethods\tblockers\tfeatures\tapis\n");
         foreach (var fi in files)
         {
+            var t = fi.T;
+            string translates = t.Methods == 0 ? "y" : t.MethodsOk == t.Methods ? "y" : t.MethodsOk == 0 ? "n" : "part";
+            string pct = t.Lines == 0 ? "100%" : $"{100.0 * t.LinesOk / t.Lines:F0}%";
+            string blockers = t.Blockers.Count == 0 ? "-" : string.Join("; ", t.Blockers.OrderByDescending(kv => kv.Value).Take(3).Select(kv => kv.Key));
             sb.Append(fi.Path).Append('\t').Append(fi.Lines).Append('\t').Append(fi.Kind).Append('\t').Append(fi.Base)
               .Append('\t').Append(fi.Closed ? 'y' : 'n')
+              .Append('\t').Append(translates).Append('\t').Append(pct).Append('\t').Append(t.MethodsOk).Append('/').Append(t.Methods)
+              .Append('\t').Append(blockers.Replace('\t', ' '))
               .Append('\t').Append(fi.Features.Count == 0 ? "-" : string.Join(',', fi.Features))
               .Append('\t').Append(ApiText(fi)).Append('\n');
         }
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+    }
+
+    static string TranslationSummary(List<FileInfo> files, TranslationSurvey ts)
+    {
+        var sb = new StringBuilder();
+        int total = files.Sum(f => f.Lines);
+        double weighted = files.Sum(f => f.T.Lines == 0 ? f.Lines : f.Lines * (double)f.T.LinesOk / f.T.Lines);
+        var whole = files.Where(f => f.T.MethodsOk == f.T.Methods).ToList();
+        int methods = files.Sum(f => f.T.Methods), methodsOk = files.Sum(f => f.T.MethodsOk);
+        sb.Append($"# Translation today (tools/translate, the whole game)\n\n");
+        sb.Append($"- counted classes (progress/classes.tsv): {files.Count:N0} files, {total:N0} lines\n");
+        sb.Append($"- methods that translate: {methodsOk:N0} of {methods:N0} ({100.0 * methodsOk / Math.Max(1, methods):F1}%)\n");
+        sb.Append($"- lines that translate (each file's lines times its translated share of method lines): {weighted:N0} of {total:N0} ({100.0 * weighted / total:F1}%)\n");
+        sb.Append($"- classes that translate whole: {whole.Count:N0} files, {whole.Sum(f => f.Lines):N0} lines\n");
+        sb.Append($"- the whole assembly (with third-party code compiled into it): {ts.MethodsOk:N0} of {ts.MethodsTotal:N0} methods\n\n");
+        sb.Append("Unsupported constructs (methods):\n\n");
+        foreach (var (k, v) in ts.Errors.OrderByDescending(kv => kv.Value)) sb.Append($"- {k}: {v}\n");
+        sb.Append("\nTop missing APIs (progress/unity_api_gaps.tsv), by lines of counted classes blocked:\n\n| library | api | methods | lines |\n|---|---|---:|---:|\n");
+        var counted = new HashSet<string>(files.Select(f => f.Path), StringComparer.Ordinal);
+        foreach (var g in ts.Gaps.Values.Where(g => g.Files.Any(counted.Contains)).OrderByDescending(g => g.Lines).Take(40))
+            sb.Append($"| {g.Library} | {g.Kind} {g.Api} | {g.Methods} | {g.Lines} |\n");
+        var libs = ts.Gaps.Values.Where(g => g.Files.Any(counted.Contains)).GroupBy(g => g.Library).OrderByDescending(x => x.Sum(g => g.Lines));
+        sb.Append("\nMissing APIs by library (distinct APIs, lines blocked):\n\n");
+        foreach (var l in libs) sb.Append($"- {l.Key}: {l.Count()} APIs, {l.Sum(g => g.Lines):N0} lines\n");
+        sb.Append('\n');
+        return sb.ToString();
     }
 
     static string Summarise(List<FileInfo> files, Bindings bindings)

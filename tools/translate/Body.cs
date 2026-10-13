@@ -1056,7 +1056,7 @@ public sealed class Body
             if (m.Name == "ReferenceEquals") return $"::cs::RefEq({argText})";
             if (m.Name == "Equals" && m.IsStatic) return $"::cs::ObjectEquals({argText})";
         }
-        return tr.Gap(m, kind);
+        return tr.Gap(key, kind);
     }
 
     // A receiver for System.Object's methods: an object pointer, or a value (boxed semantics).
