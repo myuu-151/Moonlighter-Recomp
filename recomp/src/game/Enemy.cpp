@@ -1,5 +1,6 @@
 #include "game/Enemy.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include <Box2D/Box2D.h>
@@ -636,6 +637,12 @@ void EnemyBehaviour::OnDeath()
 
 // Box2D's BeginContact for the attack triggers (sensors: they begin when their shapes start
 // overlapping, at a step's collide).
+// An attack fixture remade since the last step (on, or a new shape, as the Animator wrote it: its
+// own body's rest starts over then) starts the rest over of what it touches in the next step's
+// collide too, before the solve: enemy_KamikazeGolem.jsonl (recq kamifix-1), the kamikaze's root
+// body, which its AttackCollider's own body's growing box overlaps, falls asleep 51 steps
+// (Box2D's half second of 0.01f) after the first step after the box last grew (frame 229 step
+// 0), not after it stopped moving (frame 218); the box going off (frame 234) doesn't.
 class EnemyPhysics::Listener : public b2ContactListener {
 public:
     explicit Listener(EnemyPhysics& owner) : owner_(owner) {}
@@ -643,6 +650,11 @@ public:
     {
         b2Fixture* a = contact->GetFixtureA();
         b2Fixture* b = contact->GetFixtureB();
+        for (const b2Fixture* remade : owner_.remade_) {
+            b2Fixture* other = a == remade ? b : b == remade ? a : nullptr;
+            if (other && other->GetBody() != remade->GetBody() && other->GetBody()->GetType() != b2_staticBody)
+                unity::PhysicsWorld::RestartRest(other->GetBody());
+        }
         for (Enemy* e : owner_.enemies_) {
             if (!e->attackFixture) continue;
             b2Fixture* other = a == e->attackFixture ? b : b == e->attackFixture ? a : nullptr;
@@ -650,6 +662,11 @@ public:
             bool carried = false;
             for (const auto& c : owner_.carried_) carried = carried || (c.first == e->attackFixture && c.second == other);
             if (carried) continue;
+            // One OnTriggerEnter2D per collider: a room collider of several fixtures (a
+            // PolygonCollider2D's convex pieces) entered through another of them enters no more
+            // (enemy_KamikazeGolem.jsonl of recq kamifix-2, frame 194: the explosion box, growing
+            // over a slime puddle's pieces, enters DungeonLevelRoomSlime/Collider_3 once).
+            if (owner_.InColliderAlready(*e, e->attackFixture, other)) continue;
             Hit hit;
             hit.enemy = e;
             hit.player = owner_.hero_ && other->GetBody() == owner_.hero_->Body() && !other->IsSensor();
@@ -687,8 +704,9 @@ void EnemyPhysics::Add(Enemy& e)
         SetRootColliderEnabled(e, false);
     }
     // The AttackCollider's own Rigidbody2D (the KamikazeGolem's), at the child's world position.
-    if (e.attackHasRigidbody) e.attackBody = &world_.AddBody(e.attackRigidbody, e.position() + e.attackPosition, e.attackLayer);
+    if (e.attackHasRigidbody) e.attackBody = &world_.AddBody(e.attackRigidbody, e.attackChildPosition(), e.attackLayer);
     SyncAttackCollider(e);
+    remade_.clear(); // (made with the body, not remade: it's been touching what it touches)
     if (!e.active || e.destroyed) SetBodyActive(e, false);
     e.synced_ = e.position();
 }
@@ -725,6 +743,7 @@ void EnemyPhysics::SyncAttackCollider(Enemy& e)
                 if (c->GetFixtureA() == e.attackFixture) carried_.emplace_back(nullptr, c->GetFixtureB());
                 else if (c->GetFixtureB() == e.attackFixture) carried_.emplace_back(nullptr, c->GetFixtureA());
             }
+        remade_.erase(std::remove(remade_.begin(), remade_.end(), e.attackFixture), remade_.end());
         b->DestroyFixture(e.attackFixture);
         e.attackFixture = nullptr;
         if (b->GetType() == b2_dynamicBody) b->SetMassData(&mass);
@@ -746,6 +765,7 @@ void EnemyPhysics::SyncAttackCollider(Enemy& e)
     fd.userData = &e.attackLayer;
     e.attackFixture = b->CreateFixture(&fd);
     world_.RestartRest(e.attackBody ? *e.attackBody : *e.body);
+    remade_.push_back(e.attackFixture);
     for (auto& c : carried_)
         if (!c.first) c.first = e.attackFixture;
 }
@@ -778,13 +798,19 @@ void EnemyPhysics::Sync()
         SyncAttackCollider(*e);
         SyncRootCollider(*e);
         const Vector2 p = e->position();
-        if (p.x != e->synced_.x || p.y != e->synced_.y || e->transformDirty_) {
+        const bool moved = p.x != e->synced_.x || p.y != e->synced_.y || e->transformDirty_;
+        if (moved) {
             world_.SyncTransform(*e->body, p);
             e->synced_ = p;
             e->transformDirty_ = false;
         }
-        // The AttackCollider's own body to the child's world position (the parent's moves carry it).
-        if (e->attackBody) world_.SyncTransform(*e->attackBody, p + e->attackPosition);
+        // The AttackCollider's own body to the child's world position: a root the scripts moved
+        // carries it (synced, its rest restarted, even where the child's position reads the
+        // same); else only a change of its own (its local position).
+        if (e->attackBody) {
+            if (moved) world_.SyncWrittenTransform(*e->attackBody, e->attackChildPosition());
+            else world_.SyncTransform(*e->attackBody, e->attackChildPosition());
+        }
     }
 }
 
@@ -796,6 +822,13 @@ void EnemyPhysics::WriteBack()
         if (!options_.writeBackUnmoved && b.x == e->synced_.x && b.y == e->synced_.y) continue;
         e->setPosition(b);
         e->synced_ = e->position();
+        // The write-back moves the AttackCollider's own body with it there and then, moved or
+        // not, its rest restarted (the child's transform changed through its parent's):
+        // enemy_KamikazeGolem.jsonl has it at the root's written position by the next
+        // FixedUpdate and at the frame's end (frame 492: a last bit the round trip through the
+        // centre of mass changed), and asleep half a second after the root (enemy 0: its body
+        // asleep in frame 224, the attack body in 254).
+        if (e->attackBody) world_.SyncWrittenTransform(*e->attackBody, e->attackChildPosition());
     }
 }
 
@@ -805,6 +838,24 @@ void EnemyPhysics::ReportTriggers()
     // the dead too: AttackHit checks).
     for (const Hit& h : hits_)
         if (!h.enemy->destroyed && h.enemy->active && h.enemy->enemyBehaviour) h.enemy->enemyBehaviour->AttackHitOther(OtherOf(h));
+}
+
+bool EnemyPhysics::InColliderAlready(const Enemy& enemy, const b2Fixture* attack, const b2Fixture* other) const
+{
+    const unity::Collider2D* collider = world_.ColliderOf(other);
+    if (!collider) return false;
+    auto same = [&](const b2Fixture* f) { return f && f != other && world_.ColliderOf(f) == collider; };
+    for (const Hit& h : hits_)
+        if (h.enemy == &enemy && same(h.other)) return true;
+    for (const auto& c : carried_)
+        if (c.first == attack && same(c.second)) return true;
+    for (const b2ContactEdge* ce = attack->GetBody()->GetContactList(); ce; ce = ce->next) {
+        const b2Contact* c = ce->contact;
+        if (!c->IsTouching()) continue;
+        if (c->GetFixtureA() == attack && same(c->GetFixtureB())) return true;
+        if (c->GetFixtureB() == attack && same(c->GetFixtureA())) return true;
+    }
+    return false;
 }
 
 Enemy* EnemyPhysics::RootOf(const b2Fixture* fixture) const
@@ -840,6 +891,7 @@ void EnemyPhysics::Step(float dt)
     for (Companion* c : companions_) c->Sync();
     hits_.clear();
     world_.Step(dt);
+    remade_.clear(); // (their touches began in its collide)
     for (Companion* c : companions_) c->AfterWorldStep();
     // Unity's trigger pass after the solve: a trigger paired at the step's end (FindNewContacts,
     // after the solve) reports in this step, not the next (slime.jsonl: the hero back on Default

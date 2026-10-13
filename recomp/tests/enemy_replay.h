@@ -414,6 +414,25 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         roomTriggers.Add(ColliderFrom(c));
     }
     for (const unity::Collider2D& c : roomTriggers.Colliders()) world.AddCollider(c);
+    // The room's PolygonCollider2D triggers without a body (its slime puddles), cut into convex
+    // pieces as Unity cuts them (unity/PolygonCollider2D.h): an attack trigger on a Kinematic body
+    // enters them, once per collider (enemy_KamikazeGolem.jsonl of recq kamifix-2, frame 194: the
+    // KamikazeGolem's explosion box on DungeonLevelRoomSlime/Collider_3). Compared as the room's
+    // colliders' enters are, not as the breakables' (their names aren't in triggerNames).
+    unity::Physics2D roomPolygonTriggers;
+    for (const Value& c : colliders) {
+        const std::string body = c.Find("body") ? c["body"].s : "none";
+        if (body != "none" || !c["trigger"].b || !c["enabled"].b || c["type"].s != "PolygonCollider2D") continue;
+        std::vector<std::vector<Vector2>> paths;
+        for (const Value& path : c["paths"].arr) {
+            paths.emplace_back();
+            for (size_t k = 0; k + 1 < path.arr.size(); k += 2) paths.back().push_back({Bits(path[k]), Bits(path[k + 1])});
+        }
+        unity::Collider2D polygon = ColliderFrom(c);
+        unity::SetPolygonColliderShapes(polygon, paths);
+        roomPolygonTriggers.Add(polygon);
+    }
+    for (const unity::Collider2D& c : roomPolygonTriggers.Colliders()) world.AddCollider(c);
     // Their objects' names (an OnTriggerEnter2D's other).
     std::vector<std::string> triggerNames;
     for (const unity::Collider2D& c : roomTriggers.Colliders()) triggerNames.push_back(c.path.substr(c.path.rfind('/') + 1));
@@ -471,9 +490,13 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
     scene.tweens = &tweens;
     scene.hero = &hero;
     ColliderReplay::Scene(scene, start);
-    // MasterAudio's groups of the Golem dungeon (its creators', then the general ones').
+    // MasterAudio's groups: the first scene's permanent creators' (made at the game's start: "Sounds
+    // - Will" has Chest.PlayUnlockChestSound's "dungeon_chest_unlock"; tools/extract/sound_groups.py),
+    // then the Golem dungeon's creators', then the general ones'.
     game::MasterAudio audio;
-    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - GolemDungeon", "Sounds - GeneralDungeons"})) scene.audio = &audio;
+    if (!data.soundGroups.IsNull() &&
+        audio.Load(data.soundGroups, {"Sounds - Will", "Sounds - interface", "Sounds - GolemDungeon", "Sounds - GeneralDungeons"}))
+        scene.audio = &audio;
     else std::printf("(no sound_groups.json: MasterAudio's draws not made)\n");
     scene.spawnEnemyDeadSprite = [&](const std::string&, Vector2 p) { portDeadSprites.emplace_back(-1, p); };
     if (data.hooks) data.hooks->OnScene(start, scene, hero, world, physics, roomColliders, heroBody, t);
@@ -743,8 +766,9 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             const Value& st = f["steps"][k];
             // The fixed clock: the engine's double, a float fixedDeltaTime on per step from the
             // first recorded one (the recorded floats are 1.5e-5 coarse here, while what's due in
-            // which step can turn on 2e-9: a 0.07 s Invoke against seven steps of 0.0099999998).
-            fixedClock = fixedClock > 0.0 ? fixedClock + static_cast<double>(fixedDt) : static_cast<double>(Bits(st["ft"]));
+            // which step can turn on 2e-9: a 0.07 s Invoke against seven steps of 0.0099999998),
+            // which is a whole number of steps since the game started (EngineFixedTime).
+            fixedClock = fixedClock > 0.0 ? fixedClock + static_cast<double>(fixedDt) : EngineFixedTime(Bits(st["ft"]), fixedDt);
             if (std::fabs(fixedClock - static_cast<double>(Bits(st["ft"]))) > 1e-4)
                 std::printf("note: frame %lld step %zu: the fixed clock %.9f, the recording %.9f\n", fn, k, fixedClock, static_cast<double>(Bits(st["ft"])));
             calls.now = time;
@@ -943,6 +967,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             game::Enemy* e = enemyById(static_cast<int>(id.AsInt()));
             if (e && !e->destroyed && e->active) e->navAgent.LateUpdate(dt);
         }
+        // MasterAudio's LateUpdate: the updaters of this frame's plays start (game/MasterAudio.h).
+        audio.LateUpdate();
         // Object.Destroy(gameObject) made this frame (the KamikazeGolem's SelfDestroy): gone now.
         calls.EndOfFrame();
         // Dead sprites spawned this frame (in order, where).

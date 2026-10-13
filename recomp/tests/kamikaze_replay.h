@@ -6,7 +6,7 @@
 //   - each kamikaze from its recorded state ("kami": the Animator's Awake / Attacking / Jump
 //     triggers, MakeJump's end and time, its attack body's position and rest in the first frame)
 //     and its InvokeRepeating("MoveEnemy", 0.65, 0.65) made when its room was entered ("enter":
-//     Time.time, or Time.fixedTime if that was in a fixed step), on from the run after the
+//     from its Time.fixedTime, as every Invoke, on the replay's fixed clock), on from the run after the
 //     "moves" it has made already (each 0.65 after the last one was due);
 //   - each fixed step's start ("ksteps"): the AttackCollider's own body (position, awake);
 //   - each MoveEnemy ("kev" "move", in order per kamikaze): when it runs (the frame and the
@@ -18,7 +18,12 @@
 //     inform without failing;
 //   - each frame's end ("kami" in "enemies"): MakeJump's end and time, the triggers (an active
 //     Animator's), the attack body (position, awake, the box on), its EnteredInCombat
-//     subscription.
+//     subscription;
+//   - the room's and the hero's parts the kamikaze's code reaches (the start line's "kroom" and
+//     "heroEffects", KamikazeOracle.WriteStart): when the last enemy leaves roomEnemies (its
+//     Die: SelfDestroy's too) the room's OnAllEnemiesDefeated runs (game/EnemyRoom.h:
+//     UnLockRoomChests' sounds draw); every hit raises Enemy.OnEnemyRecivesDamage, which the
+//     hero's Wanderer Amulet draws on (game/AmuletEffects.h). Recordings without them: neither.
 
 #include <cmath>
 #include <map>
@@ -28,6 +33,8 @@
 #include <Box2D/Box2D.h>
 
 #include "enemy_replay.h"
+#include "game/AmuletEffects.h"
+#include "game/EnemyRoom.h"
 #include "game/KamikazeGolem.h"
 
 namespace {
@@ -44,13 +51,14 @@ struct KamikazeReplay : ReplayHooks {
     std::map<int, int> explosionsBefore; // per kamikaze: the port's explosions before this frame
     struct Enter {
         int id;
-        double base;
+        float base; // Time.fixedTime then
         bool fixed;
         int moves;      // MoveEnemy runs before the recording
         float lastMove; // the last one's Time.time (-1: none)
     };
     std::vector<Enter> enters;
     float startTime = 0.0f;
+    float fixedDt = 0.02f; // Time.fixedDeltaTime (the start line's)
     // The attack bodies as the recording starts ([x, y, awake]: "ab"), set in the first frame
     // (after the steps the replay runs before it, which sync them to the transform).
     struct StartBody {
@@ -59,6 +67,31 @@ struct KamikazeReplay : ReplayHooks {
     };
     std::map<int, StartBody> startBodies;
     bool bodiesPlaced = false;
+    // The room ("kroom"): its chests' types, OnAllEnemiesDefeated's handlers, isLocked.
+    std::vector<int> chestTypes;
+    std::vector<std::string> allDefeated;
+    bool roomLocked = false;
+    game::MasterAudio* audio = nullptr;
+    // The hero's Wanderer Amulet ("heroEffects").
+    game::WandererAmuletEffect wanderer;
+
+    // DungeonRoom.EnemyDefeated's end, the recorded enemies being the room's roomEnemies (the
+    // oracle takes the others out before EnableEnemies).
+    void RoomEnemyDefeated()
+    {
+        std::vector<const game::Enemy*> list;
+        for (const auto& [id, e] : enemies) list.push_back(e);
+        if (!game::AreAllEnemiesDefeated(list, roomLocked)) return;
+        for (const std::string& h : allDefeated) {
+            if (h == "DungeonRoom.UnLockRoomChests") game::UnLockRoomChests(chestTypes, audio);
+            else if (h == "DungeonRoom.OpenAllDoors" || h == "DungeonRoom.ResetHeroMerchantIsInCombat") {
+                // (No draws: the doors' Animators, the hero's IsInCombat. recq kamifix-3's probe.)
+            } else if (tally) {
+                tally->Add("the room's OnAllEnemiesDefeated handlers (ported: UnLockRoomChests, OpenAllDoors, ResetHeroMerchantIsInCombat)",
+                           false, "frame " + std::to_string(frame) + ": " + h);
+            }
+        }
+    }
 
     static game::GolemKamikazeBehaviour* Kami(game::Enemy& e) { return dynamic_cast<game::GolemKamikazeBehaviour*>(e.enemyBehaviour.get()); }
 
@@ -88,6 +121,41 @@ struct KamikazeReplay : ReplayHooks {
         tally = &t;
         scene.queries = &roomColliders; // (Update's hole check: the holes are among them)
         if (const Value* tm = start.Find("time")) startTime = Bits(*tm);
+        fixedDt = Bits(start["fixedDeltaTime"]);
+        audio = scene.audio;
+        if (const Value* kr = start.Find("kroom")) {
+            for (const Value& c : (*kr)["chests"].arr) chestTypes.push_back(static_cast<int>(c[0].AsInt()));
+            for (const Value& h : (*kr)["allDefeated"].arr) allDefeated.push_back(h.s);
+            if (const Value* locked = kr->Find("locked")) roomLocked = locked->b;
+            else std::printf("note: no \"locked\" in \"kroom\" (recorded before it): the room taken as not locked\n");
+            scene.onEnemyDefeated = [this](game::Enemy&) { RoomEnemyDefeated(); };
+        } else {
+            std::printf("note: no \"kroom\" (recorded before KamikazeOracle.WriteStart): the room's OnAllEnemiesDefeated isn't run\n");
+        }
+        if (const Value* he = start.Find("heroEffects")) {
+            bool wandererOn = false;
+            for (const Value& h : (*he)["damage"].arr) {
+                if (h.s != "WandererAmuletEffect.Enemy_OnEnemyRecivesDamage") {
+                    t.Add("the hero's Enemy.OnEnemyRecivesDamage handlers (ported: the Wanderer Amulet's)", false, h.s);
+                    continue;
+                }
+                for (const Value& eff : (*he)["effects"].arr)
+                    if (eff.size() >= 3 && eff[0].s == "WandererAmuletEffect") {
+                        wanderer.probToCallWanderer = Bits(eff[2]);
+                        wandererOn = true;
+                    }
+            }
+            wanderer.wandererActive = (*he)["wandererActive"].b;
+            wanderer.spawnWanderer = [this] {
+                if (tally) tally->Add("the Wanderer Amulet called the Wanderer (DungeonManager.SpawnWanderer: not ported)", false, "frame " + std::to_string(frame));
+            };
+            if (wandererOn)
+                scene.onEnemyReceivesDamage = [this](game::Enemy& e, float damage, game::EnemyDamageReceivedType type) {
+                    wanderer.Enemy_OnEnemyRecivesDamage(e, damage, type);
+                };
+        } else {
+            std::printf("note: no \"heroEffects\" (recorded before KamikazeOracle.WriteStart): the hero's amulets' handlers aren't run\n");
+        }
     }
 
     void OnEnemy(game::Enemy& e, int id, const Value& line, Tally& t) override
@@ -117,10 +185,13 @@ struct KamikazeReplay : ReplayHooks {
             startBodies[id] = {{Bits((*ab)[0]), Bits((*ab)[1])}, (*ab)[2].b};
         const Value* en = ka->Find("enter");
         if (en && en->IsArray()) {
+            // An Invoke counts from Time.fixedTime wherever it's made (unity/DelayedCalls.h): an
+            // EnemyRoom_OnRoomEnter run in a frame too (enemy_KamikazeGolem.jsonl: entered at
+            // Time.time 191.755310, fixedTime 191.75, MoveEnemy in the steps at 192.4, 193.05...).
             const bool fixed = en->size() > 2 && (*en)[2].b;
             const Value* lm = ka->Find("lastMove");
-            enters.push_back({id, static_cast<double>(Bits((*en)[fixed ? 1 : 0])), fixed, ka->Find("moves") ? static_cast<int>((*ka)["moves"].AsInt()) : 0,
-                              lm && lm->IsArray() ? Bits((*lm)[0]) : -1.0f});
+            enters.push_back({id, Bits((*en)[en->size() > 1 ? 1 : 0]), fixed,
+                              ka->Find("moves") ? static_cast<int>((*ka)["moves"].AsInt()) : 0, lm && lm->IsArray() ? Bits((*lm)[0]) : -1.0f});
         } else {
             std::printf("note: enemy %d never entered its room (no EnemyRoom_OnRoomEnter): no MoveEnemy\n", id);
         }
@@ -150,7 +221,10 @@ struct KamikazeReplay : ReplayHooks {
 
     void OnEnemiesBuilt(const Value&, Tally&) override
     {
-        // InvokeRepeating("MoveEnemy", 0.65, 0.65) as EnemyRoom_OnRoomEnter made it.
+        // InvokeRepeating("MoveEnemy", 0.65, 0.65) as EnemyRoom_OnRoomEnter made it, from its
+        // Time.fixedTime as the engine's double (enable_clock.h's EngineFixedTime: the recorded
+        // float can be 7.6e-6 off, while a repeat falls due 9.3e-9 before its step per period,
+        // 65 steps of 0.0099999998 against 0.65f).
         if (!calls) return;
         const double now = calls->now, fixedNow = calls->fixedNow;
         const bool inFixed = calls->inFixedStep;
@@ -158,7 +232,7 @@ struct KamikazeReplay : ReplayHooks {
             game::GolemKamikazeBehaviour* k = Kami(*enemies[en.id]);
             // The runs made before the recording: the next is due 0.65 after the last one was
             // (the repeat adds its rate to the due time, as unity/DelayedCalls has it).
-            double at = en.base;
+            double at = EngineFixedTime(en.base, fixedDt);
             for (int n = 0; n < en.moves; n++) at += static_cast<double>(0.65f);
             if (en.moves > 0 && std::fabs(static_cast<double>(en.lastMove) - at) > 0.02)
                 std::printf("note: enemy %d's last MoveEnemy before the recording ran at %.6f, due at %.6f (InvokeRepeating's period?)\n", en.id,

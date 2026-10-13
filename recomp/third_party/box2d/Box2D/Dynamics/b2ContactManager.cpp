@@ -32,6 +32,7 @@ b2ContactManager::b2ContactManager()
 	m_contactFilter = &b2_defaultFilter;
 	m_contactListener = &b2_defaultListener;
 	m_allocator = NULL;
+	m_kinematicTriggers = false; // ML port
 }
 
 void b2ContactManager::Destroy(b2Contact* c)
@@ -99,6 +100,26 @@ void b2ContactManager::Destroy(b2Contact* c)
 	--m_contactCount;
 }
 
+// ML port.
+bool b2ContactManager::BodiesPair(b2Fixture* fixtureA, b2Fixture* fixtureB) const
+{
+	b2Body* bodyA = fixtureA->GetBody();
+	b2Body* bodyB = fixtureB->GetBody();
+	if (bodyB->ShouldCollide(bodyA))
+	{
+		return true;
+	}
+	if (m_kinematicTriggers == false || bodyA == bodyB)
+	{
+		return false;
+	}
+	if (fixtureA->IsSensor() == false && fixtureB->IsSensor() == false)
+	{
+		return false;
+	}
+	return bodyA->GetType() == b2_kinematicBody || bodyB->GetType() == b2_kinematicBody;
+}
+
 // This is the top level collision call for the time step. Here
 // all the narrow phase collision is processed for the world
 // contact list.
@@ -119,7 +140,7 @@ void b2ContactManager::Collide()
 		if (c->m_flags & b2Contact::e_filterFlag)
 		{
 			// Should these bodies collide?
-			if (bodyB->ShouldCollide(bodyA) == false)
+			if (BodiesPair(fixtureA, fixtureB) == false) // ML port: was bodyB->ShouldCollide(bodyA)
 			{
 				b2Contact* cNuke = c;
 				c = cNuke->GetNext();
@@ -224,7 +245,7 @@ void b2ContactManager::AddPair(void* proxyUserDataA, void* proxyUserDataB)
 	}
 
 	// Does a joint override collision? Is at least one body dynamic?
-	if (bodyB->ShouldCollide(bodyA) == false)
+	if (BodiesPair(fixtureA, fixtureB) == false) // ML port: was bodyB->ShouldCollide(bodyA)
 	{
 		return;
 	}

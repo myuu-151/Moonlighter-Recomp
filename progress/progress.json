@@ -1,16 +1,16 @@
 {
  "lines": 160682,
- "ported": 11762,
- "verified": 10771,
- "percent": 7.32,
- "verifiedPercent": 6.7,
+ "ported": 11849,
+ "verified": 11192,
+ "percent": 7.37,
+ "verifiedPercent": 6.97,
  "classes": 1173,
  "classesDone": 41,
  "categories": {
   "Items & effects": {
    "lines": 13388,
-   "ported": 75.6,
-   "verified": 0.0,
+   "ported": 101.6,
+   "verified": 26.0,
    "classes": 132,
    "done": 1
   },
@@ -38,7 +38,7 @@
   "Enemies": {
    "lines": 27342,
    "ported": 3346.9,
-   "verified": 2832.9,
+   "verified": 3166.9,
    "classes": 178,
    "done": 15
   },
@@ -58,15 +58,15 @@
   },
   "Dungeon runtime": {
    "lines": 5487,
-   "ported": 311.0,
-   "verified": 189.0,
+   "ported": 329.9,
+   "verified": 207.9,
    "classes": 30,
    "done": 0
   },
   "Dungeon generation": {
    "lines": 10310,
-   "ported": 5178.8,
-   "verified": 5178.8,
+   "ported": 5220.8,
+   "verified": 5220.8,
    "classes": 42,
    "done": 17
   },

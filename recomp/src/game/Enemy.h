@@ -225,6 +225,15 @@ public:
     // transform.position (through the parents) and its setter.
     unity::Vector2 position() const { return navAgent.position(); }
     void setPosition(unity::Vector2 p) { navAgent.setPosition(p); }
+    // The AttackCollider child's transform.position: its local position through the root's and
+    // each parent's, from the child up (as Unity's transform hierarchy sums them; root position
+    // + child's local can round a last bit differently: enemy_KamikazeGolem.jsonl, frame 492).
+    unity::Vector2 attackChildPosition() const
+    {
+        unity::Vector2 p = attackPosition + navAgent.localPosition;
+        for (const unity::Vector2& parent : navAgent.parents) p = p + parent;
+        return p;
+    }
 
     // Instantiate under the spawn point (local position zero) and its parents (nearest first:
     // the "EnemySpawn" object's local position, the container's, the room's): Awake (the
@@ -507,6 +516,12 @@ private:
     std::vector<Hit> hits_;
     // What remade attack fixtures were touching: no new enter with these in the next step.
     std::vector<std::pair<const b2Fixture*, const b2Fixture*>> carried_;
+    // The attack fixtures this step's sync remade: what they touch in its collide starts its rest
+    // over (EnemyPhysics::Listener).
+    std::vector<const b2Fixture*> remade_;
+    // Whether `attack` is in `other`'s collider already through another of its fixtures (a
+    // PolygonCollider2D's convex pieces): touching it, entered this step, or carried by a remake.
+    bool InColliderAlready(const Enemy& enemy, const b2Fixture* attack, const b2Fixture* other) const;
     std::vector<Companion*> companions_;
 };
 

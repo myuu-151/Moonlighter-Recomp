@@ -99,6 +99,7 @@ PhysicsWorld::PhysicsWorld(const Physics2DSettings& settings, const Options& opt
     world_->SetContactFilter(filter_);
     world_->SetContinuousPhysics(options_.continuousPhysics);
     world_->SetContinuousBulletsOnly(options_.continuousBulletsOnly);
+    world_->SetKinematicTriggers(options_.kinematicTriggers);
     b2BodyDef ground;
     ground.type = b2_staticBody;
     ground_ = world_->CreateBody(&ground);
@@ -254,6 +255,11 @@ void PhysicsWorld::SetLayer(Rigidbody2D& body, int layer)
     if (body.layer_ == layer) return;
     body.layer_ = layer;
     for (b2Fixture* f = body.body_->GetFixtureList(); f; f = f->GetNext()) f->Refilter();
+    // Its colliders on another layer wake the body, its rest started over (as a remade
+    // collider's: enemy_KamikazeGolem.jsonl of recq kamifix-2, frame 167: a kamikaze asleep
+    // since before the recording is awake at the end of the frame its JumpTowardsPlayer put it
+    // on FlyingEnemy, before its jump moved it).
+    if (body.body_->GetType() != b2_staticBody) RestartRest(body);
 }
 
 void PhysicsWorld::FixtureMadeElsewhere() { newContacts_ = true; }
@@ -312,6 +318,12 @@ void PhysicsWorld::SyncTransform(Rigidbody2D& body, Vector2 position)
     b2Body* b = body.body_;
     const b2Vec2 at = b->GetPosition();
     if (at.x == position.x && at.y == position.y) return; // not moved since the write-back
+    SyncWrittenTransform(body, position);
+}
+
+void PhysicsWorld::SyncWrittenTransform(Rigidbody2D& body, Vector2 position)
+{
+    b2Body* b = body.body_;
     b->SetTransform(B2(position), b->GetAngle());
     // Unity's sync starts the body's rest over (slime.jsonl: an enemy its PolyNavAgent moves by
     // transform never falls asleep).
@@ -320,11 +332,12 @@ void PhysicsWorld::SyncTransform(Rigidbody2D& body, Vector2 position)
     if (options_.contactsOnSync) const_cast<b2ContactManager&>(world_->GetContactManager()).FindNewContacts();
 }
 
-void PhysicsWorld::RestartRest(Rigidbody2D& body)
+void PhysicsWorld::RestartRest(Rigidbody2D& body) { RestartRest(body.body_); }
+
+void PhysicsWorld::RestartRest(b2Body* b)
 {
     // Box2D's SetAwake(true) only resets a sleeping body's time at rest, so: asleep, then awake,
     // keeping the velocities.
-    b2Body* b = body.body_;
     const b2Vec2 v = b->GetLinearVelocity();
     const float32 w = b->GetAngularVelocity();
     b->SetAwake(false);

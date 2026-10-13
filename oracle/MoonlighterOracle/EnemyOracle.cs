@@ -751,6 +751,7 @@ namespace MoonlighterOracle
             j.Prop("maFollower", ma != null ? (int)ma.variationFollowerType : -1);
             TurretOracle.WriteStart(j, room);
             CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
+            KamikazeOracle.WriteStart(j, room); // (its room's chests and OnAllEnemiesDefeated: KamikazeOracle.cs)
             Emit(j);
         }
 
