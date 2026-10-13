@@ -155,6 +155,9 @@ public:
     cs::String* tag_ = nullptr;
     bool activeSelf_ = true;
 
+    // activeInHierarchy changed for this object and those below it (SetParent across an inactive parent).
+    void HierarchyActiveChanged(bool active) { Activate(active); }
+
 private:
     void Activate(bool active); // the hierarchy below changed activeInHierarchy
     template <typename T>
@@ -195,6 +198,8 @@ public:
     void set_rotation(Quaternion q);
     Vector3 get_up();
     Vector3 get_right();
+    // Rotate(eulers) (Space.Self): localRotation * Euler(eulers); about z only (the 2D game's).
+    void Rotate(Vector3 eulers);
     Vector3 TransformPoint(Vector3 local);
     Vector3 InverseTransformPoint(Vector3 world);
 
@@ -267,6 +272,7 @@ public:
     MonoBehaviour* owner = nullptr;
     cs::IEnumerator* routine = nullptr;
     Coroutine* waitingFor = nullptr;        // a nested coroutine it waits on
+    cs::String* methodName = nullptr;       // StartCoroutine(string)'s (StopCoroutine(string) finds it)
     std::vector<Coroutine*> waiters;        // coroutines waiting on this one
     bool done = false;
 };
@@ -302,6 +308,12 @@ public:
     {
         (void)name, (void)args;
         return false;
+    }
+    // An IEnumerator method without parameters by name (StartCoroutine(string)); null: none.
+    virtual cs::IEnumerator* cs_Coroutine(cs::String* name)
+    {
+        (void)name;
+        return nullptr;
     }
 
     // ---- MonoBehaviour's API ----
@@ -354,6 +366,13 @@ public:
 
     std::vector<UnityEngine::GameObject*> roots;
     std::vector<UnityEngine::Animator*> animators; // in the order they were added (bind/Components.h)
+
+    // ---- for drivers' checks (none set: nothing) ----
+    // Each method an Invoke / InvokeRepeating calls, before (after = false) and after it ran.
+    std::function<void(UnityEngine::MonoBehaviour* target, cs::String* method, bool after)> onInvoke;
+    // Each tween's OnComplete callback (the delegate's target: its last method's instance), before
+    // and after it ran.
+    std::function<void(cs::Object* target, bool after)> onTweenComplete;
 
     void BeginFrame() { frame++; }
     // Start for the behaviours that haven't run it, before their first Update (Unity's order:

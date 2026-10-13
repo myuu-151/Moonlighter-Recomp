@@ -29,6 +29,8 @@ public:
     Vector3 AsVector3() const override;
     Color AsColor() const override;
     GameObject* AsGameObject() const override;
+    // A reference to another prefab (an asset: a projectile's), by its name: the driver's (none: null).
+    static std::function<GameObject*(const std::string& name)> assets;
     int32_t Length() const override { return v_.IsArray() ? static_cast<int32_t>(v_.arr.size()) : -1; }
     void Element(int32_t i, const std::function<void(const SerialValue&)>& f) const override;
     void Fields(const std::function<void(const char*, const SerialValue&)>& f) const override;

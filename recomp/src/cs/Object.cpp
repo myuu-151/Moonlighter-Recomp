@@ -164,6 +164,30 @@ size_t Heap::Collect()
     return freed;
 }
 
+std::string Heap::WhyAlive(Object* target)
+{
+    std::vector<std::pair<Object*, Object*>> parents;
+    Tracer t;
+    t.parents_ = &parents;
+    TraceRoots(t);
+    t.Drain();
+    std::string chain;
+    for (Object* o = target; o;) {
+        Object* parent = nullptr;
+        bool found = false;
+        for (const auto& [child, p] : parents)
+            if (child == o) {
+                parent = p;
+                found = true;
+                break;
+            }
+        if (!found) return "";
+        chain = std::string(o->cs_typename()) + (chain.empty() ? "" : " -> " + chain);
+        o = parent;
+    }
+    return chain;
+}
+
 // ---- roots -------------------------------------------------------------------------------------------
 
 bool RegisterRoots(RootSource source)

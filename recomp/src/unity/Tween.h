@@ -37,6 +37,9 @@ public:
     bool IsPlaying(int id) const;
     void Complete(int id);
     void Kill(int id);
+    // Tween.Pause: it stays, not updated (IsPlaying false), until killed.
+    void Pause(int id);
+    bool Exists(int id) const; // playing or paused
     // transform.DOMove(end, duration): from the position when it starts. (Any tween of one or
     // two floats: DOTween.To, DOColor as two pairs.) ignoreTimeScale: SetUpdate(true), or the
     // project's default for tweens that don't say (see EnemyBehaviour.OnDeath's).
@@ -75,7 +78,7 @@ private:
     struct Tween {
         int id = 0;
         float delay = 0.0f, elapsedDelay = 0.0f, duration = 0.0f, position = 0.0f;
-        bool delayComplete = false, started = false, unscaled = false;
+        bool delayComplete = false, started = false, unscaled = false, paused = false;
         bool fused = false; // To's: each component start + change * ease rounded once
         const void* target = nullptr; // SetTarget's
         Ease ease = Ease::OutQuad;

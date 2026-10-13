@@ -79,6 +79,7 @@ Object* Renderer::cs_Clone() { return Copy(this); }
 Object* SpriteRenderer::cs_Clone() { return Copy(this); }
 Object* MeshRenderer::cs_Clone() { return Copy(this); }
 Object* ParticleSystem::cs_Clone() { return Copy(this); }
+Object* Camera::cs_Clone() { return Copy(this); }
 Object* Animator::cs_Clone()
 {
     auto* n = cs::gcnew<Animator>();
@@ -106,9 +107,10 @@ void Reset(Component* c)
 
 // The tree below `src`, not yet attached: (object, its components in order) per object.
 using Made = std::vector<std::pair<GameObject*, std::vector<Component*>>>;
+using Objects = std::vector<std::pair<GameObject*, GameObject*>>; // (original, copy)
 using Pairs = std::vector<std::pair<Component*, Component*>>; // (original, copy)
 
-GameObject* CloneTree(GameObject* src, Transform* parent, Made& made, Pairs& pairs)
+GameObject* CloneTree(GameObject* src, Transform* parent, Made& made, Pairs& pairs, Objects& objects)
 {
     auto* go = cs::gcnew<GameObject>();
     go->name_ = src->name_;
@@ -136,15 +138,24 @@ GameObject* CloneTree(GameObject* src, Transform* parent, Made& made, Pairs& pai
         pairs.emplace_back(c, n);
     }
     made.emplace_back(go, comps);
-    for (Transform* k : src->transform_->children_) CloneTree(k->gameObject_, t, made, pairs);
+    objects.emplace_back(src, go);
+    pairs.emplace_back(src->transform_, t);
+    for (Transform* k : src->transform_->children_) CloneTree(k->gameObject_, t, made, pairs, objects);
     return go;
 }
 
 GameObject* InstantiateTree(GameObject* src, Transform* parent, bool worldPositionStays, const Vector3* position, Pairs& pairs)
 {
     Made made;
+    Objects objects;
     const bool wasActive = src->activeSelf_;
-    GameObject* root = CloneTree(src, nullptr, made, pairs);
+    GameObject* root = CloneTree(src, nullptr, made, pairs, objects);
+    // The copies' references into the tree, to the copies (Unity's Instantiate: a script's
+    // reference to an object of its prefab is its copy's).
+    Remap remap;
+    for (const auto& [o, n] : objects) remap.map.emplace_back(o, n);
+    for (const auto& [o, n] : pairs) remap.map.emplace_back(o, n);
+    for (const auto& [o, n] : pairs) n->cs_Remap(remap);
     root->name_ = cs::String::Concat(src->get_name(), CS_LIT(u"(Clone)"));
     root->activeSelf_ = false; // (Awake and OnEnable once it's all there)
     bind::Scene* s = bind::Scene::current;

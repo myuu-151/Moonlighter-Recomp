@@ -48,6 +48,9 @@ public:
     void Kill() { Kill(false); }
     void Kill(bool complete);
     void Complete();
+    void Pause();
+    // Still in the layer's tweens (playing or paused).
+    bool Alive();
 
     std::vector<int> ids;                         // the layer's tweens it stands for
     std::vector<cs::Object*> keep;                // the delegates its tweens call
@@ -75,6 +78,9 @@ unity::Ease EaseOf(Ease e); // the layer's (one it doesn't have: NotTranslated)
 
 struct DOTween {
     static Tweener* To(cs::Delegate<float()>* getter, cs::Delegate<void(float)>* setter, float endValue, float duration);
+    // (Vector2Plugin: each component start + change * ease, one expression: unity::Tweens::To, as
+    // the hand port's FlyingKamikazeGolem return has it.)
+    static Tweener* To(cs::Delegate<unity::Vector2()>* getter, cs::Delegate<void(unity::Vector2)>* setter, unity::Vector2 endValue, float duration);
     static int32_t Kill(cs::Object* targetOrId) { return Kill(targetOrId, false); }
     static int32_t Kill(cs::Object* targetOrId, bool complete);
 };
@@ -96,6 +102,12 @@ struct ShortcutExtensions {
     static Tweener* DOColor(UnityEngine::Material* target, UnityEngine::Color endValue, float duration);
     static Tweener* DOFloat(UnityEngine::Material* target, float endValue, cs::String* property, float duration);
     static Tweener* DOFade(UnityEngine::SpriteRenderer* target, float endValue, float duration);
+    // transform.DOShakePosition(duration, Vector3 strength, vibrato, randomness, snapping, fadeOut):
+    // DOTween.Shake's Random draws as it makes the tween (unity::ShakeDraws: vectorBased, z not
+    // ignored); the offsets it gives the transform are presentation (a camera's shake): a tween of
+    // its duration that moves nothing, its OnComplete on time.
+    static Tweener* DOShakePosition(UnityEngine::Transform* target, float duration, UnityEngine::Vector3 strength, int32_t vibrato, float randomness,
+                                    bool snapping, bool fadeOut);
     static int32_t DOKill(UnityEngine::Component* target, bool complete);
 };
 
@@ -148,6 +160,12 @@ struct TweenExtensions {
         if (t) t->Complete();
     }
     static bool IsPlaying(Tween* t) { return t && t->IsPlaying(); }
+    template <typename T>
+    static T Pause(T t)
+    {
+        if (t) t->Pause();
+        return t;
+    }
     static bool IsActive(Tween* t) { return t && t->IsActive(); }
 };
 

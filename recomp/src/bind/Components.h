@@ -15,7 +15,12 @@
 // body's rest every pass (game/EnemyRootMotion.cpp). A controller
 // in the older extracted format (no property curves, no sprite path) drives the sprite of the
 // first SpriteRenderer below the Animator (what the game's sprite enemies have). Clip events
-// go to the Animator's object's scripts by name (GameObject::SendAnimationEvent).
+// go to the Animator's object's scripts by name (GameObject::SendAnimationEvent). Its object made
+// inactive after it ran (a pooled shot going back: keepAnimatorControllerStateOnDisable off), it
+// writes its properties' defaults back (the sprite its clips drive: enemy_BrokenGolemTurret.jsonl,
+// frame 776, game/EnemyProjectile.cpp) and, active again, starts over from its default state with
+// its parameters' defaults, first updated in the next animation pass. Its root motion (the
+// BrokenGolemTurret's) zeroes a Dynamic body's velocity and restarts its rest every pass.
 //
 // Renderer.material is the renderer's own copy (Unity instantiates it on first access): its
 // properties are kept by name; a property never set reads as the shader's default the game's
@@ -36,15 +41,22 @@ namespace UnityEngine {
 
 // ---- assets --------------------------------------------------------------------------------------
 
-// Textures: their size (their pixels are presentation).
+enum class FilterMode : int32_t { Point = 0, Bilinear = 1, Trilinear = 2 };
+
+// Textures: their size and settings (their pixels are presentation).
 class Texture : public Object {
 public:
     const char* cs_typename() const override { return "UnityEngine.Texture"; }
     static const char* cs_static_typename() { return "UnityEngine.Texture"; }
     int32_t get_width() { return width_; }
     int32_t get_height() { return height_; }
+    FilterMode get_filterMode() { return filterMode_; }
+    void set_filterMode(FilterMode m) { filterMode_ = m; }
     int32_t width_ = 0, height_ = 0;
+    FilterMode filterMode_ = FilterMode::Bilinear;
 };
+// A texture's pixels are presentation: none are kept (GetPixel reads transparent, SetPixel and
+// Apply change nothing), its size and settings are.
 class Texture2D : public Texture {
 public:
     const char* cs_typename() const override { return "UnityEngine.Texture2D"; }
@@ -54,15 +66,28 @@ public:
         width_ = width;
         height_ = height;
     }
+    Color GetPixel(int32_t x, int32_t y)
+    {
+        (void)x, (void)y;
+        return Color{};
+    }
+    void SetPixel(int32_t x, int32_t y, Color c) { (void)x, (void)y, (void)c; }
+    void Apply() {}
 };
 
 class Sprite : public Object {
 public:
     const char* cs_typename() const override { return "UnityEngine.Sprite"; }
     static const char* cs_static_typename() { return "UnityEngine.Sprite"; }
+    void cs_trace(cs::Tracer& t) override;
     // A sprite by name (the extracted sprites'), one object per name.
     static Sprite* Named(const std::string& name);
+    // Sprite.texture: its texture (the size isn't extracted: 0 x 0, its pixels presentation).
+    Texture2D* get_texture();
+    // Sprite.Create(texture, rect, pivot, pixelsPerUnit): a new sprite of the texture.
+    static Sprite* Create(Texture2D* texture, unity::Rect rect, Vector2 pivot, float pixelsPerUnit);
     std::string spriteName;
+    Texture2D* texture_ = nullptr;
 };
 
 class Material : public Object {
@@ -147,6 +172,20 @@ public:
     Object* cs_Clone() override;
 };
 
+// A camera: what scripts read and set of it (its rendering is presentation).
+class Camera : public Behaviour {
+public:
+    const char* cs_typename() const override { return "UnityEngine.Camera"; }
+    static const char* cs_static_typename() { return "UnityEngine.Camera"; }
+    bool get_orthographic() { return orthographic_; }
+    void set_orthographic(bool o) { orthographic_ = o; }
+    float get_orthographicSize() { return orthographicSize_; }
+    void set_orthographicSize(float s) { orthographicSize_ = s; }
+    Object* cs_Clone() override;
+    bool orthographic_ = true;
+    float orthographicSize_ = 5.0f;
+};
+
 // A particle system: presentation (its particles aren't simulated), the calls do nothing.
 class ParticleSystem : public Component {
 public:
@@ -206,6 +245,9 @@ public:
 
     // The animation pass (Scene::UpdateAnimators): the state machine, the clips' writes applied.
     void UpdatePass(float deltaTime);
+    // Its root motion's part of the pass (applyRootMotion on): a Dynamic body on its object gets the
+    // clips' zero motion as its velocity, its rest restarted (game/EnemyRootMotion.cpp).
+    void ApplyRootMotion();
     unity::Animator* Mecanim() { return anim_.get(); }
     // Each clip event before (after = false) and after the scripts got it (drivers' checks).
     std::function<void(Animator&, const unity::AnimationEvent&, bool after)> onEvent;
@@ -226,12 +268,20 @@ private:
     float Read(GameObject* target, const unity::AnimatedProperty& p);
     void Write(GameObject* target, const unity::AnimatedProperty& p, float value);
 
+    // Switched off with its object (keepAnimatorControllerStateOnDisable off): its properties'
+    // defaults written back; on again, it starts over from its default state.
+    void WriteDefaults();
+    void Restart();
+
     const unity::AnimatorController* controller_ = nullptr;
     RuntimeAnimatorController* runtime_ = nullptr;
     std::unique_ptr<unity::Animator> anim_;
     float speed_ = 1.0f;
     bool bound_ = false;
+    bool ran_ = false; // updated since it was last (re)started
     std::vector<GameObject*> targets_; // per controller property (nullptr: no such object)
+    std::vector<float> defaults_;      // per property, as bound
+    std::vector<std::string> defaultSprites_;
     SpriteRenderer* spriteRenderer_ = nullptr; // the older format's
 };
 

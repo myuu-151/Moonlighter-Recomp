@@ -294,6 +294,8 @@ public sealed class Emitter
         {
             var r = tr.Methods[m];
             sb.Append("    ").Append(MethodDecl(m, o, inClass: true)).Append('\n');
+            // (units.txt's `wrap`: the game's body under its own name, the driver's around it)
+            if (r.Wrap) sb.Append($"    {(m.IsStatic ? "static " : "")}{TypeOrGap(m.ReturnType)} {N.Method(m)}__game({Params(m)});\n");
         }
 
         // interface implementations that forward to the C# implementing member
@@ -423,6 +425,16 @@ public sealed class Emitter
         return false;
     }
 
+    // The fields Instantiate remaps (bind/Engine.cpp): references to UnityEngine.Objects (a
+    // GameObject, a component), which Unity makes the copied tree's own where they point into it.
+    List<IFieldSymbol> RemapFields(INamedTypeSymbol t) =>
+        DerivesFrom(t, "UnityEngine.Object")
+            ? t.GetMembers().OfType<IFieldSymbol>()
+                .Where(f => !f.IsStatic && !f.IsConst && tr.IsFieldUsedOrFull(f) && f.Type is INamedTypeSymbol ft && ft.TypeKind == TypeKind.Class &&
+                            DerivesFrom(ft, "UnityEngine.Object"))
+                .ToList()
+            : new List<IFieldSymbol>();
+
     static bool IsSerializable(INamedTypeSymbol t) =>
         t.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "System.SerializableAttribute");
 
@@ -447,6 +459,8 @@ public sealed class Emitter
         // Instantiate's copy (bind/Engine.cpp): the whole object.
         if (!t.IsAbstract && !t.IsGenericType && Names.AllTypeParameters(t).Count == 0)
             sb.Append($"    ::UnityEngine::Object* cs_Clone() override {{ return ::cs::gcnew<{N.FlatName(t)}>(*this); }}\n");
+        // Instantiate's remap (bind/Engine.cpp; defined with cs_trace).
+        if (RemapFields(t).Count > 0) sb.Append("    void cs_Remap(const ::UnityEngine::Remap& r) override;\n");
         // (A stubbed class's messages aren't hooked: what they do is the driver's to stand in for.)
         var mine = t.GetMembers().OfType<IMethodSymbol>().Where(m => tr.Methods.TryGetValue(m, out var mr) && !mr.Stub && !m.IsStatic && m.MethodKind == MethodKind.Ordinary && !m.IsGenericMethod).ToList();
         if (mono)
@@ -480,6 +494,16 @@ public sealed class Emitter
                     sb.Append("        }\n");
                 }
                 sb.Append($"        return {bt}::cs_Message(name, a);\n    }}\n");
+            }
+            // StartCoroutine(string): an IEnumerator method without parameters, by name.
+            var routines = mine.Where(m => m.Parameters.Length == 0 && m.ReturnType.ToDisplayString() == "System.Collections.IEnumerator").ToList();
+            if (routines.Count > 0)
+            {
+                string bt = N.Type(t.BaseType);
+                sb.Append("    ::cs::IEnumerator* cs_Coroutine(::cs::String* name) override {\n");
+                foreach (var m in routines)
+                    sb.Append($"        if (::UnityEngine::MessageIs(name, {Names.StringLiteral(m.Name)})) return this->{N.Method(m)}();\n");
+                sb.Append($"        return {bt}::cs_Coroutine(name);\n    }}\n");
             }
         }
         // The serialized fields a prefab or asset sets (the simple kinds; others the caller does).
@@ -695,6 +719,14 @@ public sealed class Emitter
             foreach (var e in o.Events.Where(e => !e.IsStatic)) sb.Append($"    ::cs::TraceField(t, this->{Names.Ident(e.Name)});\n");
             sb.Append("    (void)t;\n}\n");
         }
+        // cs_Remap (Instantiate's: RemapFields)
+        if (t.TypeKind == TypeKind.Class && RemapFields(t) is var remap && remap.Count > 0)
+        {
+            sb.Append($"{tmpl}void {cls}::cs_Remap(const ::UnityEngine::Remap& r) {{\n");
+            sb.Append($"    {N.Type(t.BaseType)}::cs_Remap(r);\n");
+            foreach (var f in remap) sb.Append($"    r.Field(this->{N.Field(f)});\n");
+            sb.Append("}\n");
+        }
         foreach (var e in o.Events.Where(e => e.IsStatic))
             sb.Append($"{tmpl}{N.Ref(e.Type)} {cls}::{Names.Ident(e.Name)}{{}};\n");
 
@@ -705,7 +737,7 @@ public sealed class Emitter
             if (m.AssociatedSymbol is IPropertySymbol p && tr.IsAutoProperty(p)) continue;
             if (m.AssociatedSymbol is IEventSymbol e && tr.IsFieldLikeEvent(e)) continue;
             if (m.IsAbstract || t.TypeKind == TypeKind.Interface) continue;
-            string name = N.Method(m);
+            string name = N.Method(m) + (r.Wrap ? "__game" : "");
             string ret = m.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor ? "void" : TypeOrGap(m.ReturnType);
             string mt = m.IsGenericMethod ? "template <" + string.Join(", ", m.TypeParameters.Select(tp => "typename " + N.TypeParam(tp))) + "> " : "";
             // a generic method's definition is a template: in the header, for every user
@@ -754,7 +786,7 @@ public sealed class Emitter
         var sb = new StringBuilder("# tools/translate: every translated method. status: ok, error (an unsupported construct), gaps (bindings missing)\n# type\tmethod\tstatus\tdetail\n");
         foreach (var (m, r) in tr.Methods.OrderBy(kv => Names.FullName(kv.Key.ContainingType), StringComparer.Ordinal).ThenBy(kv => kv.Key.Name, StringComparer.Ordinal))
         {
-            string status = r.Hand ? "hand" : r.Stub ? "stub" : r.Error != null ? "error" : r.Gaps.Count > 0 ? "gaps" : "ok";
+            string status = r.Hand ? "hand" : r.Stub ? "stub" : r.Error != null ? "error" : r.Gaps.Count > 0 ? "gaps" : r.Wrap ? "ok (wrapped)" : "ok";
             string detail = r.Error ?? string.Join("; ", r.Gaps);
             sb.Append($"{Names.FullName(m.ContainingType)}\t{m.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}\t{status}\t{detail.Replace('\t', ' ').Replace('\n', ' ')}\n");
         }

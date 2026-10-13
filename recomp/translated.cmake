@@ -83,6 +83,51 @@ add_test(NAME slime_bis_translated
 add_test(NAME enemy_golem_soldier_translated
          COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# The other Golem enemies, each with its part of the replay (tests/translated/*_translated.h: the
+# turret's shots and pool, the kamikazes' MoveEnemy and explosions, the flying golem's charge; the
+# HermitSlime's patrol and ItemDrain), on the recordings enemy_test replays.
+set(ML_TRANSLATED_ENEMIES
+    enemy_hermit_slime_translated enemy_HermitSlime HermitSlime
+    enemy_kamikazegolem_translated enemy_KamikazeGolem KamikazeGolem
+    enemy_flyingkamikazegolem_translated enemy_FlyingKamikazeGolem FlyingKamikazeGolem
+    enemy_flyingkamikazegolem_bis_translated enemy_FlyingKamikazeGolem_bis FlyingKamikazeGolem
+    enemy_broken_turret_translated enemy_BrokenGolemTurret BrokenGolemTurret)
+set(_ml_gc_tests slime_translated_gc enemy_golem_soldier_translated_gc)
+list(LENGTH ML_TRANSLATED_ENEMIES _ml_n)
+math(EXPR _ml_last "${_ml_n} - 1")
+foreach(_i RANGE 0 ${_ml_last} 3)
+    math(EXPR _j "${_i} + 1")
+    math(EXPR _k "${_i} + 2")
+    list(GET ML_TRANSLATED_ENEMIES ${_i} _name)
+    list(GET ML_TRANSLATED_ENEMIES ${_j} _file)
+    list(GET ML_TRANSLATED_ENEMIES ${_k} _prefab)
+    add_test(NAME ${_name}
+             COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/${_file}.jsonl ${_prefab}
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+    add_test(NAME ${_name}_gc
+             COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/${_file}.jsonl ${_prefab}
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+    list(APPEND _ml_gc_tests ${_name}_gc)
+endforeach()
+# The collector on the facade's objects (tests/translated/bind_gc_test): a destroyed object kept
+# while referenced (== null), collected with its tree once nothing references it.
+add_executable(bind_gc_test tests/translated/bind_gc_test.cpp)
+target_link_libraries(bind_gc_test PRIVATE mlgen)
+add_test(NAME bind_gc COMMAND bind_gc_test)
+set_tests_properties(bind_gc PROPERTIES ENVIRONMENT "ML_GC_POISON=1")
+# The Tangle (tests/translated/tangle_translated_test: tangle_test's replay and rows, its weave's
+# LateUpdates in the game's order) on the game's own TangleBehaviour.
+add_executable(tangle_translated_test tests/translated/tangle_translated_test.cpp tests/translated/scene/Standins.cpp)
+target_include_directories(tangle_translated_test PRIVATE tests/translated)
+target_link_libraries(tangle_translated_test PRIVATE mlgen)
+ml_translated_debug(tangle_translated_test)
+add_test(NAME tangle_translated
+         COMMAND tangle_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/tangle.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME tangle_translated_gc
+         COMMAND tangle_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/tangle.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+list(APPEND _ml_gc_tests tangle_translated_gc)
 # The collector at every frame boundary on the translated scene (ML_GC_EVERY_FRAME), freed objects
 # poisoned (ML_GC_POISON): a live object the roots miss crashes the replay or makes it mismatch
 # (docs/translator_plan.md, "Memory").
@@ -92,4 +137,4 @@ add_test(NAME slime_translated_gc
 add_test(NAME enemy_golem_soldier_translated_gc
          COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
-set_tests_properties(slime_translated_gc enemy_golem_soldier_translated_gc PROPERTIES ENVIRONMENT "ML_GC_EVERY_FRAME=1;ML_GC_POISON=1")
+set_tests_properties(${_ml_gc_tests} PROPERTIES ENVIRONMENT "ML_GC_EVERY_FRAME=1;ML_GC_POISON=1")

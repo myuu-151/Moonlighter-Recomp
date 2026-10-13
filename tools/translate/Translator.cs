@@ -30,6 +30,7 @@ public sealed class Translator
         public List<string> Gaps = new();
         public bool Stub;             // declared only: units.txt stubs its type (reaching it throws)
         public bool Hand;             // declared only: units.txt's `hand`, defined in hand-written C++
+        public bool Wrap;             // units.txt's `wrap`: translated as <name>__game, <name> defined by hand around it
         public bool Translated => Error == null && Gaps.Count == 0 && !Stub && !Hand;
         public int Lines;
     }
@@ -43,6 +44,9 @@ public sealed class Translator
     // driver's stand-in for a service the translated code calls: the hero, the camera, the
     // room's bookkeeping); declared like the translated ones, defined elsewhere.
     readonly HashSet<IMethodSymbol> handMethods = new(SymbolEqualityComparer.Default);
+    // units.txt's `wrap <type> <method...>`: game methods translated under <name>__game, the name
+    // itself defined by hand around that (a driver observing a call: where a dead sprite goes).
+    readonly HashSet<IMethodSymbol> wrapMethods = new(SymbolEqualityComparer.Default);
     // Types named by `type <name> <members...>`: what calls reach of them translates, but the
     // engine's seeds (their messages, overrides, interface implementations) don't: those are
     // declared as stubs unless listed (a scene service the enemies reach for one property).
@@ -139,8 +143,8 @@ public sealed class Translator
         if (m.MethodKind == MethodKind.DelegateInvoke) return;
         NeedType(m.ContainingType);
         if (methods.ContainsKey(m)) return;
-        bool hand = handMethods.Contains(m);
-        methods[m] = new MethodResult { M = m, Hand = hand, Stub = !hand && (seedStub || IsStubbed(m)) };
+        bool hand = handMethods.Contains(m), wrap = wrapMethods.Contains(m);
+        methods[m] = new MethodResult { M = m, Hand = hand, Wrap = wrap, Stub = !hand && !wrap && (seedStub || IsStubbed(m)) };
         queue.Enqueue(m);
         // overridden declarations are part of the class hierarchy's C++ (override needs them)
         if (m.OverriddenMethod != null) NeedMethod(m.OverriddenMethod);
@@ -249,6 +253,23 @@ public sealed class Translator
                 case "stub-others":
                     stubOthers = true;
                     break;
+                case "wrap":
+                {
+                    var t = GC.Type(f[1]);
+                    if (f.Length < 3) throw new UsageException($"{path}:{at}: want `wrap <type> <method...>`");
+                    foreach (var name in f.Skip(2))
+                    {
+                        var ms = t.GetMembers(name).OfType<IMethodSymbol>().ToList();
+                        if (ms.Count == 0) throw new UsageException($"{path}:{at}: no method {name} in {t}");
+                        foreach (var wm in ms)
+                        {
+                            wrapMethods.Add(wm.OriginalDefinition);
+                            listedMethods.Add(wm.OriginalDefinition);
+                        }
+                        actions.Add(() => { foreach (var wm in ms) NeedMethod(wm); });
+                    }
+                    break;
+                }
                 case "hand":
                 {
                     var t = GC.Type(f[1]);

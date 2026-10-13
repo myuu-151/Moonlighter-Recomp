@@ -13,6 +13,7 @@
 #include "bind/Core.h"
 #include "unity/Mathf.h"
 #include "unity/Random.h"
+#include "unity/Rect.h"
 #include "unity/Vector2.h"
 
 namespace UnityEngine {
@@ -131,6 +132,18 @@ inline void V3Normalize(Vector3& v) { v = V3Normalized(v); }
 inline float V3Distance(Vector3 a, Vector3 b) { return V3Magnitude(V3Sub(a, b)); }
 inline float V3Dot(Vector3 a, Vector3 b) { return detail::F(detail::D(a.x) * b.x + detail::D(a.y) * b.y + detail::D(a.z) * b.z); }
 // Lerp: t = Clamp01(t); new Vector3(a.x + (b.x - a.x) * t, ...)
+// Angle (2019.2): float num = (float)Math.Sqrt(from.sqrMagnitude * to.sqrMagnitude); if (num <
+// kEpsilonNormalSqrt) return 0; float num2 = Mathf.Clamp(Dot(from, to) / num, -1f, 1f); return
+// (float)Math.Acos(num2) * 57.29578f.
+inline float V3Angle(Vector3 from, Vector3 to)
+{
+    using detail::D;
+    using detail::F;
+    const float num = F(std::sqrt(D(V3SqrMagnitude(from)) * V3SqrMagnitude(to)));
+    if (num < kEpsilonNormalSqrt) return 0.0f;
+    const float num2 = unity::Mathf::Clamp(F(D(V3Dot(from, to)) / num), -1.0f, 1.0f);
+    return F(D(F(std::acos(D(num2)))) * 57.29578f);
+}
 inline Vector3 V3Lerp(Vector3 a, Vector3 b, float t)
 {
     using detail::D;
@@ -248,6 +261,15 @@ inline Color ColorOf(float r, float g, float b, float a)
 inline void cs_trace_value(cs::Tracer&, const Color&) {}
 inline bool cs_box_equals(const Color& a, const Color& b) { return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a; }
 inline const char* cs_box_typename(const Color*) { return "UnityEngine.Color"; }
+
+// ---- Rect (unity/Rect.h's fields) -------------------------------------------------------------------
+
+// xMax / yMax: m_Width + m_XMin (a float return: rounded once).
+inline float RectXMax(const unity::Rect& r) { return r.width + r.x; }
+inline float RectYMax(const unity::Rect& r) { return r.height + r.y; }
+// Contains(Vector3 / Vector2): xMin <= x < xMax and yMin <= y < yMax.
+inline bool RectContains(const unity::Rect& r, Vector3 p) { return p.x >= r.x && p.x < RectXMax(r) && p.y >= r.y && p.y < RectYMax(r); }
+inline bool RectContains(const unity::Rect& r, Vector2 p) { return p.x >= r.x && p.x < RectXMax(r) && p.y >= r.y && p.y < RectYMax(r); }
 
 // ---- Random's vectors ------------------------------------------------------------------------------
 

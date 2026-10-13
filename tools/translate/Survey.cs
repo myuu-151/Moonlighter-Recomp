@@ -455,7 +455,7 @@ public static class Survey
         {
             var t = fi.T;
             string translates = t.Methods == 0 ? "y" : t.MethodsOk == t.Methods ? "y" : t.MethodsOk == 0 ? "n" : "part";
-            string pct = t.Lines == 0 ? "100%" : $"{100.0 * t.LinesOk / t.Lines:F0}%";
+            string pct = (t.Lines == 0 ? 100.0 : 100.0 * t.LinesOk / t.Lines).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + "%"; // (one decimal: tools/progress.py reads it)
             string blockers = t.Blockers.Count == 0 ? "-" : string.Join("; ", t.Blockers.OrderByDescending(kv => kv.Value).Take(3).Select(kv => kv.Key));
             sb.Append(fi.Path).Append('\t').Append(fi.Lines).Append('\t').Append(fi.Kind).Append('\t').Append(fi.Base)
               .Append('\t').Append(fi.Closed ? 'y' : 'n')
