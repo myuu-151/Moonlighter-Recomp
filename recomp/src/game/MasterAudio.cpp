@@ -148,6 +148,16 @@ void MasterAudio::Refill(Group& g)
     list2.clear();
 }
 
+void MasterAudio::LateUpdate()
+{
+    // PlaySoundAndWait: the intro silence, then ClipStartPosition.
+    for (const UpdaterStart& u : waiting_) {
+        if (u.introSilence) unity::Random::Range(u.introSilenceMin, u.introSilenceMax);
+        if (u.randomStartTime) unity::Random::Range(u.randomStartMinPercent, u.randomStartMaxPercent);
+    }
+    waiting_.clear();
+}
+
 bool MasterAudio::SourcePlaying(const Variation& v, double time, int frame)
 {
     return v.startedAt >= 0.0 && frame != v.startedFrame && time < v.startedAt + v.clipLength;
@@ -171,12 +181,16 @@ bool MasterAudio::PlayIfAvailable(Group& g, Variation& v, double time, int frame
         // _maxLoops = Range(min, max + 1).
         unity::Random::Range(v.minCustomLoops, v.maxCustomLoops + 1);
     }
-    // The updater's start (a frame later in the game).
-    if (v.useIntroSilence && v.introSilenceMax > 0.0f) {
-        unity::Random::Range(v.introSilenceMin, v.introSilenceMax);
-    }
-    if (v.useRandomStartTime) {
-        unity::Random::Range(v.randomStartMinPercent, v.randomStartMaxPercent);
+    // Its updater's start: at MasterAudio's LateUpdate.
+    if ((v.useIntroSilence && v.introSilenceMax > 0.0f) || v.useRandomStartTime) {
+        UpdaterStart u;
+        u.introSilence = v.useIntroSilence && v.introSilenceMax > 0.0f;
+        u.introSilenceMin = v.introSilenceMin;
+        u.introSilenceMax = v.introSilenceMax;
+        u.randomStartTime = v.useRandomStartTime;
+        u.randomStartMinPercent = v.randomStartMinPercent;
+        u.randomStartMaxPercent = v.randomStartMaxPercent;
+        waiting_.push_back(u);
     }
     v.startedAt = time;
     v.startedFrame = frame;

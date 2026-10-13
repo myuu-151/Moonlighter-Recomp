@@ -13,20 +13,20 @@ It also builds for the GameCube:
 ![ported](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge.json)
 ![verified](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge_verified.json)
 
-**7.3%** of the game's own code is ported (11,762 of 160,682 lines of C#, 41 of 1,173 classes whole); **6.7%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
+**7.4%** of the game's own code is ported (11,849 of 160,682 lines of C#, 41 of 1,173 classes whole); **7.0%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
 
-<img src="progress/bars/total.svg" alt="7.3% ported, 6.7% verified">
+<img src="progress/bars/total.svg" alt="7.4% ported, 7.0% verified">
 
 <sub>gold: ported · green: verified against the game</sub>
 
 | Area | Lines | Ported | Verified | |
 |---|---:|---:|---:|---|
-| Dungeon generation | 10,310 | 50.2% | 50.2% | <img src="progress/bars/dungeon_generation.svg" alt="50.2%"> |
+| Dungeon generation | 10,310 | 50.6% | 50.6% | <img src="progress/bars/dungeon_generation.svg" alt="50.6%"> |
 | Player | 9,277 | 22.0% | 20.9% | <img src="progress/bars/player.svg" alt="22.0%"> |
-| Enemies | 27,342 | 12.2% | 10.4% | <img src="progress/bars/enemies.svg" alt="12.2%"> |
-| Dungeon runtime | 5,487 | 5.7% | 3.4% | <img src="progress/bars/dungeon_runtime.svg" alt="5.7%"> |
+| Enemies | 27,342 | 12.2% | 11.6% | <img src="progress/bars/enemies.svg" alt="12.2%"> |
+| Dungeon runtime | 5,487 | 6.0% | 3.8% | <img src="progress/bars/dungeon_runtime.svg" alt="6.0%"> |
 | Bosses | 8,285 | 2.3% | 2.3% | <img src="progress/bars/bosses.svg" alt="2.3%"> |
-| Items & effects | 13,388 | 0.6% | 0.0% | <img src="progress/bars/items_effects.svg" alt="0.6%"> |
+| Items & effects | 13,388 | 0.8% | 0.2% | <img src="progress/bars/items_effects.svg" alt="0.8%"> |
 | Town, shop & villagers | 12,097 | 0.0% | 0.0% | <img src="progress/bars/town_shop_villagers.svg" alt="0.0%"> |
 | UI | 20,716 | 0.0% | 0.0% | <img src="progress/bars/ui.svg" alt="0.0%"> |
 | Wanderer DLC | 9,474 | 0.9% | 0.9% | <img src="progress/bars/wanderer_dlc.svg" alt="0.9%"> |

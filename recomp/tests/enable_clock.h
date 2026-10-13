@@ -40,6 +40,7 @@
 // contradicts it fails there, rather than the targeting alone counting from another clock);
 // without it, the rule above.
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -68,6 +69,20 @@ inline float EnableClockBits(const json::Value& v)
     return f;
 }
 
+// The engine's fixed clock (Time.fixedTime as the double it keeps) at a fixed step whose float a
+// recording has: a whole number of fixedDeltaTime (the float 0.0099999998, as a double) since the
+// game started. Every fixed step's float in the recordings of 2026-10-13 (enemy_*.jsonl,
+// tangle.jsonl, slime*.jsonl: about 15000 of them), and every Time.fixedTime EnableClockProbe
+// read, is that product rounded. The float alone is the double rounded, up to 7.6e-6 off near
+// 190 s, while an Invoke's due time and the step it runs in can be 1e-8 apart (a 0.65 s repeat
+// against 65 steps, a second against 100): a clock run on from the float can put an Invoke in the
+// step before or after the game's (enemy_KamikazeGolem.jsonl of 17:12: the probe's second Invoke,
+// in the step whose float is 190.3300018, which the float-based clock had at 190.3299896).
+inline double EngineFixedTime(float recorded, float fixedDt)
+{
+    return std::round(static_cast<double>(recorded) / static_cast<double>(fixedDt)) * static_cast<double>(fixedDt);
+}
+
 inline EnableClock EnableEnemiesClock(const json::Value& start, const json::Value& firstFrame, float fixedDt)
 {
     EnableClock c;
@@ -91,7 +106,7 @@ inline EnableClock EnableEnemiesClock(const json::Value& start, const json::Valu
         c.fixedTime = c.time;
         return c;
     }
-    const double first = static_cast<double>(EnableClockBits(firstFrame["steps"][0]["ft"]));
+    const double first = EngineFixedTime(EnableClockBits(firstFrame["steps"][0]["ft"]), fixedDt);
     for (int k = 1; k < 100000; k++) {
         const double step = first - static_cast<double>(k) * static_cast<double>(fixedDt);
         if (static_cast<float>(step) <= enabled) {

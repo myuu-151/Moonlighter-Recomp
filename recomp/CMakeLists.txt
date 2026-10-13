@@ -99,6 +99,8 @@ add_library(mlcore STATIC
     src/game/EnemyRootMotion.cpp
     # DungeonRoom.DisableEnemies (ExitRoom: the hero leaving, or falling into a secret room).
     src/game/EnemyRoom.cpp
+    # The hero's amulet effects on the enemies' hits (the Wanderer Amulet's draw).
+    src/game/AmuletEffects.cpp
     # The KamikazeGolem, Physics2D.OverlapCircleAll over the physics world.
     src/game/KamikazeGolem.cpp
     src/unity/Physics2DOverlap.cpp
@@ -193,7 +195,8 @@ target_link_libraries(slime_test PRIVATE mlcore)
 add_test(NAME slime
          COMMAND slime_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
-# A second room (Golem_Enemies_15_Bis): the targeting's Invoke falling due in a fixed step.
+# A second room (Golem_Enemies_15_Bis, recorded 2026-10-13 17:10; until then a copy of slime.jsonl):
+# its EnableEnemies ran in a fixed step's pass, slime.jsonl's in a frame.
 add_test(NAME slime_bis
          COMMAND slime_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime_bis.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)

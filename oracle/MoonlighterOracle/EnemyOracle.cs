@@ -792,6 +792,7 @@ namespace MoonlighterOracle
             if (NoAttacks) j.Prop("heroNoAttacks", true); // (-oracle-hero-no-attacks)
             TurretOracle.WriteStart(j, room);
             CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
+            KamikazeOracle.WriteStart(j, room); // (its room's chests and OnAllEnemiesDefeated: KamikazeOracle.cs)
             Emit(j);
         }
 

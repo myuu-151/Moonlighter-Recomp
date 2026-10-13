@@ -110,6 +110,12 @@ public:
         // enemy_FlyingKamikazeGolem.jsonl, frame 119: the Discrete golem flies 0.18 into a Kinematic
         // wall in one step and is pushed out over the next ones (third_party/box2d/README.md).
         bool continuousBulletsOnly = true;
+        // A trigger on a Kinematic Rigidbody2D, or against one, pairs with static colliders and
+        // Kinematic bodies too (stock Box2D: only with a dynamic body). enemy_KamikazeGolem.jsonl
+        // of recq kamifix-2, frames 191-194: the KamikazeGolem's growing explosion box, a trigger
+        // on its AttackCollider's own Kinematic body, enters the room's LowerBoundary,
+        // DoorBoundaryRight and a puddle's Collider_3 (third_party/box2d/README.md).
+        bool kinematicTriggers = true;
     };
 
     // (Two constructors, not a defaulted Options argument: GCC wants Options' member
@@ -154,10 +160,15 @@ public:
     void SyncColliders();
     // Physics2D.SyncTransforms for a body whose transform is at `position`.
     void SyncTransform(Rigidbody2D& body, Vector2 position);
+    // The same for a body whose transform was written since the last sync, moved or not (a
+    // child's whose parent's transform the physics wrote back: Unity's transform-change flags
+    // go down the hierarchy): synced, and its rest restarted, all the same.
+    void SyncWrittenTransform(Rigidbody2D& body, Vector2 position);
     // The body awake with its time at rest (towards sleeping) back to zero, even if it was
     // awake already (what Unity does when it syncs a moved transform, or remakes a collider of
     // the body's: enemy_GolemSoldier.jsonl), its velocities kept.
     void RestartRest(Rigidbody2D& body);
+    static void RestartRest(b2Body* body);
     // b2World::Step at the project's iterations (after SyncColliders).
     void Step(float dt);
     // One fixed step of Unity's for `body` whose transform is at `position`: sync it, step,
