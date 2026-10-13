@@ -94,12 +94,19 @@ namespace MoonlighterOracle
             var st = new System.Diagnostics.StackTrace(2, false);
             var game = typeof(EnemyBehaviour).Assembly;
             var me = typeof(EnemyOracle).Assembly;
-            for (int i = 0; i < st.FrameCount; i++)
+            int i = 0;
+            // (The postfix's own frames first; then the patched query, Unity's own frames.)
+            for (; i < st.FrameCount; i++)
+            {
+                var m = st.GetFrame(i).GetMethod();
+                if (m == null || m.DeclaringType == null || m.DeclaringType.Assembly != me) break;
+            }
+            for (; i < st.FrameCount; i++)
             {
                 var m = st.GetFrame(i).GetMethod();
                 var t = m != null ? m.DeclaringType : null;
                 if (t == null) continue;
-                if (t.Assembly == me) return null;
+                if (t.Assembly == me) return null; // (the oracle's own query: TurretOracle's repeated raycasts)
                 if (t.Assembly != game) continue;
                 var outer = t;
                 while (outer.DeclaringType != null && (outer.Name.StartsWith("<") || outer.IsNested && outer.Name.Contains("<"))) outer = outer.DeclaringType;

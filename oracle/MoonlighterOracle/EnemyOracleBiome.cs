@@ -18,9 +18,10 @@ namespace MoonlighterOracle
     ///     the save isn't changed (Harvest.InstallSafety blocks every write).
     ///   - the start line: "dungeon" (the culture asked), "progress" (the slot's culturesDefeated
     ///     and maxDungeonLevelVisited: what the town's gates would have allowed),
-    ///     "soundCreators" (MasterAudio's DynamicSoundGroupCreators: the permanent ones, then
-    ///     DungeonManager's children in sibling order, which is the order DungeonGenerator made
-    ///     them and so the order they made their groups: the first group of a name wins),
+    ///     "soundCreators" (MasterAudio's DynamicSoundGroupCreators, their paths: the permanent
+    ///     ones, then those below DungeonManager's children in sibling order, which is the order
+    ///     DungeonGenerator made them and so the order they made their groups: the first group of
+    ///     a name wins; the creator prefab is the path's "Sounds - ..." part),
     ///     "spawnPrefabs" (what the enemies can make: the prefabs their scripts' fields reference,
     ///     two levels deep, and the pools named after them; each with the scripts tracked);
     ///   - per enemy ("enemy", "spawnEnemy" and a frame's "enemies"), "gen": the state of its game
@@ -124,15 +125,15 @@ namespace MoonlighterOracle
                 if (slot.maxDungeonLevelVisited != null) foreach (int v in slot.maxDungeonLevelVisited) j.Val(v);
                 j.EndArr().EndObj();
             }
+            // (A creator prefab can hold its creators on children: "Sounds - Will/general_dungeon".)
             j.Key("soundCreators").Arr();
             var dm = DungeonManager.Instance;
-            var under = new List<string>();
-            if (dm != null)
-                foreach (Transform child in dm.transform)
-                    if (child.GetComponent<DarkTonic.MasterAudio.DynamicSoundGroupCreator>() != null) under.Add(child.name);
             foreach (var c in UnityEngine.Object.FindObjectsOfType<DarkTonic.MasterAudio.DynamicSoundGroupCreator>().OrderBy(c => PathOf(c.transform), StringComparer.Ordinal))
                 if (dm == null || !c.transform.IsChildOf(dm.transform)) j.Val(PathOf(c.transform));
-            foreach (string name in under) j.Val("DungeonManager/" + name);
+            if (dm != null)
+                foreach (Transform child in dm.transform)
+                    foreach (var c in child.GetComponentsInChildren<DarkTonic.MasterAudio.DynamicSoundGroupCreator>(true))
+                        j.Val("DungeonManager/" + PathBelow(c.transform, dm.transform));
             j.EndArr();
             j.Key("spawnPrefabs").Arr();
             foreach (var p in prefabs)
@@ -462,7 +463,8 @@ namespace MoonlighterOracle
                     {
                         var first = kv.Value.pooledObjects.FirstOrDefault(o => o != null);
                         if (first == null || prefabByName.ContainsKey(PrefabName(first.name))) continue;
-                        var p = new SpawnPrefab { name = PrefabName(first.name), from = "pool " + kv.Key, enemy = first.GetComponent<Enemy>() != null };
+                        // (PoolManager names its objects after the pool: "<enemy>_<prefab>".)
+                        var p = new SpawnPrefab { name = PrefabName(first.name), from = "pool of " + kv.Key.Substring(prefab.Length + 1), enemy = first.GetComponent<Enemy>() != null };
                         foreach (var mb in first.GetComponents<MonoBehaviour>())
                             if (mb != null && GameScript(mb.GetType()) && !p.types.Contains(mb.GetType())) p.types.Add(mb.GetType());
                         prefabs.Add(p);
