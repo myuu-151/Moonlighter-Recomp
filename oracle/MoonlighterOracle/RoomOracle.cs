@@ -133,6 +133,7 @@ namespace MoonlighterOracle
         {
             private static void Prefix(DungeonRoom __instance, DungeonRoomInfo roomInfo)
             {
+                if (FrameProbe.Window == "loading") FrameProbe.Window = null; // (the first room: the loading frames are over)
                 Trace.Safe("roomInit", () =>
                 {
                     int id = Trace.AssignRoomId(__instance);

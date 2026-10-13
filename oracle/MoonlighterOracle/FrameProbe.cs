@@ -100,6 +100,16 @@ namespace MoonlighterOracle
             return -1;
         }
 
+        // The frames of asset loading between the cave (GeneratChestRooms, where cave_game.jsonl
+        // takes "stateAfter") and the first room's InitializeRoom (RoomOracle closes it): the
+        // generation coroutine yields to bundle loads there, and when one isn't ready other
+        // scripts' Updates draw (trace.jsonl, session 20261012-215722: 104 draws, unrecorded).
+        [HarmonyPatch(typeof(DungeonGenerator), "GeneratChestRooms")]
+        private static class LoadingOpens
+        {
+            private static void Postfix() { if (Window == null && !CaveOracle.inMirror) Window = "loading"; }
+        }
+
         // The boss room's Start frame: from AddBossRoom to SpawnSpecialRoomsAfterGeneration.
         [HarmonyPatch(typeof(DungeonGenerator), "AddBossRoom")]
         private static class BossRoomOpens

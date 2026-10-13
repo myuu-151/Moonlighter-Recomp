@@ -60,6 +60,8 @@
 #include "unity/Tween.h"
 #include "util/Json.h"
 
+#include "enable_clock.h"
+
 namespace {
 
 using json::Value;
@@ -584,29 +586,13 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
 
     const float fixedDt = Bits(start["fixedDeltaTime"]);
     double fixedClock = 0.0;
-    // The targeting a second after EnableEnemies, if it hasn't come yet. EnableEnemies is an
-    // Invoke itself: if Time.time then was a fixed step's (it ran in the pass after that step),
-    // the targeting's Invoke was made on the fixed clock, which the replay's runs on from the
-    // first recorded step: that step's, fixedDeltaTime (a float, 0.0099999998) back per step.
-    // A second later is then two hundredths of a microsecond past the hundredth step after it,
-    // and the targeting starts in the frame's pass, not in that step (slime.jsonl); one made in a
-    // frame can start in a fixed step (tangle.jsonl, slime_bis.jsonl).
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull()) {
-        const double enabled = static_cast<double>(Bits(*et));
-        calls.now = enabled;
-        if (!f0["steps"].arr.empty()) {
-            const double first = static_cast<double>(Bits(f0["steps"][0]["ft"]));
-            for (int k = 1; k < 1000; k++) {
-                const double at = first - static_cast<double>(k) * static_cast<double>(fixedDt);
-                if (at < enabled - 0.005) break;
-                if (static_cast<float>(at) == Bits(*et)) {
-                    calls.inFixedStep = true;
-                    calls.fixedNow = at;
-                    std::printf("EnableEnemies ran in a fixed step's pass (%d steps before the first recorded)\n", k);
-                    break;
-                }
-            }
-        }
+    // EnableEnemies (an Invoke itself) on the fixed clock: the steps it came after, and the
+    // targeting it starts a second later, if that hasn't come yet (EnableEnemiesClock).
+    const EnableClock enable = EnableEnemiesClock(start, f0, fixedDt);
+    if (enable.known) {
+        calls.now = enable.time;
+        calls.inFixedStep = true;
+        calls.fixedNow = enable.fixedTime;
         for (ReplayEnemy& s : enemies)
             if (!s.enemy->enemyBehaviour->targetPlayer) s.enemy->enemyBehaviour->StartTargetingPlayerAfterTime(Bits(start["targetDelay"]));
         calls.inFixedStep = false;
@@ -619,17 +605,13 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         if (heroBody.IsAwake() != hs[7].b) heroBody.Body()->SetAwake(hs[7].b);
     };
     // The bodies were switched on by EnableEnemies, some fixed steps before the recording
-    // starts: those steps count towards their falling asleep (Box2D's 0.5 s at rest). The
-    // steps after Time.time at EnableEnemies: back from the first recorded one, 0.01 apart.
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull() && !f0["steps"].arr.empty()) {
-        const double first = static_cast<double>(Bits(f0["steps"][0]["ft"])), enabled = static_cast<double>(Bits(*et));
-        int before = 0;
-        for (double ft = first - 0.01; ft > enabled + 0.005; ft -= 0.01) before++;
-        for (int k = 0; k < before; k++) {
+    // starts: those steps count towards their falling asleep (Box2D's 0.5 s at rest).
+    if (enable.known) {
+        for (int k = 0; k < enable.stepsBefore; k++) {
             setHero(f0["steps"][0]["hero"]);
             physics.Step(fixedDt);
         }
-        std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", before);
+        std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", enable.stepsBefore);
     }
     int rngElsewhere = 0;
     for (size_t fi = 0; fi < frames.size(); fi++) {

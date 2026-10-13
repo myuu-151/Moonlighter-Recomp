@@ -53,6 +53,9 @@
 #include "unity/Tween.h"
 #include "util/Json.h"
 
+#include "enable_clock.h"
+
+extern int g_b2Debug; // (EXPERIMENT)
 using json::Value;
 using unity::Vector2;
 
@@ -398,6 +401,21 @@ unity::Collider2D HoleFrom(const Value& v)
             if (j == 10) y1 += 10.0f;
             c.parts.emplace_back(Vector2{c.position.x + x0, c.position.y + y0}, Vector2{c.position.x + x1, c.position.y + y1});
         }
+    if (const char* file = std::getenv("ML_HOLE_POLYS")) {
+        // EXPERIMENT: each line "path|x y x y ...;x y ..." (local), the collider's shapes.
+        std::ifstream in(file);
+        for (std::string line; std::getline(in, line);) {
+            const size_t bar = line.find('|');
+            if (bar == std::string::npos || line.substr(0, bar) != c.path) continue;
+            std::stringstream polys(line.substr(bar + 1));
+            for (std::string poly; std::getline(polys, poly, ';');) {
+                std::stringstream xs(poly);
+                std::vector<Vector2> pts;
+                for (float x, y; xs >> x >> y;) pts.push_back({c.position.x + x, c.position.y + y});
+                if (!pts.empty()) c.shapes.push_back(pts);
+            }
+        }
+    }
     return c;
 }
 
@@ -650,29 +668,13 @@ int ReplayRecording(const std::string& file, const Data& data)
 
     const float fixedDt = Bits(start["fixedDeltaTime"]);
     double fixedClock = 0.0;
-    // The targeting a second after EnableEnemies, if it hasn't come yet. EnableEnemies is an
-    // Invoke itself: if Time.time then was a fixed step's (it ran in the pass after that step),
-    // the targeting's Invoke was made on the fixed clock, which the replay's runs on from the
-    // first recorded step: that step's, fixedDeltaTime (a float, 0.0099999998) back per step.
-    // A second later is then two hundredths of a microsecond past the hundredth step after it,
-    // and the targeting starts in the frame's pass, not in that step (slime.jsonl); one made in a
-    // frame can start in a fixed step (tangle.jsonl, slime_bis.jsonl).
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull()) {
-        const double enabled = static_cast<double>(Bits(*et));
-        calls.now = enabled;
-        if (!f0["steps"].arr.empty()) {
-            const double first = static_cast<double>(Bits(f0["steps"][0]["ft"]));
-            for (int k = 1; k < 1000; k++) {
-                const double at = first - static_cast<double>(k) * static_cast<double>(fixedDt);
-                if (at < enabled - 0.005) break;
-                if (static_cast<float>(at) == Bits(*et)) {
-                    calls.inFixedStep = true;
-                    calls.fixedNow = at;
-                    std::printf("EnableEnemies ran in a fixed step's pass (%d steps before the first recorded)\n", k);
-                    break;
-                }
-            }
-        }
+    // EnableEnemies (an Invoke itself) on the fixed clock: the steps it came after, and the
+    // targeting it starts a second later, if that hasn't come yet (EnableEnemiesClock).
+    const EnableClock enable = EnableEnemiesClock(start, f0, fixedDt);
+    if (enable.known) {
+        calls.now = enable.time;
+        calls.inFixedStep = true;
+        calls.fixedNow = enable.fixedTime;
         for (TangleObj& s : tangles)
             if (!s.enemy->enemyBehaviour->targetPlayer) s.enemy->enemyBehaviour->StartTargetingPlayerAfterTime(Bits(start["targetDelay"]));
         calls.inFixedStep = false;
@@ -683,15 +685,12 @@ int ReplayRecording(const std::string& file, const Data& data)
         heroBody.SetVelocity({Bits(hs[4]), Bits(hs[5])});
         if (heroBody.IsAwake() != hs[7].b) heroBody.Body()->SetAwake(hs[7].b);
     };
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull() && !f0["steps"].arr.empty()) {
-        const double first = static_cast<double>(Bits(f0["steps"][0]["ft"])), enabled = static_cast<double>(Bits(*et));
-        int before = 0;
-        for (double ft = first - 0.01; ft > enabled + 0.005; ft -= 0.01) before++;
-        for (int k = 0; k < before; k++) {
+    if (enable.known) {
+        for (int k = 0; k < enable.stepsBefore; k++) {
             setHero(f0["steps"][0]["hero"]);
             physics.Step(fixedDt);
         }
-        std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", before);
+        std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", enable.stepsBefore);
     }
     int rngElsewhere = 0;
     // The script order: per frame and Tangle with both LateUpdates, which ran first.
@@ -720,6 +719,10 @@ int ReplayRecording(const std::string& file, const Data& data)
                 break;
             }
         }
+        if (const char* nf = std::getenv("ML_NEWFIXTURE_FRAMES")) { // EXPERIMENT: "406,..."
+            const std::string list = std::string(",") + nf + ",";
+            if (list.find("," + std::to_string(fn) + ",") != std::string::npos) world.FixtureMadeElsewhere();
+        }
         // The fixed steps.
         for (size_t k = 0; k < f["steps"].size(); k++) {
             const Value& st = f["steps"][k];
@@ -742,7 +745,9 @@ int ReplayRecording(const std::string& file, const Data& data)
                           Str({Bits(ss[1]), Bits(ss[2])}) + " body " + Str({Bits(ss[3]), Bits(ss[4])}) + " v " + Str({Bits(ss[5]), Bits(ss[6])}));
             }
             portDamage.clear();
+            { const char* dbf = std::getenv("ML_B2DEBUG_FRAME"); g_b2Debug = dbf && std::atoll(dbf) == fn; if (g_b2Debug) std::printf("frame %lld step %zu\n", fn, k); }
             physics.Step(fixedDt);
+            { g_b2Debug = 0; }
             std::vector<std::pair<int, float>> gameDamage;
             for (const Value& ev : events.arr) {
                 if (ev["step"].AsInt() != static_cast<long long>(k)) continue;

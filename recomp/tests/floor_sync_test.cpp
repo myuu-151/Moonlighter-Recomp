@@ -3,7 +3,9 @@
 // the end of SpawnSpecialRoomsAfterGeneration, and requires every room to start exactly where
 // the game's did and the floor to end in the game's state. Engine answers come from the trace.
 // Resyncs are only allowed where the trace lacks inputs (older sessions without chest
-// generation data); they are counted and listed. Then the Wanderer DLC post-process (after
+// generation data; the draws of other scripts in frames of asset loading between the cave and
+// the first room, in traces from before FrameProbe's "loading" window); they are counted and
+// listed. Then the Wanderer DLC post-process (after
 // frame-timed asset loading, so its start is searched for) must pick the game's host room and
 // end, with the intermediate room and its advisor, in the floor's final state.
 //
@@ -261,6 +263,11 @@ public:
 
     std::vector<std::string> resyncs;
     std::string divergence; // first room whose start state differs
+    // The cave's end ("stateAfter", GeneratChestRooms): the generation draws nothing more
+    // before the first room, but it yields to asset loading there (LoadCommonResources,
+    // LoadResources, dungeon_common), and in frames that pass other scripts draw.
+    Random::State caveEnd{};
+    bool firstRoom = true;
 
     void BeginRoom(DungeonRoomInfo* info, int x, int y, bool secret) override
     {
@@ -297,8 +304,34 @@ public:
             else if (t == "stage" && p["name"].s == "DungeonRoom.SpawnRoomPrefabs") inPrefabs = p["phase"].s == "pre";
         }
         if (room["name"].s != info->name) fail("room " + std::to_string(room["room"].i) + ": port placed " + info->name + ", game " + room["name"].s);
-        else if (!Same(Random::GetState(), StateFrom(room["state"])) && divergence.empty())
+        else if (!Same(Random::GetState(), StateFrom(room["state"])) && divergence.empty() && !LoadingFrames(room))
             fail("room " + std::to_string(room["room"].i) + " (" + info->name + ") starts from a different RNG state");
+    }
+
+    // The first room after frames of asset loading (see caveEnd): the draws other scripts made
+    // in them. Where the trace has them (FrameProbe's "loading" window) they must add up to
+    // the gap; older traces don't, and then the port, which has drawn nothing since the cave,
+    // takes the game's state (a resync: the trace lacks the input).
+    bool LoadingFrames(const Value& room)
+    {
+        if (!firstRoom) return false;
+        firstRoom = false;
+        const Random::State port = Random::GetState(), game = StateFrom(room["state"]);
+        if (!Same(port, caveEnd)) return false; // the port drew since the cave: a real difference
+        const int gap = Random::DrawsBetween(port, game, 1000000);
+        if (gap < 0) return false;
+        int recorded = 0;
+        bool any = false;
+        for (size_t m = 0; m < roomStart_; m++) {
+            const Value& p = *ev_[m];
+            if (p["ev"].s != "frameDraw" || p["window"].s != "loading") continue;
+            any = true;
+            if (p["depth"].i == 0) recorded += static_cast<int>(p["draws"].i);
+        }
+        if (any && recorded != gap) return false;
+        Random::SetState(game);
+        if (!any) resyncs.push_back("frames of asset loading before the first room (" + std::to_string(gap) + " draws, not in the trace)");
+        return true;
     }
 
     ChestConfig NextChest(bool& ngp) override
@@ -751,6 +784,7 @@ int main(int argc, char** argv)
                 }
         }
         TraceEngine engine(evs, extractedDetails, haveTables ? &tables : nullptr);
+        engine.caveEnd = StateFrom((*cave)["stateAfter"]);
         Random::SetState(StateFrom((*cave)["stateAtCaveInit"]));
         DungeonFloor floor(db, culture, level);
         std::string ex;
@@ -1002,7 +1036,7 @@ int main(int argc, char** argv)
         } else {
             differ++;
             if (notes.size() < 8)
-                notes.push_back(std::string(cultureNames[static_cast<int>(culture)]) + " floor " + std::to_string(level + 1) + " (#" + std::to_string(key.second) +
+                notes.push_back(std::string(cultureNames[static_cast<int>(culture)]) + " floor " + std::to_string(level + 1) + " (#" + std::to_string(key.second) + ", session " + session +
                                 "): " + (!ex.empty() ? "exception " + ex : (!engine.divergence.empty() ? engine.divergence : "end state differs")));
         }
         cs::SetCurrentHeap(nullptr);

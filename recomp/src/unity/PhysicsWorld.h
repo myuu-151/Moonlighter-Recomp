@@ -101,6 +101,11 @@ public:
         bool groundBody = true;         // colliders without a Rigidbody2D: one static body at the origin, world vertices
         bool polygonSet = true;         // boxes through b2PolygonShape::Set (else SetAsBox)
         bool continuousPhysics = true;  // b2World's TOI pass
+        // Only bodies with continuous detection (Rigidbody2D.collisionDetectionMode Continuous: Box2D's
+        // bullets) take the TOI pass; a Discrete one isn't swept even against static colliders
+        // (tangle.jsonl, frame 205: a Tangle pushed out of a hole's inside corner ends where the
+        // island's position iterations left it; stock Box2D's TOI would push it on to -slop).
+        bool continuousBulletsOnly = true;
     };
 
     // (Two constructors, not a defaulted Options argument: GCC wants Options' member

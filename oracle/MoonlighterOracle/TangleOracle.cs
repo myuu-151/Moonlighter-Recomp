@@ -330,13 +330,19 @@ namespace MoonlighterOracle
             }
         }
 
-        [HarmonyPatch(typeof(EnemyBehaviour), "AttackHit", new[] { typeof(GameObject) })]
+        // The attack trigger's OnTriggerEnter2D (EnemyAttackCollisionDetection: what it tells the
+        // behaviour it advises, AttackHit). Hooked on the trigger, not on EnemyBehaviour.AttackHit:
+        // a behaviour that overrides AttackHit without calling base (HermitSlimeBehaviour) never
+        // reaches EnemyBehaviour's, and AttackHit is also called from elsewhere (projectiles).
+        [HarmonyPatch(typeof(EnemyAttackCollisionDetection), "OnTriggerEnter2D")]
         private static class AttackHitHook
         {
-            private static void Prefix(EnemyBehaviour __instance, GameObject other)
+            private static void Prefix(EnemyAttackCollisionDetection __instance, Collider2D other)
             {
-                int id = Id(__instance);
-                if (id >= 0) Add(new Ev { k = "attackHit", s = id, step = Step, player = other != null && other.CompareTag("Player"), other = other != null ? other.name : null });
+                if (__instance.gameObjectToAdvise == null || __instance.gameObjectToAdvise.name.Contains("SlimeTrap")) return;
+                int id = Id(__instance.gameObjectToAdvise.GetComponent<EnemyBehaviour>());
+                GameObject o = other != null ? other.gameObject : null;
+                if (id >= 0) Add(new Ev { k = "attackHit", s = id, step = Step, player = o != null && o.CompareTag("Player"), other = o != null ? o.name : null });
             }
         }
 
@@ -429,6 +435,7 @@ namespace MoonlighterOracle
                 if (__instance != targetRoom || targetRoom == null) return;
                 enableTime = Time.time;
                 enableFrame = Time.frameCount;
+                EnableClockProbe.OnEnable(__instance);
             }
         }
 
@@ -629,6 +636,8 @@ namespace MoonlighterOracle
                 }
             j.EndArr();
             j.Key("enableTime").Bits(enableTime).Prop("enableFrame", enableFrame - Time.frameCount);
+            EnableClockProbe.Write(j);
+            j.Prop("attackHits", "EnemyAttackCollisionDetection.OnTriggerEnter2D");
             j.Key("targetDelay").Bits(Traverse.Create(room).Field("enemyTimeToStartTargetingPlayer").GetValue<float>());
             j.Key("fixedDeltaTime").Bits(Time.fixedDeltaTime).Key("time").Bits(Time.time);
             j.Prop("dotweenEase", DG.Tweening.DOTween.defaultEaseType.ToString());
@@ -861,6 +870,7 @@ namespace MoonlighterOracle
             Application.targetFrameRate = 60;
 
             targetRoom = room;
+            EnableClockProbe.Begin(room);
             enableTime = -1f;
             mapRegenerated = false;
             ctrl.StopMovement();

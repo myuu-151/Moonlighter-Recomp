@@ -47,6 +47,7 @@ b2World::b2World(const b2Vec2& gravity)
 
 	m_warmStarting = true;
 	m_continuousPhysics = true;
+	m_continuousBulletsOnly = false; // ML port
 	m_subStepping = false;
 
 	m_stepComplete = true;
@@ -645,6 +646,13 @@ void b2World::SolveTOI(const b2TimeStep& step)
 
 				// Is at least one body active (awake and dynamic or kinematic)?
 				if (activeA == false && activeB == false)
+				{
+					continue;
+				}
+
+				// ML port: no TOI between two bodies without continuous detection (a Discrete
+				// Rigidbody2D and a static collider) when SetContinuousBulletsOnly.
+				if (m_continuousBulletsOnly && bA->IsBullet() == false && bB->IsBullet() == false)
 				{
 					continue;
 				}
