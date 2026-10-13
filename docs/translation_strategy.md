@@ -171,6 +171,29 @@ and speed overall, concentrated in a few spots. Those spots get the hand-written
 end up exactly as fast as a hand port. Most of the game (menus, shop logic, dialogue, item data)
 runs rarely enough that the difference will never show on screen.
 
+### The GameCube optimisation pass
+
+Like the Castle Crashers GameCube port, the GameCube build gets hand-optimised beyond what the
+original game does. MLGC is built on the same Octave-libogc base, so the memory and streaming work
+done there (texture formats, budgets, the audio RAM as a cache, streaming from disc) carries over.
+Two kinds of optimisation, with one rule between them:
+
+1. **Doing the same thing faster: always fine.** A hot class can be rewritten completely: different
+   data structures, precomputed tables, no allocations, batching for GX. It must give the same
+   results, and here that is checked: the hand-optimised version has to pass the same oracle
+   recordings as the original code. That's what the translator's override list is for.
+2. **Doing less, on the GameCube only: fine, with care.** Fewer particles, halved soft light and
+   shadow layers, simpler effects, cheaper UI transitions. Presentation-only cuts are free as long as
+   they don't touch game logic. The trap: some effects draw from Unity's shared `Random` when they
+   spawn (the screen shake, sound variations). Cutting one of those draws shifts every random number
+   after it and changes dungeons, drops and enemy behaviour. Cut the visual, keep the draw. The
+   recordings catch any slip.
+
+The data comes from real hardware: a USB Gecko streams frame times per system (enemy updates,
+physics, pathfinding, drawing) and memory high-water marks per area from the console. That decides
+which code gets an override and how much art each area can keep in memory. (In DolphinWorks:
+install the FTDI driver, and enable Gecko log output for hardware builds.)
+
 ## The hand-ported code
 
 The ~11,800 hand-ported lines aren't wasted:
