@@ -87,7 +87,7 @@ namespace MoonlighterOracle
             public int s = -1, step = -1, type;
             public float a, hp0, hp1;
             public bool player;
-            public string other, caller;
+            public string other, caller, raw; // (raw: EnemyOracleBiome.cs's)
             public Vector2 hero, pos;
             public uint[] rng0, rng1;
         }
@@ -97,6 +97,7 @@ namespace MoonlighterOracle
             public int s;
             public uint[] rng0, rng1;
             public Vector2 hero;
+            public float rt = -1f; // Time.realtimeSinceStartup at its start (EnemyOracleBiome.cs)
         }
 
         private static readonly List<Ev> events = new List<Ev>();
@@ -328,7 +329,7 @@ namespace MoonlighterOracle
                 if (!recording) return;
                 int id = Id(__instance);
                 if (id < 0) return;
-                __state = new Upd { s = id, rng0 = Rng.Get(), hero = HeroPos };
+                __state = new Upd { s = id, rng0 = Rng.Get(), hero = HeroPos, rt = biome ? Time.realtimeSinceStartup : -1f };
                 updates.Add(__state);
             }
 
@@ -412,9 +413,15 @@ namespace MoonlighterOracle
         private static class DamageToPlayerHook
         {
             // (The Random state before and after: the hero's own draws in it, "rng0" and "rng1".)
-            private static void Prefix(float attackStrength, HeroMerchant.DamageType type, Enemy enemySource, out Ev __state)
+            private static void Prefix(float attackStrength, string damageSource, HeroMerchant.DamageType type, Enemy enemySource, out Ev __state)
             {
                 __state = new Ev { k = "dmgToPlayer", s = enemySource != null ? Id(enemySource) : -1, step = Step, a = attackStrength, type = (int)type, rng0 = Rng.Get() };
+                // (EnemyOracleBiome.cs: its damageSource and the script that called.)
+                if (biome && recording)
+                {
+                    __state.other = damageSource;
+                    __state.caller = ScriptCaller("DealDamageToPlayer");
+                }
                 Add(__state);
             }
 
@@ -708,7 +715,7 @@ namespace MoonlighterOracle
             j.Key("anim").Obj().Prop("state", info.shortNameHash).Key("t").Bits(info.normalizedTime).Key("speed").Bits(anim.speed)
                 .Prop("on", anim.enabled).Prop("trans", anim.isActiveAndEnabled && anim.IsInTransition(0))
                 .Prop("sprite", sr != null && sr.sprite != null ? sr.sprite.name : null);
-            if (anim.isActiveAndEnabled) j.Key("dx").Bits(anim.GetFloat("DistanceX")).Key("dy").Bits(anim.GetFloat("DistanceY"));
+            if (anim.isActiveAndEnabled && HasDistanceParams(anim)) j.Key("dx").Bits(anim.GetFloat("DistanceX")).Key("dy").Bits(anim.GetFloat("DistanceY"));
             j.EndObj();
             j.Key("behaviour").Obj().Prop("es", (int)b.enemyState).Prop("target", tr.Field("targetPlayer").GetValue<bool>())
                 .Prop("canMove", b.canMove).Key("lapse").Bits(tr.Field("_lapse").GetValue<float>())
@@ -725,6 +732,7 @@ namespace MoonlighterOracle
             j.Key("flash").Bits(mat != null && mat.HasProperty("_FlashAmount") ? mat.GetFloat("_FlashAmount") : 0f);
             Color col = mat != null && mat.HasProperty("_Color") ? mat.GetColor("_Color") : Color.white;
             j.Key("color").Arr().Bits(col.r).Bits(col.g).Bits(col.b).Bits(col.a).EndArr();
+            if (biome) WriteGeneric(j, b.gameObject, setup); // (EnemyOracleBiome.cs)
         }
 
         /// The AttackCollider child as it is now: the box's enabled flag, size and offset, the
@@ -809,6 +817,7 @@ namespace MoonlighterOracle
             TurretOracle.WriteStart(j, room);
             CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
             KamikazeOracle.WriteStart(j, room); // (its room's chests and OnAllEnemiesDefeated: KamikazeOracle.cs)
+            if (biome) WriteBiomeStart(j); // (EnemyOracleBiome.cs: the dungeon, progress, sound creators, what the enemies make)
             Emit(j);
         }
 
@@ -842,6 +851,7 @@ namespace MoonlighterOracle
             FlyKamiOracle.Clear();
             CritterOracle.Clear();
             KamikazeOracle.Clear();
+            BiomeClear();
         }
 
         private static void WriteFrame(int f)
@@ -880,6 +890,7 @@ namespace MoonlighterOracle
                 j.EndArr();
                 WriteStepBoxes(j, k);
                 FixtureProbe.WriteStep(j, k);
+                WriteBiomeStep(j, k); // (EnemyOracleBiome.cs)
                 j.EndObj();
             }
             j.EndArr();
@@ -893,6 +904,8 @@ namespace MoonlighterOracle
                     case "attackEnter": j.Prop("player", e.player).Prop("other", e.other).Prop("how", e.caller); break;
                     case "dmgToPlayer":
                         j.Key("str").Bits(e.a).Prop("type", e.type);
+                        if (e.other != null) j.Prop("src", e.other);
+                        if (e.caller != null) j.Prop("by", e.caller);
                         if (e.rng0 != null)
                         {
                             Rng.WriteState(j.Key("rng0"), e.rng0);
@@ -916,7 +929,7 @@ namespace MoonlighterOracle
                         Rng.WriteState(j.Key("rng0"), e.rng0);
                         Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
                         break;
-                    default: if (!WriteEventExtra(j, e)) WriteRoomEvent(j, e); break; // (EnemyOracleColliders.cs, EnemyOracleRoom.cs)
+                    default: if (!WriteEventExtra(j, e) && !WriteRoomEvent(j, e)) WriteBiomeEvent(j, e); break; // (EnemyOracleColliders.cs, EnemyOracleRoom.cs, EnemyOracleBiome.cs)
                 }
                 j.EndObj();
             }
@@ -928,6 +941,7 @@ namespace MoonlighterOracle
                 Rng.WriteState(j.Key("rng0"), u.rng0);
                 Rng.WriteState(j.Key("rng1"), u.rng1 ?? u.rng0);
                 j.Key("hero"); V2(j, u.hero);
+                if (u.rt >= 0f) j.Key("rt").Bits(u.rt);
                 j.EndObj();
             }
             j.EndArr();
@@ -946,6 +960,8 @@ namespace MoonlighterOracle
             FlyKamiOracle.WriteFrame(j);
             CritterOracle.WriteFrame(j);
             KamikazeOracle.WriteFrame(j);
+            if (biome) j.Key("rt").Bits(Time.realtimeSinceStartup);
+            WriteBiomeFrame(j); // (EnemyOracleBiome.cs)
             Emit(j);
         }
 
@@ -966,6 +982,7 @@ namespace MoonlighterOracle
                     var b = slimes[i];
                     if (b == null) continue;
                     var srb = b.GetComponent<Rigidbody2D>();
+                    if (srb == null) continue; // (every enemy prefab has one)
                     Vector2 st = b.transform.position;
                     var row = new List<float> { i, st.x, st.y, srb.position.x, srb.position.y, srb.velocity.x, srb.velocity.y, srb.IsAwake() ? 1f : 0f };
                     var attack = AttackRow(b.transform);
@@ -979,6 +996,8 @@ namespace MoonlighterOracle
                 FlyKamiOracle.OnStep(slimes);
                 CritterOracle.OnStep();
                 KamikazeOracle.OnStep();
+                try { BiomeOnStep(); } // (EnemyOracleBiome.cs)
+                catch (Exception e) { OraclePlugin.Log.LogError(Tag + ": step scan: " + e); }
             }
         }
 
@@ -1026,6 +1045,9 @@ namespace MoonlighterOracle
             string fileName = legacy ? "slime.jsonl" : "enemy_" + prefab + ".jsonl";
             string doneName = legacy ? "SLIME_DONE" : "ENEMY_" + prefab + "_DONE";
             var log = OraclePlugin.Log;
+            biome = false;
+            string dungeonError = ParseDungeon(); // (-oracle-dungeon: EnemyOracleBiome.cs)
+            if (dungeonError != null) { Fail(dungeonError, quit); yield break; }
             yield return Harvest.LoadSlot();
             bool generated = false;
             Action done = () => generated = true;
@@ -1038,8 +1060,8 @@ namespace MoonlighterOracle
             {
                 generated = false;
                 DungeonGenerator.OnGeneratedDungeon += done;
-                if (floor == 0) HeroMerchant.Instance.LoadDungeonScene(ItemMaster.Culture.Golem);
-                else HeroMerchant.Instance.LoadNextLevelDungeonScene(ItemMaster.Culture.Golem);
+                if (floor == 0) HeroMerchant.Instance.LoadDungeonScene(Dungeon);
+                else HeroMerchant.Instance.LoadNextLevelDungeonScene(Dungeon);
                 float start = Time.realtimeSinceStartup;
                 while (!generated && Time.realtimeSinceStartup - start < 120f) yield return null;
                 DungeonGenerator.OnGeneratedDungeon -= done;
@@ -1060,7 +1082,7 @@ namespace MoonlighterOracle
                     Fail("no room with a " + prefab + " and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""), quit);
                     yield break;
                 }
-                log.LogInfo(Tag + ": no " + prefab + " on floor " + (floor + 1) + ": the next floor");
+                log.LogInfo(Tag + ": no " + prefab + " on " + Dungeon + " floor " + (floor + 1) + ": the next floor");
             }
 
             var dm = DungeonManager.Instance;
@@ -1099,6 +1121,12 @@ namespace MoonlighterOracle
 
             HookDOTween();
             HookAnimationEvents();
+            if (!legacy)
+            {
+                HookOtherClipEvents(); // (EnemyOracleBiome.cs)
+                try { BiomePrepare(); } // (the generic rows, what the enemies make, their queries)
+                catch (Exception e) { log.LogError(Tag + ": the generic rows: " + e); biome = false; }
+            }
             TurretOracle.Begin(prefab);
             FlyKamiOracle.Begin(prefab);
             CritterOracle.Begin(room);
@@ -1107,6 +1135,11 @@ namespace MoonlighterOracle
             writer = new StreamWriter(Path.Combine(OraclePlugin.OutDir, fileName), append: false) { AutoFlush = false };
             // The start, at a frame's end.
             yield return new WaitForEndOfFrame();
+            if (biome)
+            {
+                try { BiomeBegin(); } // (EnemyOracleBiome.cs: what the enemies made so far)
+                catch (Exception e) { log.LogError(Tag + ": the generic rows: " + e); biome = false; }
+            }
             WriteStart(room);
             WriteColliders();
             WriteMap(PolyNav2D.current, -1);
@@ -1130,14 +1163,20 @@ namespace MoonlighterOracle
             for (int f = 0; f < frames; f++)
             {
                 yield return new WaitForEndOfFrame();
-                try { WriteFrame(f); }
+                try
+                {
+                    if (biome) ScanSpawned(-1); // (EnemyOracleBiome.cs: what the frame made or ended)
+                    WriteFrame(f);
+                }
                 catch (Exception e) { log.LogError(Tag + ": frame " + f + ": " + e); }
                 ClearFrame();
+                BiomeAfterFrame();
                 frameStartRng = Rng.Get();
                 if (f % 60 == 0) writer.Flush();
             }
             recording = false;
             Active = false;
+            BiomeEnd();
             // (The turret's root motion on a moving body: one line after the last frame.)
             if (TurretOracle.Wants(prefab)) yield return TurretRootMotionProbe.Run(slimes, Emit);
             // (The order of OnCollisionEnter2D calls that start in one step: ContactOrderProbe.cs.)
