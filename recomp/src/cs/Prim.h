@@ -248,8 +248,16 @@ inline int32_t Sign(double d)
     return d > 0 ? 1 : d < 0 ? -1 : 0;
 }
 inline int32_t Sign(int32_t v) { return v > 0 ? 1 : v < 0 ? -1 : 0; }
+// System.Math.PI and E. Engines define PI and E as macros (the GameCube build includes Octave's
+// Maths.h next to these headers), so the names are shielded here.
+#pragma push_macro("PI")
+#pragma push_macro("E")
+#undef PI
+#undef E
 constexpr double PI = 3.14159265358979323846;
 constexpr double E = 2.7182818284590452354;
+#pragma pop_macro("E")
+#pragma pop_macro("PI")
 } // namespace Math
 
 // ---- GetHashCode / Equals / CompareTo of the primitives ------------------------------------------
