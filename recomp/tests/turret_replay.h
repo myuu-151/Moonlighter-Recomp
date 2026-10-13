@@ -9,8 +9,9 @@
 //   - each turret from its recorded state ("turret": patrolLapse, canShoot, enemyDirection, the
 //     Animator's Direction* bools and "Shoot");
 //   - each fixed step's start ("psteps"): every active shot by id (transform, body position and
-//     velocity, awake, isTrigger); what its body touches informs without failing (Unity's
-//     GetContacts against the touching contacts Box2D has);
+//     velocity, awake, isTrigger); how many points its Rigidbody2D.GetContacts hands back
+//     (EnemyProjectiles::GetContactsCount: the last simulation's touching contacts' manifold
+//     points, none for a trigger);
 //   - each shot's OnCollisionEnter2D ("hit", in order within its step): which shot, what it hit
 //     (tag, name), from the game's Random state before it (resynced) and the hero's transform
 //     then, its draws compared after (the impact sound's);
@@ -22,7 +23,9 @@
 //   - each frame's end: every active shot ("proj": transform world and local, body, awake,
 //     isTrigger, Animator state and normalized time, sprite, the art's rotation), the pools'
 //     order ("pooled"), each turret's fields; its transform touched after its Update ("tc", the
-//     Animator's root motion) informs.
+//     Animator's root motion) informs;
+//   - after the last frame, "rootMotionProbe" (TurretRootMotionProbe.cs) where the recording has
+//     it: the root motion's effect on a moving body against the port's model (AfterFrames).
 
 #include <map>
 #include <memory>
@@ -219,10 +222,9 @@ struct TurretReplay : ReplayHooks {
                       (p->body->IsAwake() ? " awake" : " asleep") + (p->isTrigger ? " trigger" : "") + "; game " + Str({Bits(r[1]), Bits(r[2])}) +
                       " body " + Str({Bits(r[3]), Bits(r[4])}) + " v " + Str({Bits(r[5]), Bits(r[6])}) + (r[7].b ? " awake" : " asleep") +
                       (r[8].b ? " trigger" : ""));
-            int touching = 0;
-            for (const b2ContactEdge* ce = p->body->Body()->GetContactList(); ce; ce = ce->next) touching += ce->contact->IsTouching();
-            t.Info("shot's contacts at a fixed step's start (how many: GetContacts against Box2D's touching)",
-                   touching == static_cast<int>(r[9].size()), at + ": port " + std::to_string(touching) + " game " + r[9].Dump());
+            const int points = sys->GetContactsCount(*p);
+            t.Add("shot's contact points at a fixed step's start (Rigidbody2D.GetContacts: the last step's touching manifolds)",
+                  points == static_cast<int>(r[9].size()), at + ": port " + std::to_string(points) + " game " + r[9].Dump());
         }
         for (game::EnemyProjectile* p : sys->All())
             if (p->active && std::find(listed.begin(), listed.end(), IdOf(p)) == listed.end())
@@ -399,6 +401,39 @@ struct TurretReplay : ReplayHooks {
         frameLine = nullptr;
         frameEvents = nullptr;
         looks.clear();
+    }
+
+    // The Animator's root motion on a turret body that moves ("rootMotionProbe", made after the
+    // recording: TurretRootMotionProbe.cs): the port's model (game/EnemyRootMotion.cpp: its pass
+    // restarts the body's rest, the velocity kept) has a velocity set in Update kept through the
+    // Animator pass to the frame's end, the body awake, and moved by it in the next fixed step
+    // (not set from the clip's delta, not pinned where the clip puts it).
+    void AfterFrames(const std::vector<Value>& lines, Tally& t) override
+    {
+        bool probed = false;
+        for (const Value& l : lines) {
+            if (l["ev"].s != "rootMotionProbe") continue;
+            probed = true;
+            const auto it = enemies.find(static_cast<int>(l["s"].AsInt()));
+            const unity::AnimatorController* c = it != enemies.end() ? it->second->Controller() : nullptr;
+            t.Add("rootMotionProbe: applyRootMotion as the port's controller has it (animators.py)",
+                  c && (c->applyRootMotion == 1) == l["applyRootMotion"].b,
+                  "turret " + std::to_string(l["s"].AsInt()) + ": port " + std::to_string(c ? c->applyRootMotion : -2) + ", game " +
+                      std::to_string(l["applyRootMotion"].b));
+            const Value &before = l["before"], &set = l["set"], &end = l["frameEnd"], &step = l["afterStep"];
+            const bool kept = Same(V2(end["vel"]), V2(set)) && end["awake"].b;
+            const bool moved = !Same(V2(step["pos"]), V2(before["pos"])) && step["awake"].b;
+            t.Add("rootMotionProbe: a velocity set in Update kept through the Animator pass, the body moved by it (the port's model)",
+                  kept && moved,
+                  "set " + Str(V2(set)) + ", frame end v " + Str(V2(end["vel"])) + (end["awake"].b ? " awake" : " asleep") + ", next step pos " +
+                      Str(V2(before["pos"])) + " -> " + Str(V2(step["pos"])) + " v " + Str(V2(step["vel"])) +
+                      (step["awake"].b ? " awake" : " asleep") + " (updateMode " + std::to_string(l["updateMode"].AsInt()) + ")");
+        }
+        // (The probe needs a turret still active when the recording ends: none after the hero
+        // leaves the room, as he falls into its secret room at frame 208 of the first recording.)
+        if (!probed)
+            std::printf("note: no \"rootMotionProbe\" line (TurretRootMotionProbe.cs: no turret active at the recording's end): the root "
+                        "motion's model (game/EnemyRootMotion.cpp) unchecked\n");
     }
 
     // After the replay: how often the turrets' transforms were touched after their Update.

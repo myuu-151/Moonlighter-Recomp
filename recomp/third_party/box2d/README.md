@@ -17,9 +17,17 @@ Unity 2019.2's 2D physics is a fork of Box2D. This is stock Box2D 2.3.1, which
   this takes it as per second over the 0.01 s fixed step. Whether Unity's fork applies it per
   second or per step is not known.
 - `Dynamics/b2World.h`, `b2World.cpp`: `SetContinuousBulletsOnly` (default off, as stock).
-  On, `SolveTOI` skips contacts between two non-bullet bodies: a Discrete Rigidbody2D isn't
-  swept against static colliders either, only Continuous ones (bullets) are. `PhysicsWorld`
-  turns it on (`PhysicsWorld::Options::continuousBulletsOnly`, with the recording that shows it).
+  On, `SolveTOI` skips contacts between two non-bullet bodies: a Discrete Rigidbody2D (a
+  non-bullet dynamic body) isn't swept against static or kinematic colliders either, only
+  Continuous ones (bullets: `unity::PhysicsWorld` makes a Continuous Rigidbody2D a bullet) are;
+  Unity's Discrete mode only generates contacts at the new position. Stock Box2D gives every
+  dynamic body a time of impact against static and kinematic ones. `PhysicsWorld` turns it on
+  (`PhysicsWorld::Options::continuousBulletsOnly`). The recordings that show it:
+  `tangle.jsonl` (frame 205: Tangle 5 pushed into a hole's inside corner, against a static
+  collider, ends where the island's position iterations left it, y 342.989410; stock Box2D's TOI
+  pushes it on to the slop, 342.985016) and `enemy_FlyingKamikazeGolem.jsonl` (frame 119: the
+  Discrete golem flies 0.18 into a Kinematic wall in one step and is pushed out over the next
+  ones).
 
 Every other tuning constant already matches the project's Physics2DSettings
 (`data/extracted/physics2d.json`): linear slop 0.005 (polygon radius 0.01 = the default contact

@@ -337,6 +337,7 @@ namespace MoonlighterOracle
         {
             private static void Prefix(EnemyBehaviour __instance, GameObject other)
             {
+                if (attackEnterDepth > 0) return; // (recorded as "attackEnter": AttackTriggerHook below)
                 int id = Id(__instance);
                 if (id >= 0) Add(new Ev { k = "attackHit", s = id, step = Step, player = other != null && other.CompareTag("Player"), other = other != null ? other.name : null });
             }
@@ -344,29 +345,47 @@ namespace MoonlighterOracle
 
         // The attack collider's own callbacks (EnemyAttackCollisionDetection: what it tells the
         // behaviour it advises, AttackHit), "attackEnter" ("how": "trigger" or "collision"; in
-        // Ev.caller). "attackHit" above misses a behaviour whose AttackHit override doesn't call
-        // EnemyBehaviour's (HermitSlimeBehaviourNEW) and has the projectiles' calls too; the start
-        // line's "attackEnters" says a recording has these.
+        // Ev.caller), as EnemyOracle records them: once each, the AttackHit it leads to not again
+        // as "attackHit" (which keeps AttackHit's calls from elsewhere). "attackHit" misses a
+        // behaviour whose AttackHit override doesn't call EnemyBehaviour's
+        // (HermitSlimeBehaviourNEW); the start line's "attackEnters" says a recording has these.
+        private static int attackEnterDepth; // inside an attack collider's callback (the main thread's)
+
         [HarmonyPatch(typeof(EnemyAttackCollisionDetection), "OnTriggerEnter2D")]
         private static class AttackTriggerHook
         {
-            private static void Prefix(EnemyAttackCollisionDetection __instance, Collider2D other) =>
-                AttackEnter(__instance, other != null ? other.gameObject : null, "trigger");
+            private static void Prefix(EnemyAttackCollisionDetection __instance, Collider2D other, out bool __state) =>
+                __state = AttackEnter(__instance, other != null ? other.gameObject : null, "trigger");
+
+            private static Exception Finalizer(Exception __exception, bool __state)
+            {
+                if (__state) attackEnterDepth--;
+                return __exception;
+            }
         }
 
         [HarmonyPatch(typeof(EnemyAttackCollisionDetection), "OnCollisionEnter2D")]
         private static class AttackCollisionHook
         {
-            private static void Prefix(EnemyAttackCollisionDetection __instance, Collision2D collision) =>
-                AttackEnter(__instance, collision != null ? collision.gameObject : null, "collision");
+            private static void Prefix(EnemyAttackCollisionDetection __instance, Collision2D collision, out bool __state) =>
+                __state = AttackEnter(__instance, collision != null ? collision.gameObject : null, "collision");
+
+            private static Exception Finalizer(Exception __exception, bool __state)
+            {
+                if (__state) attackEnterDepth--;
+                return __exception;
+            }
         }
 
-        private static void AttackEnter(EnemyAttackCollisionDetection d, GameObject o, string how)
+        // Whether it counts (attackEnterDepth raised: the caller's Finalizer lowers it).
+        private static bool AttackEnter(EnemyAttackCollisionDetection d, GameObject o, string how)
         {
-            if (d.gameObjectToAdvise == null || d.gameObjectToAdvise.name.Contains("SlimeTrap")) return;
+            if (d == null || d.gameObjectToAdvise == null || d.gameObjectToAdvise.name.Contains("SlimeTrap")) return false;
+            attackEnterDepth++;
             int id = Id(d.gameObjectToAdvise.GetComponent<EnemyBehaviour>());
             if (id >= 0)
                 Add(new Ev { k = "attackEnter", s = id, step = Step, player = o != null && o.CompareTag("Player"), other = o != null ? o.name : null, caller = how });
+            return true;
         }
 
         [HarmonyPatch(typeof(HeroMerchant), "DealDamageToPlayer")]

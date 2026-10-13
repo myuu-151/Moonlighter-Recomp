@@ -44,7 +44,8 @@ namespace MoonlighterOracle
         private static System.Func<IEnumerable<Transform>> recorded; // the recorded enemies' roots
 
         /// A recording starts: the colliders now are what its first step is compared with.
-        /// `enemies`: the recorded enemies' root transforms (their colliders count in "fxOwn").
+        /// `enemies`: the recorded enemies' root transforms and whatever else the replay makes
+        /// itself (the turrets' pooled shots: TurretOracle.Held); their colliders count in "fxOwn".
         internal static void Reset(System.Func<IEnumerable<Transform>> enemies)
         {
             recorded = enemies;

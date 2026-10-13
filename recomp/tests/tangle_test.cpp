@@ -664,12 +664,15 @@ int ReplayRecording(const std::string& file, const Data& data)
     const float fixedDt = Bits(start["fixedDeltaTime"]);
     double fixedClock = 0.0;
     // EnableEnemies (an Invoke itself): the fixed steps it came after, and the targeting it
-    // starts a second later, if that hasn't come yet, on the clock its Invokes count from
-    // (EnableEnemiesClock).
+    // starts a second later, if that hasn't come yet. That Invoke counts from Time.fixedTime then
+    // (unity/DelayedCalls.h, as every Invoke): the last fixed step at or before EnableEnemies'
+    // Time.time (EnableEnemiesClock).
     const EnableClock enable = EnableEnemiesClock(start, f0, fixedDt);
+    if (enable.probed)
+        t.Add("EnableClockProbe: an Invoke made in a frame counts from Time.fixedTime (unity/DelayedCalls.h)", enable.invokeOnFixedClock,
+              "EnableEnemies at " + std::to_string(enable.time) + ", the fixed step before at " + std::to_string(enable.fixedTime));
     if (enable.known) {
         calls.now = enable.time;
-        calls.inFixedStep = enable.invokeOnFixedClock;
         calls.fixedNow = enable.fixedTime;
         for (TangleObj& s : tangles)
             if (!s.enemy->enemyBehaviour->targetPlayer) s.enemy->enemyBehaviour->StartTargetingPlayerAfterTime(Bits(start["targetDelay"]));

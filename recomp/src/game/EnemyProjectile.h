@@ -158,6 +158,15 @@ public:
     // OnCollisionEnter2D as it's called, before (after = false) and after (checks).
     std::function<void(EnemyProjectile&, const Collision2D&, bool after)> onCollisionEnter;
 
+    // Rigidbody2D.GetContacts(ContactPoint2D[]) on a projectile's body between steps: how many
+    // points it hands back. A ContactPoint2D per manifold point of the contacts the last
+    // simulation (b2World::Step) left touching, so none for a trigger's (a sensor has no
+    // manifold) and none for a contact paired at the step's end but not yet collided (the
+    // shot meeting a LevelBoundary: [] at the start of the step whose OnCollisionEnter2D it
+    // is); and none once the shot is a trigger, its shape made again by the isTrigger change
+    // (enemy_BrokenGolemTurret.jsonl: [] at all 605 of its rows).
+    int GetContactsCount(const EnemyProjectile& p) const;
+
     // EnemyPhysics::Companion.
     void Sync() override;
     void AfterWorldStep() override;
@@ -172,6 +181,8 @@ private:
     // (projectile, other fixture) pairs touching after the last step; the enters of this one.
     std::vector<std::pair<const EnemyProjectile*, const b2Fixture*>> touching_;
     std::vector<std::pair<EnemyProjectile*, Collision2D>> enters_;
+    // (projectile, manifold points) of those, after the last step (GetContactsCount).
+    std::vector<std::pair<const EnemyProjectile*, int>> points_;
 };
 
 // The script a projectile prefab carries, as its C++ class (BrokenGolemTurretProjectile); a

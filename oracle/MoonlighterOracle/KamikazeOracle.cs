@@ -430,7 +430,9 @@ namespace MoonlighterOracle
     /// hooks:
     ///   - "attackHit": GolemKamikazeBehaviour.AttackHit overrides EnemyBehaviour.AttackHit
     ///     without calling it, so the generic AttackHitHook never sees its OnTriggerEnter2D; this
-    ///     one adds the same event;
+    ///     one adds the same event (recordings without "attackEnters"); since, its attack
+    ///     collider's enters are EnemyOracle's "attackEnter", and this records only calls from
+    ///     elsewhere, as AttackHitHook does;
     ///   - "anim" callers: a clip-event method its own clip-event methods call (StopOnExplode's
     ///     ForbidEnemyMovement; anything CreateExplosionToDamageEnemies' damage or SelfDestroy's
     ///     Die reach) is a script's call, not the Animator's. ScriptCaller finds the caller on the
@@ -444,6 +446,7 @@ namespace MoonlighterOracle
         {
             private static void Prefix(GolemKamikazeBehaviour __instance, GameObject other)
             {
+                if (attackEnterDepth > 0) return; // (recorded as "attackEnter": EnemyOracle.AttackTriggerHook)
                 int id = Id(__instance);
                 if (id >= 0) Add(new Ev { k = "attackHit", s = id, step = Step, player = other != null && other.CompareTag("Player"), other = other != null ? other.name : null });
             }

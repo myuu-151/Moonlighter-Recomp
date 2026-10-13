@@ -22,7 +22,12 @@
 //     here at once); played, its pool entry is used up (refilled when empty);
 //   - linked groups: All plays each, OneAtRandom draws Range(0, count) and plays it.
 // "Still playing" is the variation's clip length from its start on the caller's clock (the
-// game's AudioSource time, which a pitch would change: not modelled).
+// game's AudioSource time, which a pitch would change: not modelled). Its AudioSource only
+// starts in MasterAudio's LateUpdate (SoundGroupVariation.Play enables its updater, whose
+// ManualUpdate calls PlaySoundAndWait: PlayScheduled), so in the frame it was played it isn't
+// playing yet: a second PlaySound of it in that frame plays it again, with its draws
+// (enemy_BrokenGolemTurret.jsonl: both turrets' PlayShootSound in one animation pass, one draw
+// each).
 //
 // Checked against the game for golem_dungeon_soldier_sword_crash (enemy_GolemSoldier.jsonl:
 // one draw a play, the loops' Range(1, 6)); the pools, limits and retriggers aren't recorded yet.
@@ -46,8 +51,9 @@ public:
         bool useIntroSilence = false, useRandomStartTime = false;
         float introSilenceMin = 0.0f, introSilenceMax = 0.0f, randomStartMinPercent = 0.0f, randomStartMaxPercent = 0.0f;
         float clipLength = 0.0f;
-        // State: when it last started (the caller's clock), -1: never.
+        // State: when it last started (the caller's clock), -1: never; in which frame.
         double startedAt = -1.0;
+        int startedFrame = -1000000;
     };
     struct Group {
         std::string name;
@@ -92,7 +98,10 @@ public:
 
 private:
     bool PlayAtVolume(Group& g, double time, int frame, bool triggeredAsChildGroup);
-    bool PlayIfAvailable(Group& g, Variation& v, double time);
+    bool PlayIfAvailable(Group& g, Variation& v, double time, int frame);
+    // Its AudioSource playing at `time` in `frame` (AudioSource.isPlaying): started in an earlier
+    // frame's LateUpdate, its clip not over.
+    static bool SourcePlaying(const Variation& v, double time, int frame);
     void Refill(Group& g);
     void Shuffle(std::vector<int>& list);
     std::vector<Group> groups_;
