@@ -414,6 +414,25 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         roomTriggers.Add(ColliderFrom(c));
     }
     for (const unity::Collider2D& c : roomTriggers.Colliders()) world.AddCollider(c);
+    // The room's PolygonCollider2D triggers without a body (its slime puddles), cut into convex
+    // pieces as Unity cuts them (unity/PolygonCollider2D.h): an attack trigger on a Kinematic body
+    // enters them, once per collider (enemy_KamikazeGolem.jsonl of recq kamifix-2, frame 194: the
+    // KamikazeGolem's explosion box on DungeonLevelRoomSlime/Collider_3). Compared as the room's
+    // colliders' enters are, not as the breakables' (their names aren't in triggerNames).
+    unity::Physics2D roomPolygonTriggers;
+    for (const Value& c : colliders) {
+        const std::string body = c.Find("body") ? c["body"].s : "none";
+        if (body != "none" || !c["trigger"].b || !c["enabled"].b || c["type"].s != "PolygonCollider2D") continue;
+        std::vector<std::vector<Vector2>> paths;
+        for (const Value& path : c["paths"].arr) {
+            paths.emplace_back();
+            for (size_t k = 0; k + 1 < path.arr.size(); k += 2) paths.back().push_back({Bits(path[k]), Bits(path[k + 1])});
+        }
+        unity::Collider2D polygon = ColliderFrom(c);
+        unity::SetPolygonColliderShapes(polygon, paths);
+        roomPolygonTriggers.Add(polygon);
+    }
+    for (const unity::Collider2D& c : roomPolygonTriggers.Colliders()) world.AddCollider(c);
     // Their objects' names (an OnTriggerEnter2D's other).
     std::vector<std::string> triggerNames;
     for (const unity::Collider2D& c : roomTriggers.Colliders()) triggerNames.push_back(c.path.substr(c.path.rfind('/') + 1));

@@ -662,6 +662,11 @@ public:
             bool carried = false;
             for (const auto& c : owner_.carried_) carried = carried || (c.first == e->attackFixture && c.second == other);
             if (carried) continue;
+            // One OnTriggerEnter2D per collider: a room collider of several fixtures (a
+            // PolygonCollider2D's convex pieces) entered through another of them enters no more
+            // (enemy_KamikazeGolem.jsonl of recq kamifix-2, frame 194: the explosion box, growing
+            // over a slime puddle's pieces, enters DungeonLevelRoomSlime/Collider_3 once).
+            if (owner_.InColliderAlready(*e, e->attackFixture, other)) continue;
             Hit hit;
             hit.enemy = e;
             hit.player = owner_.hero_ && other->GetBody() == owner_.hero_->Body() && !other->IsSensor();
@@ -833,6 +838,24 @@ void EnemyPhysics::ReportTriggers()
     // the dead too: AttackHit checks).
     for (const Hit& h : hits_)
         if (!h.enemy->destroyed && h.enemy->active && h.enemy->enemyBehaviour) h.enemy->enemyBehaviour->AttackHitOther(OtherOf(h));
+}
+
+bool EnemyPhysics::InColliderAlready(const Enemy& enemy, const b2Fixture* attack, const b2Fixture* other) const
+{
+    const unity::Collider2D* collider = world_.ColliderOf(other);
+    if (!collider) return false;
+    auto same = [&](const b2Fixture* f) { return f && f != other && world_.ColliderOf(f) == collider; };
+    for (const Hit& h : hits_)
+        if (h.enemy == &enemy && same(h.other)) return true;
+    for (const auto& c : carried_)
+        if (c.first == attack && same(c.second)) return true;
+    for (const b2ContactEdge* ce = attack->GetBody()->GetContactList(); ce; ce = ce->next) {
+        const b2Contact* c = ce->contact;
+        if (!c->IsTouching()) continue;
+        if (c->GetFixtureA() == attack && same(c->GetFixtureB())) return true;
+        if (c->GetFixtureB() == attack && same(c->GetFixtureA())) return true;
+    }
+    return false;
 }
 
 Enemy* EnemyPhysics::RootOf(const b2Fixture* fixture) const

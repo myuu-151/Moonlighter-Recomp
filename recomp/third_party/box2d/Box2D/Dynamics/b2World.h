@@ -158,6 +158,12 @@ public:
 	void SetContinuousBulletsOnly(bool flag) { m_continuousBulletsOnly = flag; }
 	bool GetContinuousBulletsOnly() const { return m_continuousBulletsOnly; }
 
+	/// ML port: a sensor on or against a kinematic body pairs with a static or kinematic one
+	/// too (Unity's triggers on a Kinematic Rigidbody2D); stock Box2D pairs nothing without a
+	/// dynamic body.
+	void SetKinematicTriggers(bool flag) { m_contactManager.m_kinematicTriggers = flag; }
+	bool GetKinematicTriggers() const { return m_contactManager.m_kinematicTriggers; }
+
 	/// Enable/disable single stepped continuous physics. For testing.
 	void SetSubStepping(bool flag) { m_subStepping = flag; }
 	bool GetSubStepping() const { return m_subStepping; }

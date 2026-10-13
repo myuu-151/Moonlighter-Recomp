@@ -22,6 +22,7 @@
 #include <Box2D/Collision/b2BroadPhase.h>
 
 class b2Contact;
+class b2Fixture; // ML port (BodiesPair)
 class b2ContactFilter;
 class b2ContactListener;
 class b2BlockAllocator;
@@ -40,6 +41,12 @@ public:
 	void Destroy(b2Contact* c);
 
 	void Collide();
+
+	/// ML port: whether the bodies of two fixtures pair. b2Body::ShouldCollide (one of them
+	/// dynamic, no joint against it), or, with m_kinematicTriggers, a sensor between a
+	/// kinematic body and a static or kinematic one (Unity's triggers on a Kinematic
+	/// Rigidbody2D).
+	bool BodiesPair(b2Fixture* fixtureA, b2Fixture* fixtureB) const;
             
 	b2BroadPhase m_broadPhase;
 	b2Contact* m_contactList;
@@ -47,6 +54,7 @@ public:
 	b2ContactFilter* m_contactFilter;
 	b2ContactListener* m_contactListener;
 	b2BlockAllocator* m_allocator;
+	bool m_kinematicTriggers; // ML port (b2World::SetKinematicTriggers)
 };
 
 #endif

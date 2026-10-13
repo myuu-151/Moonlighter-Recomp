@@ -29,6 +29,16 @@ Unity 2019.2's 2D physics is a fork of Box2D. This is stock Box2D 2.3.1, which
   Discrete golem flies 0.18 into a Kinematic wall in one step and is pushed out over the next
   ones).
 
+- `Dynamics/b2ContactManager.h`, `b2ContactManager.cpp`, `b2World.h`: `SetKinematicTriggers`
+  (default off, as stock). On, two fixtures whose bodies `b2Body::ShouldCollide` turns away
+  (neither dynamic) still pair when one of them is a sensor and one of the bodies is kinematic
+  (`b2ContactManager::BodiesPair`, in `AddPair` and in `Collide`'s refiltering): Unity reports a
+  trigger on or against a Kinematic Rigidbody2D with static colliders and Kinematic bodies.
+  `PhysicsWorld` turns it on (`PhysicsWorld::Options::kinematicTriggers`). The recording that
+  shows it: `enemy_KamikazeGolem.jsonl` of recq kamifix-2 (frames 191-194: the KamikazeGolem's
+  growing explosion box, a trigger on its AttackCollider's own Kinematic body, enters the room's
+  LowerBoundary, DoorBoundaryRight and a puddle's Collider_3).
+
 Every other tuning constant already matches the project's Physics2DSettings
 (`data/extracted/physics2d.json`): linear slop 0.005 (polygon radius 0.01 = the default contact
 offset), Baumgarte 0.2, TOI Baumgarte 0.75, max linear correction 0.2, max angular correction 8

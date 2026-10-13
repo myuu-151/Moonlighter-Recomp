@@ -519,6 +519,9 @@ private:
     // The attack fixtures this step's sync remade: what they touch in its collide starts its rest
     // over (EnemyPhysics::Listener).
     std::vector<const b2Fixture*> remade_;
+    // Whether `attack` is in `other`'s collider already through another of its fixtures (a
+    // PolygonCollider2D's convex pieces): touching it, entered this step, or carried by a remake.
+    bool InColliderAlready(const Enemy& enemy, const b2Fixture* attack, const b2Fixture* other) const;
     std::vector<Companion*> companions_;
 };
 

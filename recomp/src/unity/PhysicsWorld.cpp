@@ -99,6 +99,7 @@ PhysicsWorld::PhysicsWorld(const Physics2DSettings& settings, const Options& opt
     world_->SetContactFilter(filter_);
     world_->SetContinuousPhysics(options_.continuousPhysics);
     world_->SetContinuousBulletsOnly(options_.continuousBulletsOnly);
+    world_->SetKinematicTriggers(options_.kinematicTriggers);
     b2BodyDef ground;
     ground.type = b2_staticBody;
     ground_ = world_->CreateBody(&ground);

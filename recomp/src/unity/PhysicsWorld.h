@@ -110,6 +110,12 @@ public:
         // enemy_FlyingKamikazeGolem.jsonl, frame 119: the Discrete golem flies 0.18 into a Kinematic
         // wall in one step and is pushed out over the next ones (third_party/box2d/README.md).
         bool continuousBulletsOnly = true;
+        // A trigger on a Kinematic Rigidbody2D, or against one, pairs with static colliders and
+        // Kinematic bodies too (stock Box2D: only with a dynamic body). enemy_KamikazeGolem.jsonl
+        // of recq kamifix-2, frames 191-194: the KamikazeGolem's growing explosion box, a trigger
+        // on its AttackCollider's own Kinematic body, enters the room's LowerBoundary,
+        // DoorBoundaryRight and a puddle's Collider_3 (third_party/box2d/README.md).
+        bool kinematicTriggers = true;
     };
 
     // (Two constructors, not a defaulted Options argument: GCC wants Options' member
