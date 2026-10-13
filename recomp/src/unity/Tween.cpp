@@ -59,6 +59,13 @@ float EaseEvaluate(Ease ease, float time, float duration)
         const double t = static_cast<double>(static_cast<float>(q));
         return static_cast<float>(q * t * t * t * t + 1.0);
     }
+    // ((time = time / duration - 1) * time * time + 1): OutQuint's IL with two factors after the
+    // unrounded first (EnemyBehaviour.MakeJump's rise).
+    case Ease::OutCubic: {
+        const double q = static_cast<double>(time) / static_cast<double>(duration) - 1.0;
+        const double t = static_cast<double>(static_cast<float>(q));
+        return static_cast<float>(q * t * t + 1.0);
+    }
     }
     return time / duration;
 }
@@ -136,6 +143,28 @@ void Tweens::OnComplete(int id, std::function<void()> callback)
         }
 }
 
+void Tweens::SetTarget(int id, const void* target)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id) {
+            t.target = target;
+            return;
+        }
+}
+
+int Tweens::KillTarget(const void* target)
+{
+    if (!target) return 0;
+    int killed = 0;
+    for (size_t i = tweens_.size(); i-- > 0;)
+        if (tweens_[i].target == target) {
+            tweens_.erase(tweens_.begin() + static_cast<long>(i));
+            killed++;
+        }
+    killedTargetsPending_.push_back(target); // (one completing in this update: its callback won't run)
+    return killed;
+}
+
 int Tweens::Timer(float duration, float delay, std::function<void()> onComplete)
 {
     Tween t;
@@ -186,17 +215,24 @@ void Tweens::Update(float deltaTime, float unscaledDeltaTime)
     // Completed ones go (their callbacks run in order, after this frame's values are set; one
     // that an earlier callback kills doesn't run).
     std::vector<std::pair<int, std::function<void()>>> callbacks;
+    std::vector<const void*> targets; // (each callback's tween's target)
     for (size_t k = done.size(); k-- > 0;) {
-        if (tweens_[done[k]].onComplete) callbacks.insert(callbacks.begin(), {tweens_[done[k]].id, std::move(tweens_[done[k]].onComplete)});
+        if (tweens_[done[k]].onComplete) {
+            callbacks.insert(callbacks.begin(), {tweens_[done[k]].id, std::move(tweens_[done[k]].onComplete)});
+            targets.insert(targets.begin(), tweens_[done[k]].target);
+        }
         tweens_.erase(tweens_.begin() + static_cast<long>(done[k]));
     }
     killedPending_.clear();
-    for (auto& [id, cb] : callbacks) {
+    killedTargetsPending_.clear();
+    for (size_t n = 0; n < callbacks.size(); n++) {
         bool killed = false;
-        for (int k : killedPending_) killed |= k == id;
-        if (!killed) cb();
+        for (int k : killedPending_) killed |= k == callbacks[n].first;
+        for (const void* k : killedTargetsPending_) killed |= targets[n] && k == targets[n];
+        if (!killed) callbacks[n].second();
     }
     killedPending_.clear();
+    killedTargetsPending_.clear();
 }
 
 } // namespace unity

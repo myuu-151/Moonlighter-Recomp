@@ -38,6 +38,10 @@ public:
     void Wait(const void* owner, float seconds, std::function<void()> resume);
     // Object.Destroy(obj, t): `destroy` once due.
     void Destroy(const void* owner, float seconds, std::function<void()> destroy);
+    // Object.Destroy(obj) (no delay): `destroy` at the frame's end, after the LateUpdates (the
+    // engine's delayed pass after them; EndOfFrame runs these). Forget drops it too.
+    void DestroyAtFrameEnd(const void* owner, std::function<void()> destroy);
+    void EndOfFrame();
     // StopAllCoroutines (the object was deactivated): its waits go, its invokes stay.
     void StopCoroutines(const void* owner);
     // The owner is gone (destroyed): all of its calls go.
@@ -62,6 +66,7 @@ private:
         long long pass = -1; // the pass it was made in (-1: between passes)
         bool fixedPass = false; // made inside a fixed step: the fixed passes run it too
         bool cancelled = false;
+        bool frameEnd = false; // DestroyAtFrameEnd's
     };
     void Add(const void* owner, const std::string& name, Kind kind, double base, float delay, std::function<void()> fn, float repeat);
     void Pass(double time, bool fixedPass);

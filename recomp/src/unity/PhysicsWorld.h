@@ -122,6 +122,9 @@ public:
     // A body with one BoxCollider2D (local offset and size, density 1), its transform at
     // `position` on `layer`.
     Rigidbody2D& AddBody(const Rigidbody2DDef& def, Vector2 position, int layer, Vector2 boxOffset, Vector2 boxSize);
+    // A body with no collider yet (a child's Rigidbody2D whose box comes and goes: the
+    // KamikazeGolem's AttackCollider), its transform at `position` on `layer`.
+    Rigidbody2D& AddBody(const Rigidbody2DDef& def, Vector2 position, int layer);
 
     // gameObject.layer = layer (Unity refilters its fixtures).
     void SetLayer(Rigidbody2D& body, int layer);

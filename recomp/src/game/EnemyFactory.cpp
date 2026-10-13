@@ -5,6 +5,7 @@
 #include "game/FlyingKamikazeGolem.h"
 #include "game/GolemSoldier.h"
 #include "game/HermitSlime.h"
+#include "game/KamikazeGolem.h"
 #include "game/Tangle.h"
 
 namespace game {
@@ -50,6 +51,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour && b.cls == "FlyingKamikazeGolemBehaviour") { // (game/FlyingKamikazeGolem.h)
             enemy->enemyBehaviour = MakeFlyingKamikazeGolemBehaviour(*enemy, b);
+            behaviourFields = &b;
+        } else if (!enemy->enemyBehaviour && b.cls == "GolemKamikazeBehaviour") { // (game/KamikazeGolem.h)
+            enemy->enemyBehaviour = MakeGolemKamikazeBehaviour(*enemy, b);
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour) {
             if (auto behaviour = MakeBehaviour(b.cls, prefab.name, *enemy)) {
@@ -97,6 +101,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
                     enemy->attackOffset = {c.ox, c.oy};
                     enemy->attackSize = {c.sx, c.sy};
                     enemy->attackLayer = n.objectLayer;
+                    // A Rigidbody2D of its own (the KamikazeGolem's Kinematic one).
+                    enemy->attackHasRigidbody = n.hasRigidbody;
+                    enemy->attackRigidbody = n.rigidbody;
                     break;
                 }
         // A child hurtbox (EnemyDamageReceiver, game/Enemy.h): its box, and the behaviour it

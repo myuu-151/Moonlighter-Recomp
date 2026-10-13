@@ -654,7 +654,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
         for (const Value& ev : events.arr) {
             const std::string& kind = ev["k"].s;
             // (The hero's ActionArea triggers, which touch the enemies' too, are there all along.)
-            if (ev["step"].AsInt() == 0 &&
+            // (A hit an enemy dealt ("by": the KamikazeGolem's) is the port's own doing.)
+            if (ev["step"].AsInt() == 0 && !ev.Find("by") &&
                 (kind == "push" || kind == "dmgToEnemy" || (kind == "attackHit" && !ev["player"].b && ev["other"].IsString() && ev["other"].s == "Collider"))) {
                 world.FixtureMadeElsewhere();
                 break;
@@ -739,6 +740,7 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
                 game::Enemy* e = enemyById(static_cast<int>(ev["s"].AsInt()));
                 if (kind == "dmgToPlayer") gameDamage.emplace_back(static_cast<int>(ev["s"].AsInt()), Bits(ev["str"]));
                 if (!e) continue;
+                if (kind == "dmgToEnemy" && ev.Find("by")) continue; // (an enemy's hit: the port deals it itself)
                 if (kind == "dmgToEnemy") {
                     hero.position = V2(ev["hero"]);
                     t.Add("health before a weapon hit", Same(e->enemyStats.CurrentHealth(), Bits(ev["hp0"])),
@@ -832,6 +834,8 @@ int ReplayRecording(const std::string& file, const ReplayData& data)
             game::Enemy* e = enemyById(static_cast<int>(id.AsInt()));
             if (e && !e->destroyed && e->active) e->navAgent.LateUpdate(dt);
         }
+        // Object.Destroy(gameObject) made this frame (the KamikazeGolem's SelfDestroy): gone now.
+        calls.EndOfFrame();
         // Dead sprites spawned this frame (in order, where).
         std::vector<Vector2> gameDead;
         for (const Value& ev : events.arr)
