@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DECOMP = ROOT / 'decomp' / 'Assembly-CSharp'
 OUT = ROOT / 'progress'
 README = ROOT / 'README.md'
+BARS = ROOT / 'progress' / 'bars'
 
 # Folders (namespaces) that aren't the game's own code.
 EXCLUDED_DIRS = (
@@ -96,9 +97,32 @@ def read_tsv(path):
     return out
 
 
-def bar(fraction, width=20):
-    full = round(fraction * width)
-    return '█' * full + '░' * (width - full)
+def bar_svg(name, ported, verified, width=160, height=12, label=None):
+    """progress/bars/<name>.svg: a rounded bar, the ported share in gold and the verified share in
+    green over it (the tray icon's colours), on a grey track that reads on light and dark pages.
+    With a label, the text sits to the right of the bar. Returns the README's relative path."""
+    BARS.mkdir(parents=True, exist_ok=True)
+    text_w = 56 if label else 0
+    r = height / 2
+    pw = max(0.0, min(1.0, ported)) * width
+    vw = max(0.0, min(1.0, verified)) * width
+    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width + text_w}" height="{height}" viewBox="0 0 {width + text_w} {height}">',
+           f'<clipPath id="c"><rect width="{width}" height="{height}" rx="{r}"/></clipPath>',
+           '<g clip-path="url(#c)">',
+           f'<rect width="{width}" height="{height}" fill="#8b949e" fill-opacity="0.3"/>',
+           f'<rect width="{pw:.2f}" height="{height}" fill="#e8b43c"/>',
+           f'<rect width="{vw:.2f}" height="{height}" fill="#5ac86e"/>',
+           '</g>']
+    if label:
+        svg.append(f'<text x="{width + 8}" y="{height * 0.8:.1f}" font-family="Segoe UI,Helvetica,Arial,sans-serif" '
+                   f'font-size="{height * 0.85:.1f}" font-weight="600" fill="#8b949e">{label}</text>')
+    svg.append('</svg>')
+    (BARS / f'{name}.svg').write_text('\n'.join(svg) + '\n', encoding='utf-8', newline='\n')
+    return f'progress/bars/{name}.svg'
+
+
+def slug(name):
+    return re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
 
 
 def colour(pct):
@@ -160,9 +184,9 @@ def report():
         'oracle\'s recordings. Third-party libraries, platform code and editor tools aren\'t counted; '
         'partly ported classes count by an estimated fraction (`progress/ported.tsv`).',
         '',
-        '```',
-        f'{"total":<24} {bar(done / total, 30)} {pct:5.1f}%',
-        '```',
+        f'<img src="{bar_svg("total", done / total, verified / total, width=360, height=18, label=f"{pct:.1f}%")}" alt="{pct:.1f}% ported, {vpct:.1f}% verified">',
+        '',
+        '<sub>gold: ported · green: verified against the game</sub>',
         '',
         '| Area | Lines | Ported | Verified | |',
         '|---|---:|---:|---:|---|',
@@ -173,7 +197,8 @@ def report():
             continue
         p = c['ported'] / c['lines'] if c['lines'] else 0.0
         v = c['verified'] / c['lines'] if c['lines'] else 0.0
-        lines.append(f'| {name} | {c["lines"]:,} | {100 * p:.1f}% | {100 * v:.1f}% | `{bar(p)}` |')
+        img = bar_svg(slug(name), p, v)
+        lines.append(f'| {name} | {c["lines"]:,} | {100 * p:.1f}% | {100 * v:.1f}% | <img src="{img}" alt="{100 * p:.1f}%"> |')
     lines += ['', '_Updated by `tools/progress.py` on every commit._ On Windows, `py tools/tray_progress_startup.py` puts the same numbers next to the taskbar clock (`tools/tray_progress.ps1`), starting with Windows.', '<!-- progress:end -->']
     section = '\n'.join(lines)
 
