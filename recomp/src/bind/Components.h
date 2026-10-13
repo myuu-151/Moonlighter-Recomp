@@ -208,10 +208,17 @@ public:
     std::function<void(Animator&, const unity::AnimationEvent&, bool after)> onEvent;
 
     void cs_Attached() override;
+    void cs_ActiveChanged(bool active) override;
     Object* cs_Clone() override;
 
+protected:
+    void cs_EnabledChanged(bool enabled) override;
+
 private:
-    void Bind(); // the properties' targets and defaults, as the objects are now
+    // The properties' targets and defaults (what Write Defaults restores), as the objects are now:
+    // when it's first enabled and active (Unity's OnEnable binds them: a prefab's values, before a
+    // script or a replay moves anything), else at its first pass.
+    void Bind();
     void Apply(); // the properties the pass wrote
     float Read(GameObject* target, const unity::AnimatedProperty& p);
     void Write(GameObject* target, const unity::AnimatedProperty& p, float value);

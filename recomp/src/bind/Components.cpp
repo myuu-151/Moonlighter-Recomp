@@ -90,6 +90,16 @@ void Animator::cs_Attached()
     if (S()) S()->animators.push_back(this);
 }
 
+void Animator::cs_ActiveChanged(bool active)
+{
+    if (active && enabled_ && anim_ && !bound_) Bind();
+}
+
+void Animator::cs_EnabledChanged(bool enabled)
+{
+    if (enabled && anim_ && !bound_ && gameObject_ && gameObject_->get_activeInHierarchy()) Bind();
+}
+
 void Animator::SetController(const unity::AnimatorController* controller)
 {
     controller_ = controller;

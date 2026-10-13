@@ -1,24 +1,28 @@
-// The BabySlime recordings (data/oracle/slime.jsonl, slime_bis.jsonl) replayed against the
-// game's own code translated (tools/translate: BabySlimeBehaviour, EnemyBehaviour, Enemy,
-// EnemyStats, EnemyAttackCollisionDetection, PolyNavAgent, PolyNav2D, AStar, the stats' JSON
-// reader...), running on the Unity facade (recomp/src/bind) over the hand-written Unity layer.
+// The Golem enemies' recordings (data/oracle/slime.jsonl, slime_bis.jsonl, enemy_<prefab>.jsonl)
+// replayed against the game's own code translated (tools/translate: BabySlimeBehaviour,
+// GolemSoldierBehaviour, EnemyBehaviour, Enemy, EnemyStats, EnemyAttackCollisionDetection,
+// EnemyDamageReceiver, PolyNavAgent, PolyNav2D, AStar, the stats' JSON reader...), running on the
+// Unity facade (recomp/src/bind) over the hand-written Unity layer.
 //
-// The replay is the hand port's (tests/enemy_replay.h, slime_test: the same recording, the same
-// rows, the same pass criterion) with the translated objects in place of game::Enemy: the room's
-// slimes made from their prefab (prefabs.json, animators/BabySlime.json) under the room's
-// objects, Init'ed by the game's code (EnemyStats.Init from enemy_stats.json through
-// EnemyStatManager), their recorded state put back into the translated fields, then every frame
-// as the game ran it: the fixed steps (the hero's body as each found it, the physics with its
-// trigger messages to EnemyAttackCollisionDetection, the weapon's hits and pushes where they
-// landed: Enemy.DealDamageToEnemy, Weapon.PushEnemyBackwards), DOTween, the slimes' Updates in
-// the game's order (each from the Random state and the hero position it had), the delayed calls
-// (Invoke, WaitForSeconds, Destroy(obj, t)), the coroutines on yield null (the paths), the
-// Animators, PolyNav2D's and the agents' LateUpdates. Compared bit for bit per frame and slime as
-// the hand port compares them. The scene's other services are the stand-ins of
-// recomp/tests/translated/scene/Standins.cpp.
+// The replay is the hand port's (tests/enemy_replay.h with enemy_replay_colliders.h, as slime_test
+// and enemy_test run it: the same recording, the same rows, the same pass criterion) with the
+// translated objects in place of game::Enemy: the room's enemies made from their prefab
+// (prefabs.json, animators/<prefab>.json) under the room's objects, Init'ed by the game's code
+// (EnemyStats.Init from enemy_stats.json through EnemyStatManager), their recorded state put back
+// into the translated fields, then every frame as the game ran it: the fixed steps (the hero's
+// body as each found it, the physics with its trigger messages to EnemyAttackCollisionDetection,
+// the weapon's hits and pushes where they landed: Enemy.DealDamageToEnemy, or a hurtbox's
+// EnemyDamageReceiver.DealDamageToEnemy, Weapon.PushEnemyBackwards), DOTween, the enemies'
+// Updates in the game's order (each from the Random state and the hero position it had), the
+// delayed calls (Invoke, WaitForSeconds, Destroy(obj, t)), the coroutines on yield null (the
+// paths), the Animators, PolyNav2D's and the agents' LateUpdates. Compared bit for bit per frame
+// and enemy as the hand port compares them. The scene's other services are the stand-ins of
+// recomp/tests/translated/scene/Standins.cpp. The probes newer recordings carry are read by the
+// hand port's own helpers (tests/enable_clock.h, fixture_probe.h, polygon_probe.h).
 //
-// Usage: slime_translated_test [slime.jsonl]   (ML_DATA: the extracted data, default data/extracted;
-//        ML_SLIME_DEBUG=1: every mismatch)
+// Usage: enemy_translated_test [recording.jsonl] [prefab]   (default data/oracle/slime.jsonl
+//        BabySlime; ML_DATA: the extracted data, default data/extracted; ML_SLIME_DEBUG=1: every
+//        mismatch)
 
 #include <algorithm>
 #include <cmath>
@@ -44,8 +48,13 @@
 #include "unity/Animator.h"
 #include "unity/Physics2D.h"
 #include "unity/PhysicsWorld.h"
+#include "unity/PolygonCollider2D.h"
 #include "unity/Random.h"
 #include "util/Json.h"
+
+#include "../enable_clock.h"
+#include "../fixture_probe.h"
+#include "../polygon_probe.h"
 
 namespace {
 
@@ -94,6 +103,7 @@ std::string ReadFile(const std::string& path)
     return ss.str();
 }
 cs::String* S(const std::string& s) { return cs::String::FromUtf8(s); }
+std::string Utf8(cs::String* s) { return s ? s->ToUtf8() : std::string(); }
 
 struct Tally {
     std::map<std::string, std::pair<int, int>> rows;
@@ -151,7 +161,8 @@ unity::Collider2D ColliderFrom(const Value& v)
     return c;
 }
 
-// A hole region's outline back to the tiles it covers (tests/enemy_replay.h's).
+// A hole region's outline back to the tiles it covers, for the queries, and its convex pieces for
+// the physics world (tests/enemy_replay.h's).
 unity::Collider2D HoleFrom(const Value& v)
 {
     std::vector<std::vector<Vector2>> paths;
@@ -178,9 +189,11 @@ unity::Collider2D HoleFrom(const Value& v)
             if (j == 10) y1 += 10.0f;
             c.parts.emplace_back(Vector2{c.position.x + x0, c.position.y + y0}, Vector2{c.position.x + x1, c.position.y + y1});
         }
+    unity::SetPolygonColliderShapes(c, paths);
     return c;
 }
 
+// The hero's own triggers (his ActionAreas, his weapon's "Collider"): not in the replay's world.
 bool HerosTrigger(const std::string& name)
 {
     const std::string area = "ActionArea";
@@ -193,40 +206,91 @@ std::string Leaf(const std::string& path)
     return slash == std::string::npos ? path : path.substr(slash + 1);
 }
 
-// ---- the translated slimes ------------------------------------------------------------------------------
+// ---- the translated enemies ------------------------------------------------------------------------------
 
-struct Slime {
+struct Replayed {
     int id = 0;
     GameObject* go = nullptr;
     gen::Enemy* enemy = nullptr;
     gen::EnemyBehaviour* behaviour = nullptr;
     gen::PolyNavAgent* agent = nullptr;
     UnityEngine::Rigidbody2D* rb = nullptr;
+    UnityEngine::BoxCollider2D* box = nullptr; // the root's (the body's own)
     UnityEngine::Animator* animator = nullptr;
-    GameObject* attack = nullptr;
+    GameObject* attack = nullptr; // its AttackCollider (none: the turret's)
     UnityEngine::BoxCollider2D* attackBox = nullptr;
     bool Gone() const { return !go || go->destroyed_; }
 };
 
-Vector2 Position(const Slime& s) { return XY(s.go->transform_->get_position()); }
-Vector2 Local(const Slime& s) { return XY(s.go->transform_->localPosition_); }
-float Health(const Slime& s) { return s.enemy->enemyStats->_currentHealth; }
-std::string SpriteOf(const Slime& s) { return s.enemy->enemySprite ? s.enemy->enemySprite->SpriteName() : std::string(); }
-UnityEngine::Material* MaterialOf(const Slime& s) { return s.enemy->enemySprite->get_material(); }
+Vector2 Position(const Replayed& s) { return XY(s.go->transform_->get_position()); }
+Vector2 Local(const Replayed& s) { return XY(s.go->transform_->localPosition_); }
+float Health(const Replayed& s) { return s.enemy->enemyStats->_currentHealth; }
+std::string SpriteOf(const Replayed& s) { return s.enemy->enemySprite ? s.enemy->enemySprite->SpriteName() : std::string(); }
+UnityEngine::Material* MaterialOf(const Replayed& s) { return s.enemy->enemySprite->get_material(); }
 
-bool SameAttack(const Slime& s, bool on, Vector2 size, Vector2 offset, Vector2 position)
+// A behaviour whose AttackHit override never calls EnemyBehaviour.AttackHit (enemy_replay.h's
+// AttackHitSkipsBase, by the class the game's prefab names).
+bool AttackHitSkipsBase(gen::EnemyBehaviour* b)
 {
-    return s.attackBox->enabled_ == on && Same(s.attackBox->size_, size) && Same(s.attackBox->offset_, offset) &&
+    const std::string n = b->cs_typename();
+    return n == "HermitSlimeBehaviourNEW" || n == "BrokenGolemTurretBehaviour" || n == "GolemKamikazeBehaviour";
+}
+
+bool SameAttack(const Replayed& s, bool on, Vector2 size, Vector2 offset, Vector2 position)
+{
+    return s.attackBox && s.attackBox->enabled_ == on && Same(s.attackBox->size_, size) && Same(s.attackBox->offset_, offset) &&
            Same(XY(s.attack->transform_->localPosition_), position);
 }
-std::string AttackStr(const Slime& s)
+std::string AttackStr(const Replayed& s)
 {
+    if (!s.attackBox) return "none";
     return std::string(s.attackBox->enabled_ ? "on" : "off") + " size " + Str(s.attackBox->size_) + " offset " + Str(s.attackBox->offset_) + " at " +
            Str(XY(s.attack->transform_->localPosition_));
 }
 
+// ---- the colliders' rows (tests/enemy_replay_colliders.h's: the root box, the body's centre of mass,
+// the hurtboxes, the damage types; the HermitSlime's patrol and drain aren't in the translation yet) ----
+
+// The hurtboxes as the oracle lists them: GetComponentsInChildren<EnemyDamageReceiver>(true) of
+// the behaviour, each by its object's name ("" the enemy's own).
+std::vector<gen::EnemyDamageReceiver*> Receivers(const Replayed& s)
+{
+    std::vector<gen::EnemyDamageReceiver*> out;
+    if (cs::Array<gen::EnemyDamageReceiver*>* a = s.behaviour->GetComponentsInChildren<gen::EnemyDamageReceiver*>(true))
+        for (int32_t i = 0; i < a->get_Length(); i++) out.push_back(a->at(i));
+    return out;
+}
+std::string ReceiverPath(const Replayed& s, gen::EnemyDamageReceiver* r) { return r->gameObject_ == s.go ? std::string() : Utf8(r->gameObject_->get_name()); }
+gen::EnemyDamageReceiver* Receiver(const Replayed& s, const std::string& path)
+{
+    for (gen::EnemyDamageReceiver* r : Receivers(s))
+        if (ReceiverPath(s, r) == path) return r;
+    return nullptr;
+}
+bool SameReceiver(gen::EnemyDamageReceiver* r, const Value& g)
+{
+    GameObject* go = r->gameObject_;
+    auto* rbox = go->GetComponent<UnityEngine::BoxCollider2D*>();
+    bool ok = go->activeSelf_ == g["active"].b && go->layer_ == g["layer"].AsInt() && Utf8(go->get_tag()) == g["tag"].s &&
+              Same(XY(go->transform_->localPosition_), V2(g["pos"])) && (r->gameObjectToAdvise != nullptr) == g["advise"].b;
+    if (g.Find("on"))
+        ok = ok && rbox && rbox->enabled_ == g["on"].b && rbox->isTrigger_ == g["trigger"].b && Same(rbox->offset_, V2(g["offset"])) &&
+             Same(rbox->size_, V2(g["size"]));
+    return ok;
+}
+void ReceiverRows(Tally& t, const Replayed& s, const Value& list, const std::string& what, const std::string& at)
+{
+    const std::vector<gen::EnemyDamageReceiver*> mine = Receivers(s);
+    bool ok = list.size() == mine.size();
+    for (const Value& g : list.arr) {
+        gen::EnemyDamageReceiver* r = Receiver(s, g["path"].s);
+        ok = ok && r && SameReceiver(r, g);
+    }
+    t.Add(what, ok, at + ": port " + std::to_string(mine.size()) + " game " + list.Dump());
+}
+
 struct Data {
-    std::string dir;
+    std::string dir, name;
     Value enemyStats, physics2d, soundGroups;
     std::unique_ptr<unity::AnimatorController> controller;
     const game::Prefab* prefab = nullptr;
@@ -235,11 +299,11 @@ struct Data {
 bool LoadData(Data& d)
 {
     d.dir = std::getenv("ML_DATA") ? std::getenv("ML_DATA") : "data/extracted";
-    const std::string prefabs = ReadFile(d.dir + "/prefabs.json"), anim = ReadFile(d.dir + "/animators/BabySlime.json"),
+    const std::string prefabs = ReadFile(d.dir + "/prefabs.json"), anim = ReadFile(d.dir + "/animators/" + d.name + ".json"),
                       physics = ReadFile(d.dir + "/physics2d.json"), sounds = ReadFile(d.dir + "/sound_groups.json");
     if (prefabs.empty() || anim.empty() || ReadFile(d.dir + "/constants.json").empty() || ReadFile(d.dir + "/enemy_stats.json").empty()) return false;
     game::PrefabLibrary::Load(json::Parse(prefabs));
-    d.prefab = game::PrefabLibrary::Find("BabySlime", "enemies_golem");
+    d.prefab = game::PrefabLibrary::Find(d.name, "enemies_golem");
     d.controller = std::make_unique<unity::AnimatorController>(unity::AnimatorController::FromJson(json::Parse(anim)));
     if (!physics.empty()) d.physics2d = json::Parse(physics);
     if (!sounds.empty()) d.soundGroups = json::Parse(sounds);
@@ -256,7 +320,7 @@ int Replay(const std::string& file, Data& data)
 {
     std::ifstream in(file);
     if (!in) {
-        std::printf("(no %s: skipping the oracle comparison; record it with -oracle-slime)\n", file.c_str());
+        std::printf("(no %s: skipping the oracle comparison; record it with -oracle-slime / -oracle-enemy=%s)\n", file.c_str(), data.name.c_str());
         return 0;
     }
     Value start;
@@ -274,6 +338,10 @@ int Replay(const std::string& file, Data& data)
     }
     if (start.IsNull() || enemyLines.empty() || frames.empty() || maps.empty()) {
         std::printf("%s: no start, enemies, frames or map\n", file.c_str());
+        return 1;
+    }
+    if (start["enemy"].s != data.name) {
+        std::printf("%s records %s, not %s\n", file.c_str(), start["enemy"].s.c_str(), data.name.c_str());
         return 1;
     }
     Tally t;
@@ -297,7 +365,11 @@ int Replay(const std::string& file, Data& data)
         const std::string body = c.Find("body") ? c["body"].s : "none";
         if (body == "Dynamic" || c["trigger"].b || !c["enabled"].b) continue;
         if (c["type"].s == "BoxCollider2D") roomColliders.Add(ColliderFrom(c));
-        else if (c["type"].s == "PolygonCollider2D" && c["tag"].s == "Hole") roomColliders.Add(HoleFrom(c));
+        else if (c["type"].s == "PolygonCollider2D" && c["tag"].s == "Hole") {
+            const unity::Collider2D hole = HoleFrom(c);
+            CheckPolygonProbe(t, c, hole); // (the oracle's probe of Unity's cut, where recorded)
+            roomColliders.Add(hole);
+        }
     }
     for (const unity::Collider2D& c : roomColliders.Colliders()) {
         std::string body = "none";
@@ -365,7 +437,7 @@ int Replay(const std::string& file, Data& data)
     auto setHeroPosition = [&](Vector2 p) { heroGo->transform_->set_position(UnityEngine::Vector3{p.x, p.y, 0.0f}); };
     setHeroPosition(V2(h["pos"]));
 
-    // ---- the game's services the slimes reach ----
+    // ---- the game's services the enemies reach ----
     const Value& sc = start["stats"];
     if (sc["ngp"].b || sc["dlc"].b) {
         std::printf("a New Game+ or DLC recording: GameManager's game slot isn't stood in for\n");
@@ -383,7 +455,7 @@ int Replay(const std::string& file, Data& data)
         DarkTonic::MasterAudio::MasterAudio::engine = &audio;
     else std::printf("(no sound_groups.json: MasterAudio's draws not made)\n");
 
-    // The room: Dungeon / <room> (DungeonRoom) / DungeonLevelEnemies / EnemySpawn / the slime.
+    // The room: Dungeon / <room> (DungeonRoom) / DungeonLevelEnemies / EnemySpawn / the enemy.
     const Value& chain0 = enemyLines[0]["chain"];
     auto at = [&](GameObject* g, Vector2 local) {
         g->transform_->localPosition_ = UnityEngine::Vector3{local.x, local.y, 0.0f};
@@ -435,21 +507,25 @@ int Replay(const std::string& file, Data& data)
     size_t nextMap = 0;
     for (; nextMap < maps.size() && maps[nextMap]["f"].AsInt() < 0; nextMap++) setMap(maps[nextMap]);
 
-    // ---- the slimes ----
-    std::vector<Slime> slimes;
-    auto byId = [&](int id) -> Slime* {
-        for (Slime& s : slimes)
+    // ---- the enemies ----
+    std::vector<Replayed> enemies;
+    auto byId = [&](int id) -> Replayed* {
+        for (Replayed& s : enemies)
             if (s.id == id) return &s;
         return nullptr;
     };
     auto idOf = [&](const gen::Enemy* e) {
-        for (const Slime& s : slimes)
+        for (const Replayed& s : enemies)
             if (s.enemy == e) return s.id;
         return -1;
     };
-    std::vector<std::pair<int, float>> portDamage;
+    std::vector<std::pair<int, float>> portDamage;   // (enemy, strength) this step
+    std::vector<std::pair<int, int>> portDamageTypes; // (enemy, HeroMerchant.DamageType) this step
     std::vector<Vector2> portDeadSprites;
-    standins::S().dealDamageToPlayer = [&](float strength, cs::String*, int, gen::Enemy* e) { portDamage.emplace_back(idOf(e), strength); };
+    standins::S().dealDamageToPlayer = [&](float strength, cs::String*, int type, gen::Enemy* e) {
+        portDamage.emplace_back(idOf(e), strength);
+        portDamageTypes.emplace_back(idOf(e), type);
+    };
     standins::S().spawnEnemyDeadSprite = [&](gen::DungeonRoom*, UnityEngine::Sprite*, UnityEngine::Vector3 p) { portDeadSprites.push_back(XY(p)); };
     std::map<int, std::vector<std::string>> portAnim;
     std::map<int, std::vector<const Value*>> gameAnim;
@@ -457,7 +533,7 @@ int Replay(const std::string& file, Data& data)
     int animResynced = 0;
     std::vector<std::string> skipped;
     for (const Value& v : enemyLines) {
-        Slime s;
+        Replayed s;
         s.id = static_cast<int>(v["s"].AsInt());
         const Value& chain = v["chain"];
         GameObject* spawn = GameObject::Create("EnemySpawn", levelEnemies->transform_);
@@ -471,11 +547,12 @@ int Replay(const std::string& file, Data& data)
         s.behaviour = s.go->GetComponent<gen::EnemyBehaviour*>();
         s.agent = s.go->GetComponent<gen::PolyNavAgent*>();
         s.rb = s.go->GetComponent<UnityEngine::Rigidbody2D*>();
+        s.box = s.go->GetComponent<UnityEngine::BoxCollider2D*>();
         s.animator = s.go->GetComponent<UnityEngine::Animator*>();
         s.attack = bind::FindBelow(s.go, "AttackCollider");
         s.attackBox = s.attack ? s.attack->GetComponent<UnityEngine::BoxCollider2D*>() : nullptr;
-        if (!s.enemy || !s.behaviour || !s.agent || !s.rb || !s.animator || !s.attackBox) {
-            std::printf("the BabySlime prefab didn't make its Enemy, behaviour, agent, body, Animator and attack trigger\n");
+        if (!s.enemy || !s.behaviour || !s.agent || !s.rb || !s.box || !s.animator) {
+            std::printf("the %s prefab didn't make its Enemy, behaviour, agent, body, box and Animator (a script not translated?)\n", data.name.c_str());
             return 1;
         }
         const int id = s.id;
@@ -495,7 +572,9 @@ int Replay(const std::string& file, Data& data)
                 return;
             }
             t.Add("Random draws in animation events (" + ev.function + ")", SameState(unity::Random::GetState(), State(game["rng1"])),
-                  "frame " + std::to_string(animFrame) + " enemy " + std::to_string(id));
+                  "frame " + std::to_string(animFrame) + " enemy " + std::to_string(id) + ": " +
+                      std::to_string(unity::Random::DrawsBetween(State(game["rng0"]), unity::Random::GetState(), 64)) + " draws, the game " +
+                      std::to_string(unity::Random::DrawsBetween(State(game["rng0"]), State(game["rng1"]), 64)));
             unity::Random::SetState(State(game["rng1"]));
         };
         // What spawned it set: its room, its dead sprite; a champion's flag (SpawnEnemies' draw).
@@ -540,8 +619,9 @@ int Replay(const std::string& file, Data& data)
         const Value& rb = v["rb"];
         t.Add("Rigidbody2D settings (prefab, stats)",
               Same(s.rb->get_mass(), Bits(rb["mass"])) && Same(s.rb->def_.linearDrag, Bits(rb["drag"])) && s.rb->def_.constraints == static_cast<int>(rb["constraints"].AsInt()) &&
-                  Same(s.go->GetComponent<UnityEngine::BoxCollider2D*>()->size_.x, Bits(v["box"][2])) &&
-                  (v.Find("attack") || Same(s.attackBox->size_.x, Bits(v["attackBox"][2]))),
+                  Same(s.box->size_.x, Bits(v["box"][2])) &&
+                  // (An animated attack box is as the clip has it now: "attack trigger" rows; no AttackCollider: "attackBox" empty.)
+                  (v.Find("attack") || (v["attackBox"].size() < 4 ? !s.attackBox : (s.attackBox && Same(s.attackBox->size_.x, Bits(v["attackBox"][2]))))),
               "enemy " + std::to_string(s.id));
         s.rb->set_mass(Bits(rb["mass"]));
         s.rb->set_drag(Bits(rb["drag"]));
@@ -557,6 +637,8 @@ int Replay(const std::string& file, Data& data)
         b->fallInHoles = be["fallInHoles"].b;
         b->deadForce = static_cast<int32_t>(be["deadForce"].AsInt());
         b->set_enabled(be["enabled"].b);
+        if (const Value* locked = be.Find("locked"))
+            if (auto* soldier = dynamic_cast<gen::GolemSoldierBehaviour*>(b)) soldier->iDirectionLocked = locked->b;
         t.Add("behaviour Init (playerOffset)", Same(XY(b->playerOffset), V2(be["playerOffset"])),
               Str(XY(b->playerOffset)) + " vs " + Str(V2(be["playerOffset"])));
         // The Animator and the sprite.
@@ -569,20 +651,35 @@ int Replay(const std::string& file, Data& data)
             s.animator->SetFloat(S("DistanceX"), Bits(*dx));
             s.animator->SetFloat(S("DistanceY"), Bits(an["dy"]));
         }
+        // The attack trigger as it is (the prefab's were the Animator's defaults).
         if (const Value* ac = v.Find("attack")) {
-            t.Add("attack trigger (prefab)", (*ac)["layer"].AsInt() == s.attack->layer_, "enemy " + std::to_string(s.id));
-            s.attackBox->enabled_ = (*ac)["on"].b;
-            s.attack->activeSelf_ = (*ac)["active"].b;
-            s.attackBox->size_ = V2((*ac)["size"]);
-            s.attackBox->offset_ = V2((*ac)["offset"]);
-            s.attack->transform_->localPosition_ = UnityEngine::Vector3{Bits((*ac)["pos"][0]), Bits((*ac)["pos"][1]), 0.0f};
+            t.Add("attack trigger (prefab)", s.attackBox && (*ac)["layer"].AsInt() == s.attack->layer_, "enemy " + std::to_string(s.id));
+            if (s.attackBox) {
+                s.attackBox->enabled_ = (*ac)["on"].b;
+                s.attack->activeSelf_ = (*ac)["active"].b;
+                s.attackBox->size_ = V2((*ac)["size"]);
+                s.attackBox->offset_ = V2((*ac)["offset"]);
+                s.attack->transform_->localPosition_ = UnityEngine::Vector3{Bits((*ac)["pos"][0]), Bits((*ac)["pos"][1]), 0.0f};
+            }
         }
+        // The root box (its trigger flag against the prefab's; offset and size as the clips have
+        // them now) and the hurtboxes against the prefab's (enemy_replay_colliders.h's Restore).
+        const std::string who = "enemy " + std::to_string(s.id);
+        if (const Value* trig = v.Find("rootTrigger")) t.Add("root box trigger (prefab)", s.box->isTrigger_ == trig->b, who);
+        if (const Value* rbx = v.Find("rootBox")) {
+            const Vector2 off{Bits((*rbx)[0]), Bits((*rbx)[1])}, size{Bits((*rbx)[2]), Bits((*rbx)[3])};
+            if (!Same(off, s.box->offset_) || !Same(size, s.box->size_))
+                std::printf("note: enemy %d's root box starts as the clips have it, not the prefab's (bind/Physics doesn't remake the body's own fixture)\n", s.id);
+            s.box->set_offset(off);
+            s.box->set_size(size);
+        }
+        if (const Value* list = v.Find("receivers")) ReceiverRows(t, s, *list, "hurtboxes (prefab: path, box, layer, tag, advise)", who);
         s.enemy->enemySprite->sprite_ = an["sprite"].IsString() ? UnityEngine::Sprite::Named(an["sprite"].s) : nullptr;
         MaterialOf(s)->SetFloat(std::string("_FlashAmount"), Bits(v["flash"]));
         MaterialOf(s)->SetColor(std::string("_Color"),
                                 UnityEngine::Color{Bits(v["color"][0]), Bits(v["color"][1]), Bits(v["color"][2]), Bits(v["color"][3])});
         s.agent->OnDisable(); // (re-enabled below in allAgents' order)
-        slimes.push_back(s);
+        enemies.push_back(s);
     }
     if (!skipped.empty()) {
         std::printf("the prefab's scripts not in the translation (presentation):");
@@ -591,14 +688,14 @@ int Replay(const std::string& file, Data& data)
     }
     for (const Value& name : start["agents"].arr) {
         bool found = false;
-        for (Slime& s : slimes)
+        for (Replayed& s : enemies)
             if (name.IsInt() && s.id == name.AsInt()) {
                 s.agent->OnEnable();
                 found = true;
             }
         if (!found) std::printf("note: PolyNavAgent.allAgents has %s, not one of the enemies\n", name.Dump().c_str());
     }
-    for (Slime& s : slimes) {
+    for (Replayed& s : enemies) {
         const Value* v = nullptr;
         for (const Value& l : enemyLines)
             if (l["s"].AsInt() == s.id) v = &l;
@@ -613,48 +710,55 @@ int Replay(const std::string& file, Data& data)
     UnityEngine::Time::fixedDeltaTime = fixedDt;
     double fixedClock = 0.0;
     unity::DelayedCalls& calls = scene.calls;
-    // The targeting a second after EnableEnemies (tests/enemy_replay.h explains the clocks).
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull()) {
-        const double enabled = static_cast<double>(Bits(*et));
-        calls.now = enabled;
-        if (!f0["steps"].arr.empty()) {
-            const double first = static_cast<double>(Bits(f0["steps"][0]["ft"]));
-            for (int k = 1; k < 1000; k++) {
-                const double at2 = first - static_cast<double>(k) * static_cast<double>(fixedDt);
-                if (at2 < enabled - 0.005) break;
-                if (static_cast<float>(at2) == Bits(*et)) {
-                    calls.inFixedStep = true;
-                    calls.fixedNow = at2;
-                    std::printf("EnableEnemies ran in a fixed step's pass (%d steps before the first recorded)\n", k);
-                    break;
-                }
-            }
-        }
-        for (Slime& s : slimes)
+    // EnableEnemies (an Invoke itself): the fixed steps it came after, and the targeting it
+    // starts a second later, if that hasn't come yet, on the clock its Invokes count from
+    // (tests/enable_clock.h).
+    const EnableClock enable = EnableEnemiesClock(start, f0, fixedDt);
+    if (enable.known) {
+        calls.now = enable.time;
+        calls.inFixedStep = enable.invokeOnFixedClock;
+        calls.fixedNow = enable.fixedTime;
+        for (Replayed& s : enemies)
             if (!s.behaviour->targetPlayer) s.behaviour->StartTargetingPlayerAfterTime(Bits(start["targetDelay"]));
         calls.inFixedStep = false;
     }
+    // The hero's body as a fixed step found it: layer, transform, velocity, awake.
     auto setHero = [&](const Value& hs) {
         world.SetLayer(heroBody, static_cast<int>(hs[6].AsInt()));
         world.SyncTransform(heroBody, {Bits(hs[0]), Bits(hs[1])});
         heroBody.SetVelocity({Bits(hs[4]), Bits(hs[5])});
         if (heroBody.IsAwake() != hs[7].b) heroBody.Body()->SetAwake(hs[7].b);
     };
-    if (const Value* et = start.Find("enableTime"); et && !et->IsNull() && !f0["steps"].arr.empty()) {
-        const double first = static_cast<double>(Bits(f0["steps"][0]["ft"])), enabled = static_cast<double>(Bits(*et));
-        int before = 0;
-        for (double ft = first - 0.01; ft > enabled + 0.005; ft -= 0.01) before++;
-        for (int k = 0; k < before; k++) {
+    // The bodies were switched on by EnableEnemies, some fixed steps before the recording
+    // starts: those steps count towards their falling asleep (Box2D's 0.5 s at rest).
+    if (enable.known) {
+        for (int k = 0; k < enable.stepsBefore; k++) {
             setHero(f0["steps"][0]["hero"]);
             physics.Step(fixedDt);
         }
-        std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", before);
+        std::printf("%d fixed steps between EnableEnemies and the recording (stepped first)\n", enable.stepsBefore);
     }
 
     // The weapon's push (Weapon.PushEnemyBackwards, the hero's code, translated).
     auto* weapon = cs::gcnew<gen::Weapon>();
 
     int rngElsewhere = 0;
+    // Whether the recording has the fixtures Unity made per step (fixture_probe.h).
+    bool fixturesRecorded = false;
+    for (const Value& fr : frames)
+        if (!fr["steps"].arr.empty()) {
+            fixturesRecorded = RecordsFixtures(fr);
+            break;
+        }
+    if (!fixturesRecorded)
+        std::printf("note: no \"fx\" in the steps (recorded before the oracle's FixtureProbe): the fixtures Unity made for objects "
+                    "this replay doesn't hold are guessed from the weapon's hits\n");
+    // The game's attack-trigger enters: "attackEnter" with "how" "trigger" where the start line has
+    // "attackEnters", else the calls of EnemyBehaviour.AttackHit ("attackHit"; a behaviour whose
+    // override skips the base one never reaches it: its enters aren't compared).
+    const bool entersRecorded = start.Find("attackEnters") != nullptr;
+    const char* const enterKind = entersRecorded ? "attackEnter" : "attackHit";
+    int unseenEnters = 0;
     for (size_t fi = 0; fi < frames.size(); fi++) {
         const Value& f = frames[fi];
         const long long fn = f["f"].AsInt();
@@ -670,9 +774,13 @@ int Replay(const std::string& file, Data& data)
             unity::Random::SetState(State(f["rng"]));
         }
         const Value& events = f["events"];
+        // The hero's weapon hitbox (not in this world) came on since the last step if its first
+        // touch lands in this frame's first step (e_newFixture: PhysicsWorld::FixtureMadeElsewhere).
         for (const Value& ev : events.arr) {
+            if (fixturesRecorded) break; // (the steps' "fx" tell: fixture_probe.h)
             const std::string& kind = ev["k"].s;
-            if (ev["step"].AsInt() == 0 &&
+            // (A hit an enemy dealt ("by": the KamikazeGolem's) is the enemies' own doing.)
+            if (ev["step"].AsInt() == 0 && !ev.Find("by") &&
                 (kind == "push" || kind == "dmgToEnemy" || (kind == "attackHit" && !ev["player"].b && ev["other"].IsString() && ev["other"].s == "Collider"))) {
                 world.FixtureMadeElsewhere();
                 break;
@@ -682,6 +790,8 @@ int Replay(const std::string& file, Data& data)
         for (size_t k = 0; k < f["steps"].size(); k++) {
             const Value& st = f["steps"][k];
             fixedClock = fixedClock > 0.0 ? fixedClock + static_cast<double>(fixedDt) : static_cast<double>(Bits(st["ft"]));
+            if (std::fabs(fixedClock - static_cast<double>(Bits(st["ft"]))) > 1e-4)
+                std::printf("note: frame %lld step %zu: the fixed clock %.9f, the recording %.9f\n", fn, k, fixedClock, static_cast<double>(Bits(st["ft"])));
             calls.now = time;
             calls.fixedNow = fixedClock;
             calls.inFixedStep = true;
@@ -689,7 +799,7 @@ int Replay(const std::string& file, Data& data)
             UnityEngine::Time::time = static_cast<float>(fixedClock);
             setHero(st["hero"]);
             for (const Value& ss : st["s"].arr) {
-                Slime* s = byId(static_cast<int>(ss[0].AsInt()));
+                Replayed* s = byId(static_cast<int>(ss[0].AsInt()));
                 if (!s || s->Gone()) continue;
                 if (ss.size() >= 15)
                     t.Add("attack trigger at a fixed step's start (on, size, offset, position)",
@@ -702,7 +812,24 @@ int Replay(const std::string& file, Data& data)
                           " body " + Str(s->rb->body_->position()) + " v " + Str(s->rb->body_->velocity()) + "; game " + Str({Bits(ss[1]), Bits(ss[2])}) +
                           " body " + Str({Bits(ss[3]), Bits(ss[4])}) + " v " + Str({Bits(ss[5]), Bits(ss[6])}));
             }
+            // The root boxes and centres of mass ("box": enemy_replay_colliders.h's StepStart).
+            if (const Value* boxes = st.Find("box"))
+                for (const Value& bx : boxes->arr) {
+                    Replayed* s = byId(static_cast<int>(bx[0].AsInt()));
+                    if (!s || s->Gone() || !s->rb->body_) continue;
+                    const std::string where = "frame " + std::to_string(fn) + " step " + std::to_string(k) + " enemy " + std::to_string(bx[0].AsInt());
+                    t.Add("root box at a fixed step's start (offset, size)",
+                          Same(s->box->offset_, {Bits(bx[1]), Bits(bx[2])}) && Same(s->box->size_, {Bits(bx[3]), Bits(bx[4])}),
+                          where + ": port " + Str(s->box->offset_) + " " + Str(s->box->size_) + " game " + Str({Bits(bx[1]), Bits(bx[2])}) + " " +
+                              Str({Bits(bx[3]), Bits(bx[4])}));
+                    const b2Vec2 c = s->rb->body_->Body()->GetLocalCenter();
+                    t.Add("Rigidbody2D centre of mass at a fixed step's start", Same({c.x, c.y}, {Bits(bx[5]), Bits(bx[6])}),
+                          where + ": port " + Str({c.x, c.y}) + " game " + Str({Bits(bx[5]), Bits(bx[6])}));
+                }
+            // Fixtures Unity made since the step before that this world doesn't hold (fixture_probe.h).
+            if (fixturesRecorded && StepMadeFixtures(st)) world.FixtureMadeElsewhere();
             portDamage.clear();
+            portDamageTypes.clear();
             physics.Step(fixedDt);
             // The attack triggers' OnTriggerEnter2D in this step (but the hero's own triggers').
             struct Hit {
@@ -711,7 +838,8 @@ int Replay(const std::string& file, Data& data)
             };
             std::vector<Hit> hits;
             for (const bind::PhysicsScene::Hit& hit : physics.LastHits())
-                for (const Slime& s : slimes) {
+                for (const Replayed& s : enemies) {
+                    if (!s.attackBox) continue;
                     UnityEngine::Collider2D* other = hit.a == s.attackBox ? hit.b : hit.b == s.attackBox ? hit.a : nullptr;
                     if (!other || s.Gone()) continue;
                     hits.push_back({s.id, other == heroCollider, other->isTrigger_});
@@ -719,10 +847,17 @@ int Replay(const std::string& file, Data& data)
             for (int pass = 0; pass < 2; pass++) {
                 const bool triggers = pass == 1;
                 std::vector<std::pair<int, bool>> mine, theirs;
-                for (const Hit& hit : hits)
-                    if (hit.otherTrigger == triggers) mine.emplace_back(hit.id, hit.player);
+                for (const Hit& hit : hits) {
+                    if (hit.otherTrigger != triggers) continue;
+                    if (!entersRecorded && AttackHitSkipsBase(byId(hit.id)->behaviour)) {
+                        unseenEnters++;
+                        continue;
+                    }
+                    mine.emplace_back(hit.id, hit.player);
+                }
                 for (const Value& ev : events.arr) {
-                    if (ev["k"].s != "attackHit" || ev["step"].AsInt() != static_cast<long long>(k)) continue;
+                    if (ev["k"].s != enterKind || ev["step"].AsInt() != static_cast<long long>(k)) continue;
+                    if (entersRecorded && ev["how"].s != "trigger") continue;
                     const std::string other = ev["other"].IsString() ? ev["other"].s : "";
                     if (HerosTrigger(other) || RoomTrigger(other) != triggers) continue;
                     theirs.emplace_back(static_cast<int>(ev["s"].AsInt()), ev["player"].b);
@@ -737,19 +872,32 @@ int Replay(const std::string& file, Data& data)
                 if (triggers) t.Info("attack trigger: OnTriggerEnter2D on the room's triggers (breakables)", mine == theirs, which);
                 else t.Add("attack trigger: OnTriggerEnter2D (whose, on the hero or a collider)", mine == theirs, which);
             }
-            // The weapon's hits in this step, in the game's order; the slimes' own hits on him.
+            // The attack collider's OnCollisionEnter2D ("attackEnter", "how" "collision"): bind's
+            // physics sends no collision messages yet, so each one the game had fails.
+            if (entersRecorded)
+                for (const Value& ev : events.arr) {
+                    if (ev["k"].s != "attackEnter" || ev["step"].AsInt() != static_cast<long long>(k) || ev["how"].s == "trigger") continue;
+                    t.Add("attack collider: OnCollisionEnter2D (none in the port)", false,
+                          "frame " + std::to_string(fn) + " step " + std::to_string(k) + ": enemy " + std::to_string(ev["s"].AsInt()) + " on " +
+                              (ev["other"].IsString() ? ev["other"].s : std::string("?")));
+                }
+            // The weapon's hits in this step, in the game's order; the enemies' own hits on him.
             std::vector<std::pair<int, float>> gameDamage;
             for (const Value& ev : events.arr) {
                 if (ev["step"].AsInt() != static_cast<long long>(k)) continue;
                 const std::string& kind = ev["k"].s;
-                Slime* s = byId(static_cast<int>(ev["s"].AsInt()));
+                Replayed* s = byId(static_cast<int>(ev["s"].AsInt()));
                 if (kind == "dmgToPlayer") gameDamage.emplace_back(static_cast<int>(ev["s"].AsInt()), Bits(ev["str"]));
                 if (!s) continue;
                 if (kind == "dmgToEnemy") {
                     setHeroPosition(V2(ev["hero"]));
                     t.Add("health before a weapon hit", Same(Health(*s), Bits(ev["hp0"])), "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt()));
-                    if (ev.Find("recv") && ev["recv"].IsString()) std::printf("note: a hit through a hurtbox (%s): not a slime's\n", ev["recv"].s.c_str());
-                    s->enemy->DealDamageToEnemy(Bits(ev["str"]), nullptr, static_cast<gen::Enemy_EnemyDamageReceivedType>(ev["type"].AsInt()));
+                    // Through the hurtbox it names, if any (enemy_replay_colliders.h's DealDamage).
+                    const auto type = static_cast<gen::Enemy_EnemyDamageReceivedType>(ev["type"].AsInt());
+                    const Value* recv = ev.Find("recv");
+                    gen::EnemyDamageReceiver* r = recv && recv->IsString() ? Receiver(*s, recv->s) : nullptr;
+                    if (r) r->DealDamageToEnemy(Bits(ev["str"]), type);
+                    else s->enemy->DealDamageToEnemy(Bits(ev["str"]), nullptr, type);
                     t.Add("health after a weapon hit", Same(Health(*s), Bits(ev["hp1"])),
                           "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt()) + ": " + std::to_string(Health(*s)) + " vs " +
                               std::to_string(Bits(ev["hp1"])));
@@ -757,6 +905,28 @@ int Replay(const std::string& file, Data& data)
                     t.Add("weapon push: the enemy where the game had it", Same(Position(*s), V2(ev["pos"])), Str(Position(*s)) + " vs " + Str(V2(ev["pos"])));
                     setHeroPosition(V2(ev["hero"]));
                     weapon->PushEnemyBackwards(s->go, Bits(ev["force"]));
+                }
+            }
+            // The hits' damage types against the game's (enemy_replay_colliders.h's StepTypes).
+            {
+                std::vector<std::pair<int, int>> theirs;
+                bool typed = false;
+                for (const Value& ev : events.arr) {
+                    if (ev["k"].s != "dmgToPlayer" || ev["step"].AsInt() != static_cast<long long>(k)) continue;
+                    if (const Value* type = ev.Find("type")) {
+                        typed = true;
+                        theirs.emplace_back(static_cast<int>(ev["s"].AsInt()), static_cast<int>(type->AsInt()));
+                    }
+                }
+                if (typed) {
+                    std::vector<std::pair<int, int>> mine = portDamageTypes;
+                    std::sort(mine.begin(), mine.end());
+                    std::sort(theirs.begin(), theirs.end());
+                    std::string which = "frame " + std::to_string(fn) + " step " + std::to_string(k) + ": port";
+                    for (const auto& d : mine) which += " " + std::to_string(d.first) + "/" + std::to_string(d.second);
+                    which += ", game";
+                    for (const auto& d : theirs) which += " " + std::to_string(d.first) + "/" + std::to_string(d.second);
+                    t.Add("DealDamageToPlayer's damage type (ItemDrain: 1)", mine == theirs, which);
                 }
             }
             calls.UpdateFixed(fixedClock);
@@ -792,7 +962,7 @@ int Replay(const std::string& file, Data& data)
         scene.tweens.Update(dt, tweenUdt ? Bits(*tweenUdt) : f.Find("udt") ? Bits(f["udt"]) : dt);
         DG::Tweening::Running::Prune();
         for (const Value& u : f["updates"].arr) {
-            Slime* s = byId(static_cast<int>(u["s"].AsInt()));
+            Replayed* s = byId(static_cast<int>(u["s"].AsInt()));
             if (!s) continue;
             setHeroPosition(V2(u["hero"]));
             if (!SameState(unity::Random::GetState(), State(u["rng0"]))) {
@@ -805,6 +975,25 @@ int Replay(const std::string& file, Data& data)
                   "frame " + std::to_string(fn) + " enemy " + std::to_string(u["s"].AsInt()));
             unity::Random::SetState(State(u["rng1"]));
         }
+        // The frame's events that need no step (enemy_replay_colliders.h's FrameEvents): the hurtbox
+        // and weapon hits; the HermitSlime's patrol and drain aren't in the translation yet.
+        for (const Value& ev : events.arr) {
+            const std::string& kind = ev["k"].s;
+            Replayed* s = byId(static_cast<int>(ev["s"].AsInt()));
+            const std::string where = "frame " + std::to_string(fn) + " enemy " + std::to_string(ev["s"].AsInt());
+            if (kind == "recvHit" && s) {
+                gen::EnemyDamageReceiver* r = Receiver(*s, ev["path"].s);
+                t.Add("weapon hit through a hurtbox: the port's, advising as the game's", r && (r->gameObjectToAdvise != nullptr) == ev["advise"].b,
+                      where + ": " + ev["path"].s + (ev["advise"].b ? " advises" : " advises nobody"));
+            } else if (kind == "weaponHit" && s) {
+                const std::string& other = ev["other"].s;
+                gen::EnemyDamageReceiver* r = Receiver(*s, other);
+                const std::string tag = Utf8(r ? r->gameObject_->get_tag() : s->go->get_tag());
+                t.Info("weapon hit: the tag of what it hit (root or hurtbox)", tag == ev["tag"].s, where + ": " + other + " port " + tag + " game " + ev["tag"].s);
+            } else if (kind == "patrol" || kind == "drain") {
+                t.Add("the HermitSlime's " + kind + " (not in the translation)", false, where);
+            }
+        }
         calls.Update(time);
         scene.ResumeYieldNull();
         portAnim.clear();
@@ -813,7 +1002,7 @@ int Replay(const std::string& file, Data& data)
         for (const Value& ev : events.arr)
             if (ev["k"].s == "anim" && !(ev.Find("caller") && ev["caller"].IsString())) gameAnim[static_cast<int>(ev["s"].AsInt())].push_back(&ev);
         scene.UpdateAnimators(dt);
-        for (Slime& s : slimes) {
+        for (Replayed& s : enemies) {
             const auto g = gameAnim.find(s.id);
             const auto m = portAnim.find(s.id);
             const size_t ng = g == gameAnim.end() ? 0 : g->second.size(), nm = m == portAnim.end() ? 0 : m->second.size();
@@ -830,7 +1019,7 @@ int Replay(const std::string& file, Data& data)
         }
         nav->cs_LateUpdate();
         for (const Value& id : f["late"].arr) {
-            Slime* s = byId(static_cast<int>(id.AsInt()));
+            Replayed* s = byId(static_cast<int>(id.AsInt()));
             if (s && !s->Gone() && s->agent->get_isActiveAndEnabled()) s->agent->cs_LateUpdate();
         }
         std::vector<Vector2> gameDead;
@@ -845,12 +1034,12 @@ int Replay(const std::string& file, Data& data)
         portDeadSprites.clear();
         scene.ProcessDestroys();
 
-        // The frame's end, per slime.
+        // The frame's end, per enemy.
         for (const Value& v : (f.Find("enemies") ? f["enemies"] : f["slimes"]).arr) {
             const int id = static_cast<int>(v["s"].AsInt());
-            Slime* sp = byId(id);
+            Replayed* sp = byId(id);
             if (!sp) continue;
-            Slime& s = *sp;
+            Replayed& s = *sp;
             const std::string at2 = "frame " + std::to_string(fn) + " enemy " + std::to_string(id);
             t.Add("destroyed", s.Gone() == v["gone"].b, at2);
             if (v["gone"].b || s.Gone()) continue;
@@ -897,6 +1086,19 @@ int Replay(const std::string& file, Data& data)
                 t.Add("attack trigger (on, size, offset, position, active)",
                       SameAttack(s, (*ac)["on"].b, V2((*ac)["size"]), V2((*ac)["offset"]), V2((*ac)["pos"])) && s.attack->activeSelf_ == (*ac)["active"].b,
                       at2 + ": port " + AttackStr(s) + "; game " + ac->Dump());
+            if (const Value* locked = be.Find("locked"))
+                if (auto* soldier = dynamic_cast<gen::GolemSoldierBehaviour*>(b)) t.Add("look locked (iDirectionLocked)", soldier->iDirectionLocked == locked->b, at2);
+            // The root box, the body's mass and centre, the hurtboxes (enemy_replay_colliders.h's End).
+            if (const Value* rbx = v.Find("rootBox"))
+                t.Add("root box (offset, size)", Same(s.box->offset_, {Bits((*rbx)[0]), Bits((*rbx)[1])}) && Same(s.box->size_, {Bits((*rbx)[2]), Bits((*rbx)[3])}),
+                      at2 + ": port " + Str(s.box->offset_) + " " + Str(s.box->size_) + " game " + rbx->Dump());
+            if (const Value* com = v.Find("com")) {
+                const b2Vec2 c = body->Body()->GetLocalCenter();
+                t.Add("Rigidbody2D mass, centre of mass", Same({c.x, c.y}, V2(*com)) && Same(body->Body()->GetMass(), Bits(v["mass"])),
+                      at2 + ": port " + Str({c.x, c.y}) + " mass " + std::to_string(body->Body()->GetMass()) + " game " + Str(V2(*com)) + " mass " +
+                          std::to_string(Bits(v["mass"])));
+            }
+            if (const Value* list = v.Find("receivers")) ReceiverRows(t, s, *list, "hurtboxes (box, active, layer, position)", at2);
             UnityEngine::Material* mat = MaterialOf(s);
             const float flash = mat->Float("_FlashAmount");
             const UnityEngine::Color c = mat->ColorOf("_Color");
@@ -919,6 +1121,10 @@ int Replay(const std::string& file, Data& data)
     std::printf("\n");
     t.Print();
     std::printf("Random drawn by the game's other scripts (resynced) %d times\n", rngElsewhere);
+    if (unseenEnters)
+        std::printf("attack triggers' OnTriggerEnter2D this recording can't show (no \"attackEnter\": its oracle hooked "
+                    "EnemyBehaviour.AttackHit only, which an override like HermitSlimeBehaviourNEW's never calls): %d in the port\n",
+                    unseenEnters);
     if (animResynced) std::printf("Random resynced before an animation event %d times\n", animResynced);
     std::printf("\n%s\n", t.Ok() ? "ALL MATCH" : "MISMATCHES");
     return t.Ok() ? 0 : 1;
@@ -930,9 +1136,10 @@ int main(int argc, char** argv)
 {
     const std::string file = argc > 1 ? argv[1] : "data/oracle/slime.jsonl";
     Data data;
+    data.name = argc > 2 ? argv[2] : "BabySlime";
     try {
         if (!LoadData(data)) {
-            std::printf("no extracted data (ML_DATA, default data/extracted): can't build the slimes\n");
+            std::printf("no extracted data for %s (ML_DATA, default data/extracted): can't build the enemies\n", data.name.c_str());
             return 1;
         }
         return Replay(file, data);

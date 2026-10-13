@@ -52,6 +52,13 @@ void HeroMerchantController::AddForce(unity::Vector2 p_force)
     if (S().heroAddForce) S().heroAddForce(p_force);
 }
 
+// The pad's rumble (GolemSoldierBehaviour.PlayHitOnGroundSound): presentation.
+void HeroMerchantController::VibrateForTime(float p_intensity, float p_time) { (void)p_intensity, (void)p_time; }
+void HeroMerchantController::VibrateForTime(float p_intensityLeftMotor, float p_intensityRightMotor, float p_time)
+{
+    (void)p_intensityLeftMotor, (void)p_intensityRightMotor, (void)p_time;
+}
+
 // ---- the save's statistics, analytics, achievements: not the game's state ------------------------------
 
 HeroStatistics* HeroStatistics::get_Instance()
@@ -66,6 +73,7 @@ void HeroStatistics::RegisterGolemBabySlimeDeath() {}
 void HeroStatistics::RegisterForestBabySlimeDeath() {}
 void HeroStatistics::RegisterDesertBabySlimeDeath() {}
 void HeroStatistics::RegisterTechBabySlimeDeath() {}
+void HeroStatistics::RegisterGolemSoldierDeath() {}
 
 void MoonlighterAnalytics::EnemySpawnLogEvent(cs::String* p_enemyName) { (void)p_enemyName; }
 void MoonlighterAnalytics::EnemyKilledLogEvent(cs::String* p_enemyName) { (void)p_enemyName; }

@@ -31,8 +31,10 @@ file FullSerializer/fsResult.cs
 file FullSerializer/fsGlobalConfig.cs
 file WeightedList.cs
 
-# ---- The BabySlime and what it runs on (slime_translated, slime_bis_translated) ----
+# ---- The Golem enemies and what they run on (slime_translated, enemy_golem_soldier_translated) ----
 file BabySlimeBehaviour.cs
+file GolemSoldierBehaviour.cs
+file EnemyDamageReceiver.cs
 file EnemyBehaviour.cs
 file Enemy.cs
 file EnemyStats.cs
@@ -62,8 +64,8 @@ type ItemDrop .ctor
 # ... and stood in for (the hero's own code, the camera, the HUD, the save's statistics and
 # analytics, the items: what the enemy replays don't compare, or take from the recording)
 hand HeroMerchant DealDamageToPlayer
-hand HeroMerchantController CheckIfPlayerIsShieldProtected CheckForHolesAfterPush AddForce
-hand HeroStatistics Instance RegisterGolemBabySlimeDeath RegisterForestBabySlimeDeath RegisterDesertBabySlimeDeath RegisterTechBabySlimeDeath
+hand HeroMerchantController CheckIfPlayerIsShieldProtected CheckForHolesAfterPush AddForce VibrateForTime
+hand HeroStatistics Instance RegisterGolemBabySlimeDeath RegisterForestBabySlimeDeath RegisterDesertBabySlimeDeath RegisterTechBabySlimeDeath RegisterGolemSoldierDeath
 hand MoonlighterAnalytics EnemySpawnLogEvent EnemyKilledLogEvent
 hand CameraManager Rumble
 hand GameManager Instance SetGameSpeedForTime

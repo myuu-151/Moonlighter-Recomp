@@ -66,16 +66,20 @@ add_test(NAME cave_oracle_translated
          COMMAND cave_oracle_translated ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-# The BabySlime against the game (data/oracle/slime.jsonl, slime_bis.jsonl; tests/slime_test's
-# rows) with the translated BabySlimeBehaviour, EnemyBehaviour, Enemy, EnemyStats and PolyNav in
-# place of the hand port, on the scene facade (src/bind) and the stand-ins of tests/translated/scene.
-add_executable(slime_translated_test tests/translated/slime_translated_test.cpp tests/translated/scene/Standins.cpp)
-target_include_directories(slime_translated_test PRIVATE tests/translated)
-target_link_libraries(slime_translated_test PRIVATE mlgen)
-ml_translated_debug(slime_translated_test)
+# The Golem enemies against the game with their own code translated (tests/translated/enemy_translated_test:
+# enemy_replay.h's replay and rows, slime_test's and enemy_test's recordings) in place of the hand
+# port: BabySlimeBehaviour, GolemSoldierBehaviour, EnemyBehaviour, Enemy, EnemyStats, PolyNav...,
+# on the scene facade (src/bind) and the stand-ins of tests/translated/scene.
+add_executable(enemy_translated_test tests/translated/enemy_translated_test.cpp tests/translated/scene/Standins.cpp)
+target_include_directories(enemy_translated_test PRIVATE tests/translated)
+target_link_libraries(enemy_translated_test PRIVATE mlgen)
+ml_translated_debug(enemy_translated_test)
 add_test(NAME slime_translated
-         COMMAND slime_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl BabySlime
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 add_test(NAME slime_bis_translated
-         COMMAND slime_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime_bis.jsonl
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime_bis.jsonl BabySlime
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME enemy_golem_soldier_translated
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
