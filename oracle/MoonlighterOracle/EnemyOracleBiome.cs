@@ -385,6 +385,7 @@ namespace MoonlighterOracle
         private static readonly List<Tracked> tracked = new List<Tracked>();
         private static readonly Dictionary<GameObject, Tracked> trackedOf = new Dictionary<GameObject, Tracked>();
         private static readonly List<List<float[]>> stepObjects = new List<List<float[]>>();
+        private static readonly List<GameObject> poolObjects = new List<GameObject>(); // (the spawnable pools')
         private static readonly HashSet<MethodBase> spawnPatched = new HashSet<MethodBase>();
         private static bool biome;            // the generic rows are on (every -oracle-enemy recording)
         private static bool animRehook;       // an enemy joined: its clip events to hook at the frame's end
@@ -443,13 +444,21 @@ namespace MoonlighterOracle
                     foreach (var r in Referenced(mb)) AddPrefab(r, g.name, depth + 1);
         }
 
-        /// Before the recording (the frames before its start): the prefabs the enemies can make,
-        /// their scripts hooked, the Physics2D queries hooked.
+        /// Before the recording, as soon as the room's enemies are known (before EnableEnemies:
+        /// the patching takes a second, which lands in no recorded frame): the prefabs the enemies
+        /// can make, their scripts hooked, what is out already tracked (FindObjectsOfType, once:
+        /// on floors 2 and 3 a scan costs milliseconds, per fixed step it slowed the game to
+        /// 25 fps), the pools' objects watched, the writers run once (Mono compiles them).
         private static void BiomePrepare()
         {
             biome = true;
             prefabs.Clear();
             prefabByName.Clear();
+            tracked.Clear();
+            trackedOf.Clear();
+            stepObjects.Clear();
+            shapes.Clear();
+            poolObjects.Clear();
             animRehook = false;
             foreach (var b in slimes.Where(b => b != null))
                 foreach (var mb in b.GetComponentsInChildren<MonoBehaviour>(true))
@@ -470,18 +479,38 @@ namespace MoonlighterOracle
                         prefabs.Add(p);
                         prefabByName[p.name] = p;
                     }
+            // Every object of those pools, in the pool or out (PoolManager.GetObject doesn't
+            // activate one: parenting it into a room does, so it's seen by its activeInHierarchy).
+            if (pm != null && pm.poolsCollection != null)
+                foreach (var kv in pm.poolsCollection)
+                    if (kv.Key.StartsWith(prefab + "_", StringComparison.Ordinal) && kv.Value != null && kv.Value.pooledObjects != null)
+                        foreach (var o in kv.Value.pooledObjects)
+                            if (o != null && !poolObjects.Contains(o)) poolObjects.Add(o);
             HookSpawnScripts();
+            HookOtherClipEvents();
             WatchTypes(); // (EnemyOracleQueries.cs)
-            HookQueries();
+            // What is out already (its scripts' Awake/OnEnable/Start, hooked now, track the rest).
+            foreach (var type in prefabs.Where(x => !x.enemy).SelectMany(x => x.types).Distinct())
+                foreach (var o in UnityEngine.Object.FindObjectsOfType(type))
+                    if (o is Component c && c != null)
+                    {
+                        var root = SpawnRoot(c, out var rp);
+                        if (root != null && rp != null && !rp.enemy && root.activeInHierarchy) Track(root, rp, -2, "start");
+                    }
+            if (prefabs.Any(x => x.enemy))
+                foreach (var e in UnityEngine.Object.FindObjectsOfType<Enemy>())
+                    if (e != null && e.enemyBehaviour != null && !slimes.Contains(e.enemyBehaviour) && prefabByName.TryGetValue(PrefabName(e.name), out var ep) && ep.enemy)
+                        JoinEnemy(e.enemyBehaviour, "start");
+            for (int i = 0; i < slimes.Count; i++)
+                if (slimes[i] != null)
+                    try { WriteGeneric(new Json().Obj(), slimes[i].gameObject, true); }
+                    catch (Exception e) { OraclePlugin.Log.LogWarning(Tag + ": the generic rows of " + slimes[i].name + ": " + e.Message); }
         }
 
-        /// The recording starts (its start line next): what the enemies made so far.
+        /// The recording starts (its start line next).
         private static void BiomeBegin()
         {
-            tracked.Clear();
-            trackedOf.Clear();
             stepObjects.Clear();
-            shapes.Clear();
             ScanSpawned(-2);
         }
 
@@ -565,7 +594,7 @@ namespace MoonlighterOracle
         private static void SpawnLifePrefix(object __instance, MethodBase __originalMethod, object[] __args, out Ev __state)
         {
             __state = null;
-            if (!recording || !(__instance is Component c) || c == null) return;
+            if (!biome || !(__instance is Component c) || c == null) return; // (tracked from the preparation, recorded from the start)
             var root = SpawnRoot(c, out var p);
             if (root == null || p == null || p.enemy) return;
             string fn = __originalMethod.Name;
@@ -595,22 +624,14 @@ namespace MoonlighterOracle
             if (__state != null) __state.rng1 = Rng.Get();
         }
 
-        /// Spawned objects seen now (step: the fixed step's index, -1 the frame's end, -2 the start).
+        /// What changed since the last look (step: the fixed step's index, -1 the frame's end, -2
+        /// the start): a pool's object out (activeInHierarchy), a tracked one gone (destroyed or
+        /// inactive: back in its pool) or back. New instances come by their scripts' hooks.
         private static void ScanSpawned(int step)
         {
-            foreach (var type in prefabs.Where(p => !p.enemy).SelectMany(p => p.types).Distinct())
-                foreach (var o in UnityEngine.Object.FindObjectsOfType(type))
-                    if (o is Component c && c != null)
-                    {
-                        var root = SpawnRoot(c, out var rp);
-                        if (root != null && rp != null && !rp.enemy && root.activeInHierarchy) Track(root, rp, step, step == -2 ? "start" : "scan");
-                    }
-            // Enemies made by the enemies (spawned prefabs with an Enemy), not seen at Init.
-            if (prefabs.Any(p => p.enemy))
-                foreach (var e in UnityEngine.Object.FindObjectsOfType<Enemy>())
-                    if (e != null && e.enemyBehaviour != null && !slimes.Contains(e.enemyBehaviour) && prefabByName.TryGetValue(PrefabName(e.name), out var ep) && ep.enemy)
-                        JoinEnemy(e.enemyBehaviour, step == -2 ? "start" : "scan");
-            // Gone: destroyed, or inactive (a pooled one put back).
+            foreach (var o in poolObjects)
+                if (o != null && o.activeInHierarchy && !trackedOf.ContainsKey(o) && prefabByName.TryGetValue(PrefabName(o.name), out var pp) && !pp.enemy)
+                    Track(o, pp, step, "pool");
             foreach (var t in tracked)
             {
                 if (t.gone) continue;
@@ -625,6 +646,7 @@ namespace MoonlighterOracle
                     t.on = false;
                     Add(new Ev { k = "despawn", type = t.id, step = step, other = "inactive" });
                 }
+                else if (!t.on && t.go.activeInHierarchy) Track(t.go, null, step, "pool");
             }
         }
 
@@ -648,7 +670,7 @@ namespace MoonlighterOracle
         {
             private static void Postfix(Enemy __instance)
             {
-                if (!recording || !biome || __instance == null || __instance.enemyBehaviour == null) return;
+                if (!biome || __instance == null || __instance.enemyBehaviour == null) return; // (from the preparation on)
                 if (slimes.Contains(__instance.enemyBehaviour)) return;
                 JoinEnemy(__instance.enemyBehaviour, ScriptCaller("Init") ?? "Init");
             }

@@ -1048,6 +1048,7 @@ namespace MoonlighterOracle
             biome = false;
             string dungeonError = ParseDungeon(); // (-oracle-dungeon: EnemyOracleBiome.cs)
             if (dungeonError != null) { Fail(dungeonError, quit); yield break; }
+            if (!legacy) HookQueries(); // (EnemyOracleQueries.cs: once, long before the recording)
             yield return Harvest.LoadSlot();
             bool generated = false;
             Action done = () => generated = true;
@@ -1113,6 +1114,11 @@ namespace MoonlighterOracle
             foreach (var e in room.roomEnemies)
                 if (Matches(e)) slimes.Add(e.enemyBehaviour);
             log.LogInfo($"{Tag}: {room.name} ({(room.roomInfo != null ? room.roomInfo.name : "")}), {slimes.Count} of {prefab}");
+            if (!legacy)
+            {
+                try { BiomePrepare(); } // (EnemyOracleBiome.cs: the generic rows, what the enemies make; before EnableEnemies)
+                catch (Exception e) { log.LogError(Tag + ": the generic rows: " + e); biome = false; }
+            }
             float wait = Time.realtimeSinceStartup;
             while ((enableTime < 0f || !mapRegenerated) && Time.realtimeSinceStartup - wait < 10f) yield return null;
             if (enableTime < 0f) { Fail("EnableEnemies never came", quit); yield break; }
@@ -1121,12 +1127,6 @@ namespace MoonlighterOracle
 
             HookDOTween();
             HookAnimationEvents();
-            if (!legacy)
-            {
-                HookOtherClipEvents(); // (EnemyOracleBiome.cs)
-                try { BiomePrepare(); } // (the generic rows, what the enemies make, their queries)
-                catch (Exception e) { log.LogError(Tag + ": the generic rows: " + e); biome = false; }
-            }
             TurretOracle.Begin(prefab);
             FlyKamiOracle.Begin(prefab);
             CritterOracle.Begin(room);

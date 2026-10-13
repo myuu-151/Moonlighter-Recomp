@@ -21,6 +21,25 @@ namespace MoonlighterOracle
         private static readonly HashSet<Type> watched = new HashSet<Type>();
         private static bool queriesHooked;
         [ThreadStatic] private static int queryDepth;
+        // The EnemyBehaviour whose Update runs now (its queries are its own: one not recorded is
+        // skipped without a stack walk; a recorded one's get its id).
+        [ThreadStatic] private static EnemyBehaviour updating;
+
+        [HarmonyPatch(typeof(EnemyBehaviour), "Update")]
+        private static class QueryUpdateContext
+        {
+            private static void Prefix(EnemyBehaviour __instance, out EnemyBehaviour __state)
+            {
+                __state = updating;
+                updating = __instance;
+            }
+
+            private static Exception Finalizer(Exception __exception, EnemyBehaviour __state)
+            {
+                updating = __state;
+                return __exception;
+            }
+        }
 
         private static readonly string[] QueryNames =
         {
@@ -149,6 +168,12 @@ namespace MoonlighterOracle
 
         private static void AddQuery(MethodBase m, object[] args, Action<Json> result)
         {
+            int s = -1;
+            if (updating != null)
+            {
+                s = Id(updating);
+                if (s < 0) return; // (another enemy's Update: a breakable pot's)
+            }
             string by = QueryCaller();
             if (by == null) return;
             var j = new Json().Obj();
@@ -156,7 +181,7 @@ namespace MoonlighterOracle
             j.Key("r");
             result(j);
             j.EndObj();
-            Add(new Ev { k = "query", step = Step, other = m.DeclaringType.Name + "." + m.Name, caller = by, raw = j.ToString() });
+            Add(new Ev { k = "query", s = s, step = Step, other = m.DeclaringType.Name + "." + m.Name, caller = by, raw = j.ToString() });
         }
 
         private static bool Querying(bool outermost) => outermost && recording && biome;
