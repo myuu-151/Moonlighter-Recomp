@@ -17,9 +17,10 @@ namespace {
 struct U16Hash {
     size_t operator()(const std::u16string& s) const
     {
-        size_t h = 1469598103934665603ull;
+        // (64-bit FNV-1a, folded to size_t: the GameCube's is 32 bits)
+        uint64_t h = 1469598103934665603ull;
         for (char16_t c : s) h = (h ^ c) * 1099511628211ull;
-        return h;
+        return static_cast<size_t>(h ^ (h >> 32));
     }
 };
 

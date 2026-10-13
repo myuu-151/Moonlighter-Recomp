@@ -191,13 +191,21 @@ inline double Exp(double d) { return std::exp(d); }
 inline double Log(double d) { return std::log(d); }
 inline double Log(double a, double b) { return std::log(a) / std::log(b); }
 inline double Log10(double d) { return std::log10(d); }
-// Math.Round(double): to even (the default rounding mode).
+// Math.Round(double): to even (the default rounding mode). (Mono's icall rounds through
+// floor(x + 0.5) with a fix for halves: the same for every float argument; a double whose x + 0.5
+// rounds may differ: docs/translator_plan.md, "Known approximations".)
 inline double Round(double d) { return std::nearbyint(d); }
+// Math.Round(double, digits) as the game's mscorlib has it: digits in 0..15, values of 1e16 and
+// more (and NaN) returned as they are, else Round(value * 10^digits) / 10^digits (InternalRound).
 inline double Round(double d, int32_t digits)
 {
-    if (digits == 0) return std::nearbyint(d);
-    double p = std::pow(10.0, digits);
-    return std::nearbyint(d * p) / p;
+    if (digits < 0 || digits > 15) Throw<ArgumentOutOfRangeException>();
+    static const double kPow10[] = {1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15};
+    if (std::fabs(d) < 1e16) {
+        const double p = kPow10[digits];
+        d = std::nearbyint(d * p) / p;
+    }
+    return d;
 }
 inline double Abs(double d) { return std::fabs(d); }
 inline float Abs(float f) { return std::fabs(f); }
@@ -269,7 +277,12 @@ inline int32_t HashOf(int64_t v) { return static_cast<int32_t>(v) ^ static_cast<
 inline int32_t HashOf(uint64_t v) { return static_cast<int32_t>(v) ^ static_cast<int32_t>(v >> 32); }
 inline int32_t HashOf(int16_t v) { return static_cast<int32_t>(static_cast<uint16_t>(v)) | (static_cast<int32_t>(v) << 16); }
 inline int32_t HashOf(uint16_t v) { return v; }
-inline int32_t HashOf(int8_t v) { return static_cast<int32_t>(static_cast<uint8_t>(v)) | (static_cast<int32_t>(v) << 8); }
+// SByte.GetHashCode (the game's mscorlib): this ^ (this << 8), on the sign-extended value.
+inline int32_t HashOf(int8_t v)
+{
+    const int32_t x = v;
+    return x ^ static_cast<int32_t>(static_cast<uint32_t>(x) << 8);
+}
 inline int32_t HashOf(uint8_t v) { return v; }
 inline int32_t HashOf(char16_t c) { return static_cast<int32_t>(c) | (static_cast<int32_t>(c) << 16); }
 // float.GetHashCode: the bits, 0 for both zeros.

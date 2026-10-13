@@ -2,8 +2,9 @@
 // System.String: an immutable UTF-16 string (a reference type: cs::String*, null is not "").
 // Ordinal operations are exact. Culture-sensitive ones (Compare, StartsWith/EndsWith/IndexOf
 // with a string, ToLower/ToUpper) follow en-US, the culture OptionsPanel.Load sets for every
-// thread, and are exact for ASCII text; other text falls back to ordinal (listed in
-// progress/unity_api_gaps.tsv as culture collation).
+// thread: exact for ASCII letters and digits; where punctuation decides (Mono's collator orders
+// symbols its own way and ignores the hyphen and the apostrophe at the first level) and past
+// ASCII they fall back to code-unit order (docs/translator_plan.md, "Known approximations").
 
 #include <cstdint>
 #include <initializer_list>

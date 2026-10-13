@@ -104,13 +104,22 @@ public:
 
     // exists: not null and not destroyed
     static bool op_Implicit(Object* o) { return o && !o->destroyed_; }
+    // Object.CompareBaseObjects: a null reference equals a destroyed object (and null); two
+    // references compare by instance, destroyed or not (two different destroyed objects differ).
     static bool op_Equality(Object* a, Object* b)
     {
-        bool aNull = !a || a->destroyed_;
-        bool bNull = !b || b->destroyed_;
-        if (aNull && bNull) return true;
-        if (aNull || bNull) return false;
+        if (!a && !b) return true;
+        if (!b) return a->destroyed_;
+        if (!a) return b->destroyed_;
         return a == b;
+    }
+    // Object.Equals(object): another UnityEngine.Object (or null) by CompareBaseObjects, anything
+    // else unequal.
+    bool Equals(cs::Object* other) override
+    {
+        auto* o = dynamic_cast<Object*>(other);
+        if (!o && other) return false;
+        return op_Equality(this, o);
     }
     virtual cs::String* get_name() { return name_ ? name_ : cs::String::get_Empty(); }
     virtual void set_name(cs::String* n) { name_ = n; }
@@ -237,7 +246,12 @@ struct Mathf {
     static float DeltaAngle(float a, float b) { return unity::Mathf::DeltaAngle(a, b); }
     static float MoveTowards(float c, float t, float d) { return unity::Mathf::MoveTowards(c, t, d); }
     static float MoveTowardsAngle(float c, float t, float d) { return unity::Mathf::MoveTowardsAngle(c, t, d); }
+    // (shielded from engines' PI macro, as cs/Prim.h's Math::PI: the GameCube build includes
+    // Octave's Maths.h, which defines PI)
+#pragma push_macro("PI")
+#undef PI
     static constexpr float PI = 3.14159274f;
+#pragma pop_macro("PI")
     static constexpr float Infinity = std::numeric_limits<float>::infinity();
     static constexpr float Epsilon = unity::Mathf::Epsilon;
 };
@@ -245,9 +259,9 @@ struct Mathf {
 } // namespace UnityEngine
 
 namespace unity {
-// Vector2 for EqualityComparer / boxing (Vector2.Equals: per component float.Equals; GetHashCode:
-// x.GetHashCode() ^ (y.GetHashCode() << 2)).
-inline bool cs_box_equals(const Vector2& a, const Vector2& b) { return cs::FloatEquals(a.x, b.x) && cs::FloatEquals(a.y, b.y); }
+// Vector2 for EqualityComparer / boxing (Unity 2019.2's Vector2.Equals(Vector2): x == other.x &&
+// y == other.y, so NaN components differ; GetHashCode: x.GetHashCode() ^ (y.GetHashCode() << 2)).
+inline bool cs_box_equals(const Vector2& a, const Vector2& b) { return a.x == b.x && a.y == b.y; }
 inline int32_t cs_box_hash(const Vector2& v) { return cs::HashOf(v.x) ^ static_cast<int32_t>(static_cast<uint32_t>(cs::HashOf(v.y)) << 2); }
 inline const char* cs_box_typename(const Vector2*) { return "UnityEngine.Vector2"; }
 } // namespace unity

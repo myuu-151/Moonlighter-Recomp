@@ -1,7 +1,10 @@
 #pragma once
 // UnityEngine's value types as their managed code (UnityEngine.CoreModule, Unity 2019.2) computes
 // them on the game's Mono: float expressions in double, rounded where the C# stores a float (a
-// field, a local, an argument, a return). Each function below says the C# it follows.
+// field, a local, an argument, a return). Each function below says the C# it follows, as the
+// game's own UnityEngine.CoreModule.dll has it: built without optimization, so every local of its
+// C# is an IL local (stloc: rounded), Vector3's operator== included; only expressions it never
+// stores (Vector2's operator==) stay in double.
 // Vector2 is the hand-written layer's (unity::Vector2); Vector3, Quaternion, Bounds here.
 
 #include <cmath>
@@ -62,10 +65,19 @@ inline Vector2 V2MoveTowards(Vector2 current, Vector2 target, float maxDistanceD
     const float dist = F(std::sqrt(D(sqdist)));
     return {F(D(current.x) + D(tx) / dist * maxDistanceDelta), F(D(current.y) + D(ty) / dist * maxDistanceDelta)};
 }
+// ClampMagnitude (2019.2): float num = sqrMagnitude; if (num > maxLength * maxLength) { float num2 =
+// (float)Math.Sqrt(num); float num3 = x / num2; float num4 = y / num2; return (num3 * maxLength,
+// num4 * maxLength); } (the root of the rounded square, not magnitude's root of the double sum).
 inline Vector2 V2ClampMagnitude(Vector2 v, float maxLength)
 {
     using detail::D;
-    if (D(V2SqrMagnitude(v)) > D(maxLength) * maxLength) return V2Mul(maxLength, V2Normalized(v));
+    using detail::F;
+    const float sq = V2SqrMagnitude(v);
+    if (D(sq) > D(maxLength) * maxLength) {
+        const float n = F(std::sqrt(D(sq)));
+        const float nx = v.x / n, ny = v.y / n;
+        return {nx * maxLength, ny * maxLength};
+    }
     return v;
 }
 inline Vector2 V2Perpendicular(Vector2 v) { return {-v.y, v.x}; }
@@ -91,11 +103,14 @@ inline Vector3 V3Mul(Vector3 a, float d) { return {a.x * d, a.y * d, a.z * d}; }
 inline Vector3 V3MulF(float d, Vector3 a) { return {a.x * d, a.y * d, a.z * d}; }
 inline Vector3 V3Div(Vector3 a, float d) { return {a.x / d, a.y / d, a.z / d}; }
 inline Vector3 V3Scale(Vector3 a, Vector3 b) { return {a.x * b.x, a.y * b.y, a.z * b.z}; }
-// operator==: num * num + num2 * num2 + num3 * num3 < 9.99999944E-11f (in double)
+// operator== (2019.2): float num4 = num * num + num2 * num2 + num3 * num3; return num4 < 9.99999944E-11f.
+// Unlike Vector2's, the sum is stored to a local (stloc in UnityEngine.CoreModule's IL): rounded
+// to float before the comparison.
 inline bool V3Equal(Vector3 a, Vector3 b)
 {
     const float dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
-    return detail::D(dx) * dx + detail::D(dy) * dy + detail::D(dz) * dz < detail::D(9.99999944e-11f);
+    const float sq = detail::F(detail::D(dx) * dx + detail::D(dy) * dy + detail::D(dz) * dz);
+    return sq < 9.99999944e-11f;
 }
 // magnitude: (float)Math.Sqrt(x * x + y * y + z * z)
 inline float V3Magnitude(Vector3 v)
@@ -134,13 +149,14 @@ inline Vector3 V3Project(Vector3 vector, Vector3 onNormal)
     const float dot = V3Dot(vector, onNormal);
     return {F(D(onNormal.x) * dot / sqrMag), F(D(onNormal.y) * dot / sqrMag), F(D(onNormal.z) * dot / sqrMag)};
 }
+// MoveTowards (2019.2): as Vector2's, but without its `maxDistanceDelta >= 0` test.
 inline Vector3 V3MoveTowards(Vector3 current, Vector3 target, float maxDistanceDelta)
 {
     using detail::D;
     using detail::F;
     const float tx = target.x - current.x, ty = target.y - current.y, tz = target.z - current.z;
     const float sqdist = F(D(tx) * tx + D(ty) * ty + D(tz) * tz);
-    if (sqdist == 0.0f || (maxDistanceDelta >= 0.0f && D(sqdist) <= D(maxDistanceDelta) * maxDistanceDelta)) return target;
+    if (sqdist == 0.0f || D(sqdist) <= D(maxDistanceDelta) * maxDistanceDelta) return target;
     const float dist = F(std::sqrt(D(sqdist)));
     return {F(D(current.x) + D(tx) / dist * maxDistanceDelta), F(D(current.y) + D(ty) / dist * maxDistanceDelta),
             F(D(current.z) + D(tz) / dist * maxDistanceDelta)};
@@ -162,7 +178,8 @@ inline Vector3 V3Forward() { return {0.0f, 0.0f, 1.0f}; }
 inline Vector3 V3Back() { return {0.0f, 0.0f, -1.0f}; }
 
 inline void cs_trace_value(cs::Tracer&, const Vector3&) {}
-inline bool cs_box_equals(const Vector3& a, const Vector3& b) { return cs::FloatEquals(a.x, b.x) && cs::FloatEquals(a.y, b.y) && cs::FloatEquals(a.z, b.z); }
+// Vector3.Equals(Vector3) (2019.2): x == other.x && y == other.y && z == other.z.
+inline bool cs_box_equals(const Vector3& a, const Vector3& b) { return a.x == b.x && a.y == b.y && a.z == b.z; }
 inline int32_t cs_box_hash(const Vector3& v)
 {
     return cs::HashOf(v.x) ^ static_cast<int32_t>(static_cast<uint32_t>(cs::HashOf(v.y)) << 2) ^ (cs::HashOf(v.z) >> 2);

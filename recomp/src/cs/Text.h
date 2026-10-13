@@ -162,6 +162,8 @@ public:
     bool cs_traced() const override { return true; }
     static StringComparer* get_Ordinal();
     static StringComparer* get_OrdinalIgnoreCase();
+    using Object::Equals; // (object.Equals / GetHashCode stay callable beside the comparer's)
+    using Object::GetHashCode;
     bool Equals(String* a, String* b);
     int32_t GetHashCode(String* s);
     int32_t Compare(String* a, String* b);
