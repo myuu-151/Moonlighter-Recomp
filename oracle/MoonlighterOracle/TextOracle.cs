@@ -801,6 +801,20 @@ namespace MoonlighterOracle
             "<i>An italic sentence that should wrap over several lines in a narrow box.</i>",
         };
 
+        // Paths the game's own text doesn't take: <quad> and its parameters, <material>, <a>,
+        // <size=0> (scaled twice), a tag name in the low byte of a non-ASCII unit, the colour
+        // forms, sizes changing from line to line, spaces that aren't ' ' or the tab.
+        private static readonly string[] QuirkStrings =
+        {
+            "<quad material=1 size=20 x=0.1 y=0.1 width=0.5 height=0.5>Icon then text <quad size=10 width=2 height=1> two",
+            "Link <a href=x>here</a> and <A HREF=\"y\">there</A> done",
+            "<material=1>mat</material> <\u0142>l-stroke</\u0142> a<size=0>zero</size>b <size=>empty</size> <SIZE=12>caps</SIZE>",
+            "<size=20>Big</size>\nsmall\n<size=8>tiny</size> line\n\n<size=14>after a gap</size>",
+            "<color=#ff000080>half</color> <color=#0f0>short</color> <color=#00f8>shorta</color> <color=lightblue>named</color> <color=\"red\">quoted</color> <color=gray>gray</color> <color=#12345>bad</color> <color=TRANSPARENT>gone</color>",
+            "\u00a0nbsp\u3000ideo\u200bzwsp end \u2014dash\u2014words-with-hyphens-that-go-on",
+            "<b=x>b with value</b> <x>y</x> <i>open",
+        };
+
         private static Font FontNamed(string name) => GameFonts().FirstOrDefault(f => f.name == name);
 
         private static TextGenerationSettings Base(Font f, int size)
@@ -959,6 +973,29 @@ namespace MoonlighterOracle
                                 yield return S("bestfit", s, str);
                             }
                 }
+            }
+            // The quirks: two fonts, three scales, two alignments, wrapped and not, best fit.
+            foreach (var fs in main)
+            {
+                if (fs.Key == null) continue;
+                foreach (string str in QuirkStrings)
+                    foreach (float scale in new[] { 1f, 2f, 0.98888886f })
+                        foreach (var anchor in new[] { TextAnchor.UpperLeft, TextAnchor.MiddleCenter })
+                            for (int ov = 0; ov < 3; ov++)
+                            {
+                                var s = Base(fs.Key, fs.Value);
+                                s.scaleFactor = scale;
+                                s.generationExtents = new Vector2(120f, 60f) * scale;
+                                s.textAnchor = anchor;
+                                s.horizontalOverflow = ov == 1 ? HorizontalWrapMode.Overflow : HorizontalWrapMode.Wrap;
+                                if (ov == 2)
+                                {
+                                    s.resizeTextForBestFit = true;
+                                    s.resizeTextMinSize = 6;
+                                    s.resizeTextMaxSize = 24;
+                                }
+                                yield return S("quirk", s, str);
+                            }
             }
         }
     }
