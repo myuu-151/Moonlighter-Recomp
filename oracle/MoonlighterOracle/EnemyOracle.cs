@@ -60,7 +60,9 @@ namespace MoonlighterOracle
     /// nearest one, then 8 times: 15 frames toward the nearest, an attack (Action1) with the
     /// stick on it, 30 frames standing; 120 frames standing (360 in the generic mode: more of
     /// the enemies' own attacks). He doesn't die: his health is refilled after every hit
-    /// (RecoverAllHealth, after DealDamageToPlayer has run).
+    /// (RecoverAllHealth, after DealDamageToPlayer has run). With `-oracle-hero-off-holes` he
+    /// lets go of the stick for the rest of a segment once he pushes into a hole (no fall); with
+    /// `-oracle-hero-no-attacks` his attack segments stand.
     ///
     /// Not deterministic: the frame times (60 fps asked, real time measured: deltaTime is
     /// recorded), and so how many fixed steps each frame has (recorded too); the hit-stop
@@ -194,7 +196,7 @@ namespace MoonlighterOracle
         /// Toward the nearest live slime from his collider's centre; let go within 12.
         private static Vector2 StickFor(Segment s)
         {
-            if (s.kind == Kind.Stand) return Vector2.zero;
+            if (s.kind == Kind.Stand || (s.kind == Kind.Attack && NoAttacks)) return Vector2.zero;
             var ctrl = HeroMerchant.Instance.heroMerchantController;
             Vector2 h = (Vector2)ctrl.transform.position + ctrl.characterCollider.offset;
             float best = float.MaxValue;
@@ -213,6 +215,53 @@ namespace MoonlighterOracle
             return to.normalized;
         }
 
+        // `-oracle-hero-off-holes`: the hero's stick lets go for the rest of a segment once he
+        // pushes into a hole (HeroMerchantController.timePushingHoles above 0, as his last Update
+        // left it: past maxTimePushingHoles, 0.6 s, he falls in). A hole can lead out of the room:
+        // Golem_Enemies_3's into its secret room, which switches its BrokenGolemTurrets off for the
+        // rest of the recording. Only the input changes; the start line says "heroOffHoles".
+        internal static bool OffHoles;
+        // `-oracle-hero-no-attacks`: his attack segments stand (no Action1, the stick let go), so
+        // the enemies outlive the recording (TurretRootMotionProbe.cs needs a BrokenGolemTurret up
+        // at its end; Golem_Chest_17's one died to his first swing, frame 272). The start line
+        // says "heroNoAttacks".
+        internal static bool NoAttacks;
+        // `-oracle-enemy-fewest`: the room with the fewest of the enemy (one at least; ties: the
+        // fewest other enemies) instead of the most: one BrokenGolemTurret, whose shots never meet
+        // another turret's in a step (the order of OnCollisionEnter2D calls that start in one step
+        // follows Box2D's broad-phase proxies, which the replay can't know: ContactOrderProbe.cs).
+        internal static bool Fewest;
+
+        // A run that can't record: the reason in FAILED (the recording queue's "oracle-failed",
+        // retried at once instead of at its timeout), and the game quit when asked.
+        private static void Fail(string message, bool quit)
+        {
+            OraclePlugin.Log.LogError(Tag + ": " + message);
+            try { File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "FAILED"), DateTime.Now.ToString("o") + " " + Tag + ": " + message); }
+            catch (Exception e) { OraclePlugin.Log.LogError(Tag + ": FAILED not written: " + e.Message); }
+            if (quit) Application.Quit();
+        }
+        private static int stickHeldUntil = -1; // (Time.frameCount)
+
+        // The first frame after the current segment.
+        private static int SegmentEnd()
+        {
+            int f = Time.frameCount - startFrame, end = startFrame;
+            foreach (var s in Script)
+            {
+                end += s.frames;
+                if (f < s.frames) break;
+                f -= s.frames;
+            }
+            return end;
+        }
+
+        private static bool PushingHole()
+        {
+            var ctrl = HeroMerchant.Instance != null ? HeroMerchant.Instance.heroMerchantController : null;
+            return ctrl != null && Traverse.Create(ctrl).Field("timePushingHoles").GetValue<float>() > 0f;
+        }
+
         [HarmonyPatch(typeof(TwoAxisInputControl), "UpdateWithAxes")]
         private static class StickHook
         {
@@ -222,6 +271,8 @@ namespace MoonlighterOracle
                 var actions = InputActionsManager.Instance != null ? InputActionsManager.Instance.actions : null;
                 if (actions == null || __instance != actions.LeftStick) return;
                 lastStick = Current(out Segment s, out _) ? StickFor(s) : Vector2.zero;
+                if (OffHoles && lastStick != Vector2.zero && PushingHole()) stickHeldUntil = SegmentEnd();
+                if (OffHoles && Time.frameCount < stickHeldUntil) lastStick = Vector2.zero;
                 x = lastStick.x;
                 y = lastStick.y;
             }
@@ -237,7 +288,7 @@ namespace MoonlighterOracle
                 if (a == null) return true;
                 if (__instance != a.Action1 && __instance != a.Action2 && __instance != a.Action3 && __instance != a.Action4 && __instance != a.LeftTrigger)
                     return true;
-                bool down = __instance == a.Action1 && Current(out Segment s, out bool first) && first && s.kind == Kind.Attack;
+                bool down = __instance == a.Action1 && !NoAttacks && Current(out Segment s, out bool first) && first && s.kind == Kind.Attack;
                 __instance.CommitWithValue(down ? 1f : 0f, updateTick, deltaTime);
                 return false;
             }
@@ -360,14 +411,17 @@ namespace MoonlighterOracle
         [HarmonyPatch(typeof(HeroMerchant), "DealDamageToPlayer")]
         private static class DamageToPlayerHook
         {
-            private static void Prefix(float attackStrength, HeroMerchant.DamageType type, Enemy enemySource)
+            // (The Random state before and after: the hero's own draws in it, "rng0" and "rng1".)
+            private static void Prefix(float attackStrength, HeroMerchant.DamageType type, Enemy enemySource, out Ev __state)
             {
-                Add(new Ev { k = "dmgToPlayer", s = enemySource != null ? Id(enemySource) : -1, step = Step, a = attackStrength, type = (int)type });
+                __state = new Ev { k = "dmgToPlayer", s = enemySource != null ? Id(enemySource) : -1, step = Step, a = attackStrength, type = (int)type, rng0 = Rng.Get() };
+                Add(__state);
             }
 
             // God mode the plain way: his health back after the hit (the hit itself as in play).
-            private static void Postfix(HeroMerchant __instance)
+            private static void Postfix(HeroMerchant __instance, Ev __state)
             {
+                if (__state != null) __state.rng1 = Rng.Get();
                 if (Active || recording) __instance.heroMerchantStats.RecoverAllHealth();
             }
         }
@@ -749,6 +803,9 @@ namespace MoonlighterOracle
             // played variation's AudioSource starts (game/MasterAudio.h's "not playing yet").
             var ma = DarkTonic.MasterAudio.MasterAudio.SafeInstance;
             j.Prop("maFollower", ma != null ? (int)ma.variationFollowerType : -1);
+            if (OffHoles) j.Prop("heroOffHoles", true); // (-oracle-hero-off-holes)
+            if (Fewest) j.Prop("roomFewest", true); // (-oracle-enemy-fewest)
+            if (NoAttacks) j.Prop("heroNoAttacks", true); // (-oracle-hero-no-attacks)
             TurretOracle.WriteStart(j, room);
             CritterOracle.WriteStart(j); // (the room's critters: CritterOracle.cs)
             KamikazeOracle.WriteStart(j, room); // (its room's chests and OnAllEnemiesDefeated: KamikazeOracle.cs)
@@ -834,7 +891,14 @@ namespace MoonlighterOracle
                 {
                     case "attackHit": j.Prop("player", e.player).Prop("other", e.other); break;
                     case "attackEnter": j.Prop("player", e.player).Prop("other", e.other).Prop("how", e.caller); break;
-                    case "dmgToPlayer": j.Key("str").Bits(e.a).Prop("type", e.type); break;
+                    case "dmgToPlayer":
+                        j.Key("str").Bits(e.a).Prop("type", e.type);
+                        if (e.rng0 != null)
+                        {
+                            Rng.WriteState(j.Key("rng0"), e.rng0);
+                            Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
+                        }
+                        break;
                     case "dmgToEnemy":
                         j.Key("str").Bits(e.a).Prop("type", e.type).Key("hp0").Bits(e.hp0).Key("hp1").Bits(e.hp1).Prop("recv", e.other);
                         if (e.caller != null) j.Prop("by", e.caller); // (a kamikaze's: KamikazeOracle.DamageBy)
@@ -939,7 +1003,8 @@ namespace MoonlighterOracle
                         foreach (var d in other.roomDoors)
                             if (d != null && d.destinationRoom == r && into == null) into = d;
                 if (into == null) continue;
-                if (n > bestSlimes || (n == bestSlimes && others < bestOthers))
+                bool better = Fewest ? room == null || n < bestSlimes : n > bestSlimes;
+                if (better || (n == bestSlimes && others < bestOthers))
                 {
                     bestSlimes = n;
                     bestOthers = others;
@@ -957,6 +1022,7 @@ namespace MoonlighterOracle
             prefab = enemy;
             legacy = legacyNames;
             Script = BuildScript(legacy ? 120 : 360);
+            stickHeldUntil = -1;
             string fileName = legacy ? "slime.jsonl" : "enemy_" + prefab + ".jsonl";
             string doneName = legacy ? "SLIME_DONE" : "ENEMY_" + prefab + "_DONE";
             var log = OraclePlugin.Log;
@@ -977,7 +1043,7 @@ namespace MoonlighterOracle
                 float start = Time.realtimeSinceStartup;
                 while (!generated && Time.realtimeSinceStartup - start < 120f) yield return null;
                 DungeonGenerator.OnGeneratedDungeon -= done;
-                if (!generated) { log.LogError(Tag + ": floor timed out"); yield break; }
+                if (!generated) { Fail("floor timed out", quit); yield break; }
                 yield return new WaitForSecondsRealtime(3f);
                 for (int tries = 0; tries < 5 && GUIManager.Instance.currentInventory != null; tries++)
                 {
@@ -991,7 +1057,7 @@ namespace MoonlighterOracle
                 if (PickRoom(roomArg, out room, out door)) break;
                 if (roomArg != "" || floor >= 2)
                 {
-                    log.LogError(Tag + ": no room with a " + prefab + " and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""));
+                    Fail("no room with a " + prefab + " and a door into it on this floor" + (roomArg != "" ? " named " + roomArg : ""), quit);
                     yield break;
                 }
                 log.LogInfo(Tag + ": no " + prefab + " on floor " + (floor + 1) + ": the next floor");
@@ -1027,7 +1093,7 @@ namespace MoonlighterOracle
             log.LogInfo($"{Tag}: {room.name} ({(room.roomInfo != null ? room.roomInfo.name : "")}), {slimes.Count} of {prefab}");
             float wait = Time.realtimeSinceStartup;
             while ((enableTime < 0f || !mapRegenerated) && Time.realtimeSinceStartup - wait < 10f) yield return null;
-            if (enableTime < 0f) { log.LogError(Tag + ": EnableEnemies never came"); yield break; }
+            if (enableTime < 0f) { Fail("EnableEnemies never came", quit); yield break; }
             yield return null;
             yield return null;
 
@@ -1074,6 +1140,8 @@ namespace MoonlighterOracle
             Active = false;
             // (The turret's root motion on a moving body: one line after the last frame.)
             if (TurretOracle.Wants(prefab)) yield return TurretRootMotionProbe.Run(slimes, Emit);
+            // (The order of OnCollisionEnter2D calls that start in one step: ContactOrderProbe.cs.)
+            if (TurretOracle.Wants(prefab)) yield return ContactOrderProbe.Run(Emit);
             TurretOracle.End();
             FlyKamiOracle.End();
             CritterOracle.End();

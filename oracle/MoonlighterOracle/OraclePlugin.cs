@@ -77,6 +77,10 @@ namespace MoonlighterOracle
                 else
                 {
                     Harvest.InstallSafety(harmony);
+                    // -oracle-hero-off-holes: the hero's script keeps out of the holes (EnemyOracle.cs).
+                    EnemyOracle.OffHoles = Array.IndexOf(args, "-oracle-hero-off-holes") >= 0;
+                    EnemyOracle.NoAttacks = Array.IndexOf(args, "-oracle-hero-no-attacks") >= 0;
+                    EnemyOracle.Fewest = Array.IndexOf(args, "-oracle-enemy-fewest") >= 0;
                     StartCoroutine(EnemyOracle.Run(this, quit, room, enemy, false));
                 }
             }

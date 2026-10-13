@@ -77,7 +77,7 @@ EnemyDamageReceiver.cs	1	y	game/EnemyColliders	enemy_HermitSlime.jsonl (the hurt
 HermitSlimeAttackState.cs	1	y	game/HermitSlime	no-ops (parameters that do not exist)
 BrokenGolemTurretBehaviour.cs	1	y	game/BrokenGolemTurret	enemy_BrokenGolemTurret.jsonl (its root motion on a moving body unchecked until a recording has rootMotionProbe)
 BrokenGolemTurretProjectile.cs	1	y	game/EnemyProjectile	enemy_BrokenGolemTurret.jsonl
-FlyingKamikazeGolemBehaviour.cs	1	n	game/FlyingKamikazeGolem	waits on its recording (audited)
+FlyingKamikazeGolemBehaviour.cs	1	n	game/FlyingKamikazeGolem	enemy_FlyingKamikazeGolem.jsonl ALL MATCH (recq enemyfix-flykami-1, no critter hit); recq enemyfix-flykami-2 differs (body velocities by 1e-6 while it rams a boundary, frames 111-188)
 GolemKamikazeBehaviour.cs	1	y	game/KamikazeGolem	enemy_KamikazeGolem.jsonl (recq kamifix-4)
 PoolManager.cs	0.6	n	game/PoolManager	the enemies' projectile pools
 WandererAmuletEffect.cs	0.4	y	game/AmuletEffects	its Enemy.OnEnemyRecivesDamage draw (enemy_KamikazeGolem.jsonl, recq kamifix-4); not SpawnWanderer, nor the strength bonus
