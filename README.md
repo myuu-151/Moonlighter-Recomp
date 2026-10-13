@@ -3,8 +3,6 @@
 # Moonlighter recomp
 
 Native C++ reimplementation of Moonlighter (Steam, v1.15.8, Unity 2019.2.7f2 / Mono),
-aimed at a GameCube build on Octave-libogc. Game logic is translated from the decompiled
-C# and checked against the real game by an injected oracle, rather than by eye.
 
 It also builds for the GameCube:
 [Moonlighter GC](https://github.com/myuu-151/Moonlighter-GC) compiles this code for the console.
@@ -15,24 +13,24 @@ It also builds for the GameCube:
 ![ported](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge.json)
 ![verified](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/myuu-151/Moonlighter-Recomp/main/progress/badge_verified.json)
 
-**7.1%** of the game's own code is ported (11,418 of 160,682 lines of C#, 39 of 1,173 classes whole); **6.5%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
+**7.2%** of the game's own code is ported (11,598 of 160,682 lines of C#, 40 of 1,173 classes whole); **6.5%** is verified against the real game by the oracle's recordings. Third-party libraries, platform code and editor tools aren't counted; partly ported classes count by an estimated fraction (`progress/ported.tsv`).
 
-```
-total                    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░   7.1%
-```
+<img src="progress/bars/total.svg" alt="7.2% ported, 6.5% verified">
+
+<sub>gold: ported · green: verified against the game</sub>
 
 | Area | Lines | Ported | Verified | |
 |---|---:|---:|---:|---|
-| Dungeon generation | 10,310 | 50.2% | 50.2% | `██████████░░░░░░░░░░` |
-| Player | 9,277 | 22.0% | 20.9% | `████░░░░░░░░░░░░░░░░` |
-| Enemies | 27,342 | 11.0% | 9.2% | `██░░░░░░░░░░░░░░░░░░` |
-| Dungeon runtime | 5,487 | 5.7% | 3.4% | `█░░░░░░░░░░░░░░░░░░░` |
-| Bosses | 8,285 | 2.3% | 2.3% | `░░░░░░░░░░░░░░░░░░░░` |
-| Items & effects | 13,388 | 0.6% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
-| Town, shop & villagers | 12,097 | 0.0% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
-| UI | 20,716 | 0.0% | 0.0% | `░░░░░░░░░░░░░░░░░░░░` |
-| Wanderer DLC | 9,474 | 0.9% | 0.9% | `░░░░░░░░░░░░░░░░░░░░` |
-| Core & other | 44,306 | 1.2% | 0.8% | `░░░░░░░░░░░░░░░░░░░░` |
+| Dungeon generation | 10,310 | 50.2% | 50.2% | <img src="progress/bars/dungeon_generation.svg" alt="50.2%"> |
+| Player | 9,277 | 22.0% | 20.9% | <img src="progress/bars/player.svg" alt="22.0%"> |
+| Enemies | 27,342 | 11.6% | 9.2% | <img src="progress/bars/enemies.svg" alt="11.6%"> |
+| Dungeon runtime | 5,487 | 5.7% | 3.4% | <img src="progress/bars/dungeon_runtime.svg" alt="5.7%"> |
+| Bosses | 8,285 | 2.3% | 2.3% | <img src="progress/bars/bosses.svg" alt="2.3%"> |
+| Items & effects | 13,388 | 0.6% | 0.0% | <img src="progress/bars/items_effects.svg" alt="0.6%"> |
+| Town, shop & villagers | 12,097 | 0.0% | 0.0% | <img src="progress/bars/town_shop_villagers.svg" alt="0.0%"> |
+| UI | 20,716 | 0.0% | 0.0% | <img src="progress/bars/ui.svg" alt="0.0%"> |
+| Wanderer DLC | 9,474 | 0.9% | 0.9% | <img src="progress/bars/wanderer_dlc.svg" alt="0.9%"> |
+| Core & other | 44,306 | 1.2% | 0.8% | <img src="progress/bars/core_other.svg" alt="1.2%"> |
 
 _Updated by `tools/progress.py` on every commit._ On Windows, `py tools/tray_progress_startup.py` puts the same numbers next to the taskbar clock (`tools/tray_progress.ps1`), starting with Windows.
 <!-- progress:end -->

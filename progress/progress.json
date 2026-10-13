@@ -1,11 +1,11 @@
 {
  "lines": 160682,
- "ported": 11418,
+ "ported": 11598,
  "verified": 10466,
- "percent": 7.11,
+ "percent": 7.22,
  "verifiedPercent": 6.51,
  "classes": 1173,
- "classesDone": 39,
+ "classesDone": 40,
  "categories": {
   "Items & effects": {
    "lines": 13388,
@@ -37,10 +37,10 @@
   },
   "Enemies": {
    "lines": 27342,
-   "ported": 3002.9,
+   "ported": 3182.9,
    "verified": 2527.9,
    "classes": 178,
-   "done": 13
+   "done": 14
   },
   "Town, shop & villagers": {
    "lines": 12097,

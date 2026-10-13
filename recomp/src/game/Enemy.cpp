@@ -57,6 +57,7 @@ void Enemy::Instantiate(const std::vector<Vector2>& parents)
     navAgent.localPosition = Vector2::zero();
     navAgent.Awake();
     if (active) navAgent.OnEnable();
+    if (active) PlayEnableSounds(); // (the children's EventSounds.OnEnable: game/EnemyEventSounds.cpp)
     synced_ = position();
 }
 
@@ -89,6 +90,7 @@ void Enemy::SetActive(bool value)
     } else {
         navAgent.OnEnable();
         if (physics) physics->SetBodyActive(*this, true);
+        PlayEnableSounds(); // (the children's EventSounds.OnEnable: game/EnemyEventSounds.cpp)
         // The Animator starts over: its default state, its parameters' defaults.
         ResetAnimator();
         animatorEnabled = true;
@@ -677,6 +679,10 @@ void EnemyPhysics::Add(Enemy& e)
     if (!e.hasRigidbody) return;
     e.body = &world_.AddBody(e.rigidbody, e.position(), e.layer, e.colliderOffset, e.colliderSize);
     AddChildColliders(e); // (a trigger root, the hurtboxes: game/EnemyColliders.cpp)
+    if (!e.colliderEnabled) { // (a root box off in the prefab: game/EnemyRootCollider.cpp)
+        e.colliderEnabled = true;
+        SetRootColliderEnabled(e, false);
+    }
     SyncAttackCollider(e);
     if (!e.active || e.destroyed) e.body->Body()->SetActive(false);
     e.synced_ = e.position();

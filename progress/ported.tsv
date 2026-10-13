@@ -77,4 +77,5 @@ EnemyDamageReceiver.cs	1	n	game/EnemyColliders
 HermitSlimeAttackState.cs	1	n	game/HermitSlime	no-ops (parameters that do not exist)
 BrokenGolemTurretBehaviour.cs	1	n	game/BrokenGolemTurret	waits on its recording
 BrokenGolemTurretProjectile.cs	1	n	game/EnemyProjectile
+FlyingKamikazeGolemBehaviour.cs	1	n	game/FlyingKamikazeGolem	waits on its recording (audited)
 PoolManager.cs	0.6	n	game/PoolManager	the enemies' projectile pools

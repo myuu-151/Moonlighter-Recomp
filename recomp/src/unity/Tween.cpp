@@ -51,6 +51,14 @@ float EaseEvaluate(Ease ease, float time, float duration)
         const double t = static_cast<double>(static_cast<float>(q));
         return static_cast<float>(q * t * t);
     }
+    // ((time = time / duration - 1) * time * time * time * time + 1): `div; ldc 1; sub; dup;
+    // starg`: the first factor the unrounded difference, the four after it the float the
+    // argument holds (DOTween 1.2.283's IL, as OutQuad's).
+    case Ease::OutQuint: {
+        const double q = static_cast<double>(time) / static_cast<double>(duration) - 1.0;
+        const double t = static_cast<double>(static_cast<float>(q));
+        return static_cast<float>(q * t * t * t * t + 1.0);
+    }
     }
     return time / duration;
 }

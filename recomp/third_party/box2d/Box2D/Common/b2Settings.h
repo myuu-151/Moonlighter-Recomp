@@ -100,10 +100,17 @@ typedef double float64;
 /// The maximum linear velocity of a body. This limit is very large and is used
 /// to prevent numerical problems. You shouldn't need to adjust this.
 /// ML port (altered from Box2D 2.3.1, which has 2.0f): Unity's Physics2DSettings.maxTranslationSpeed,
-/// 100 in Moonlighter's project, taken as per second over its 0.01 s fixed step. Whether Unity's
-/// fork applies it per second or per step is not known; define b2_maxTranslation to change it.
+/// 100 in Moonlighter's project, taken as Box2D's own per-step limit (Unity's docs: "the maximum
+/// linear speed of a rigid-body per physics update"). Its siblings are Box2D's per-step values
+/// too: maxLinearCorrection 0.2 and maxAngularCorrection 8 (degrees) are b2_maxLinearCorrection
+/// and b2_maxAngularCorrection as they are, and maxRotationSpeed 360 read per second would stop
+/// any 2D body spinning faster than a turn a second. Per second (1 a 0.01 s step) it would also
+/// hold the FlyingKamikazeGolem's 300-a-second charge to a third, short of the 150 it aims at
+/// and inside the room's bounds its script clamps it back into. No recording has a body past
+/// 100 a second yet: enemy_FlyingKamikazeGolem.jsonl decides (its charge's steps); define
+/// b2_maxTranslation to change it.
 #ifndef b2_maxTranslation
-#define b2_maxTranslation			1.0f
+#define b2_maxTranslation			100.0f
 #endif
 #define b2_maxTranslationSquared	(b2_maxTranslation * b2_maxTranslation)
 

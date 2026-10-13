@@ -4,7 +4,7 @@
 # Installed with: git config core.hooksPath tools/hooks
 for py in "py -3" python3 python; do
     if $py tools/progress.py >/dev/null 2>&1; then
-        git add progress/badge.json progress/badge_verified.json progress/progress.json README.md
+        git add progress/badge.json progress/badge_verified.json progress/progress.json progress/bars README.md
         exit 0
     fi
 done

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="416" height="18" viewBox="0 0 416 18">
+<clipPath id="c"><rect width="360" height="18" rx="9.0"/></clipPath>
+<g clip-path="url(#c)">
+<rect width="360" height="18" fill="#8b949e" fill-opacity="0.3"/>
+<rect width="25.99" height="18" fill="#e8b43c"/>
+<rect width="23.45" height="18" fill="#5ac86e"/>
+</g>
+<text x="368" y="14.4" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="15.3" font-weight="600" fill="#8b949e">7.2%</text>
+</svg>
