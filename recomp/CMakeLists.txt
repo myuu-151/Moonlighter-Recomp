@@ -22,6 +22,8 @@ endif()
 add_library(mlcore STATIC
     ${BOX2D_SOURCES}
     src/cs/Object.cpp
+    src/cs/String.cpp
+    src/cs/Text.cpp
     src/unity/Random.cpp
     src/util/Json.cpp
     src/game/Constants.cpp
@@ -227,3 +229,10 @@ target_link_libraries(preview PRIVATE mlcore)
 # Will walking a generated floor on the PC (what the GameCube build runs), for checking moves.
 add_executable(walk_sim tools/walk_sim.cpp)
 target_link_libraries(walk_sim PRIVATE mlcore)
+
+# The game's own code translated by tools/translate, and the oracle tests against it
+# (docs/translator_plan.md): opt-in, it needs the .NET SDK and the game copy.
+option(ML_TRANSLATED "Translate the game's code (tools/translate) and build the oracle tests against it" OFF)
+if(ML_TRANSLATED)
+    include(translated.cmake)
+endif()

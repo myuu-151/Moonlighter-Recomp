@@ -253,7 +253,7 @@ private:
         std::string ex;
         try {
             got = sel.GetRandomRoom(list, desired, ignore);
-        } catch (const cs::Exception& e) {
+        } catch (const cs::Thrown& e) {
             ex = e.TypeName();
         }
         const Value& want = ev["result"];

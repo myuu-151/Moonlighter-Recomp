@@ -9,3 +9,6 @@ build/
 *.user
 .vs/
 __pycache__/
+# Generated at build time from the game copy (tools/translate): decompiled C# and translated C++
+/recomp/gen/
+/build-*/
