@@ -34,7 +34,10 @@
 //       - rocks on all four sides: canShoot off, the clip's ShootProjectile takes nothing;
 //  2. the replay (tests/turret_replay.h): the common one plus the shots, the looks and the pool.
 //
-// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime, BrokenGolemTurret)]
+// For the FlyingKamikazeGolem (enemy_FlyingKamikazeGolem.jsonl): tests/enemy_flykami_checks.h's
+// golem in a box, and tests/flykami_replay.h's part of the replay (ML_FLY_BOX=1: the box's frames).
+//
+// Usage: enemy_test [enemy_GolemSoldier.jsonl] [prefab (GolemSoldier, HermitSlime, BrokenGolemTurret, FlyingKamikazeGolem)]
 //        (ML_HERMIT_BOX=1: the hermit's root box in its attack frames)
 //        (ML_ENEMY_DEBUG=1: every mismatch; ML_ENEMY_CONTACTS=<frame>: the enemies' Box2D
 //        contacts after each of that frame's steps; ML_ENEMY_BOX=1: the soldier in a box's
@@ -44,6 +47,8 @@
 #include "enemy_replay.h"
 #include "enemy_hermit_checks.h" // (the HermitSlime's self-checks)
 #include "turret_replay.h"
+#include "enemy_flykami_checks.h" // (the FlyingKamikazeGolem's self-checks)
+#include "flykami_replay.h"
 
 namespace {
 
@@ -550,6 +555,7 @@ int main(int argc, char** argv)
         if (name == "GolemSoldier") {
             CheckSoldierInABox(data);
         }
+        if (name == "FlyingKamikazeGolem") CheckFlyingKamikazeGolem(*data.prefab, *data.controller, data.enemyStats, data.physics2d, data.soundGroups);
         if (name == "HermitSlime") CheckHermitSlime(*data.prefab, *data.controller, data.enemyStats, data.physics2d, data.soundGroups);
         if (name == "BrokenGolemTurret") {
             if (data.projectilePrefab && data.projectileController && data.controller->Param("Shoot") >= 0)
@@ -577,6 +583,8 @@ int main(int argc, char** argv)
         turret.projectileController = data.projectileController.get();
         replay.hooks = &turret;
     }
+    FlyKamiReplay flykami; // (tests/flykami_replay.h)
+    if (name == "FlyingKamikazeGolem") replay.hooks = &flykami;
     const int replayed = ReplayRecording(file, replay);
     turret.Summary();
     return gFailed || replayed ? 1 : 0;

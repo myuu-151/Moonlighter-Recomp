@@ -192,6 +192,17 @@ public:
     bool colliderTrigger = false;
     std::vector<EnemyDamageReceiver> damageReceivers;
     b2Fixture* rootFixture = nullptr; // the root box's (EnemyPhysics::Add)
+    // The root box's Collider2D.enabled (the FlyingKamikazeGolem's is off in its prefab and its
+    // script switches it): off, the box has no fixture (EnemyPhysics::SetRootColliderEnabled,
+    // game/EnemyRootCollider.cpp); rootUserData keeps its layer slot meanwhile.
+    bool colliderEnabled = true;
+    void* rootUserData = nullptr;
+    // MasterAudio's EventSounds on its objects (the FlyingKamikazeGolem's "SoundsFlyingKamikaze"):
+    // what their OnEnable plays (useEnableSound's PlaySound events), each a MasterAudio.PlaySound
+    // with its Random draws, at Instantiate (if active) and SetActive(true), after the root's
+    // own components. game/EnemyEventSounds.cpp.
+    std::vector<std::string> enableSounds;
+    void PlayEnableSounds();
 
     // transform.position (through the parents) and its setter.
     unity::Vector2 position() const { return navAgent.position(); }
@@ -413,6 +424,10 @@ public:
     void SyncRootCollider(Enemy& enemy);
     // The hurtbox whose fixture this is (none: not one).
     EnemyDamageReceiver* ReceiverOf(const b2Fixture* fixture);
+    // Collider2D.enabled on the root box (enemy.colliderEnabled): off destroys its fixture, on
+    // makes it again (the body's rest restarted, as a remade attack trigger's); the mass set by
+    // hand stays. game/EnemyRootCollider.cpp.
+    void SetRootColliderEnabled(Enemy& enemy, bool enabled);
 
     // Other bodies of the world stepped with the enemies' (game/EnemyProjectile.h: the enemy
     // projectiles), called in Step: Sync after the enemies' sync, AfterWorldStep right after

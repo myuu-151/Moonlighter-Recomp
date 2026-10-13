@@ -2,6 +2,7 @@
 
 #include "game/BabySlime.h"
 #include "game/BrokenGolemTurret.h"
+#include "game/FlyingKamikazeGolem.h"
 #include "game/GolemSoldier.h"
 #include "game/HermitSlime.h"
 #include "game/Tangle.h"
@@ -32,6 +33,7 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
             enemy->colliderOffset = {c.ox, c.oy};
             enemy->colliderSize = {c.sx, c.sy};
             enemy->colliderTrigger = c.trigger; // (the HermitSlime's: game/EnemyColliders.h)
+            enemy->colliderEnabled = c.enabled; // (the FlyingKamikazeGolem's is off: game/EnemyRootCollider.cpp)
             break;
         }
     enemy->hasRigidbody = root.hasRigidbody;
@@ -45,6 +47,9 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
             enemy->enemyBehaviour = MakeHermitSlimeBehaviour(*enemy, b);
         } else if (!enemy->enemyBehaviour && b.cls == "BrokenGolemTurretBehaviour") { // (game/BrokenGolemTurret.h)
             enemy->enemyBehaviour = MakeBrokenGolemTurretBehaviour(*enemy, b);
+            behaviourFields = &b;
+        } else if (!enemy->enemyBehaviour && b.cls == "FlyingKamikazeGolemBehaviour") { // (game/FlyingKamikazeGolem.h)
+            enemy->enemyBehaviour = MakeFlyingKamikazeGolemBehaviour(*enemy, b);
             behaviourFields = &b;
         } else if (!enemy->enemyBehaviour) {
             if (auto behaviour = MakeBehaviour(b.cls, prefab.name, *enemy)) {
@@ -118,6 +123,19 @@ std::unique_ptr<Enemy> MakeEnemy(const Prefab& prefab, EnemyScene& scene, const 
         }
         // Enemy.enemySprite: the first SpriteRenderer below the root (GetComponentInChildren).
         if (enemy->sprite.empty() && n.HasRenderer() && !n.sprite.empty()) enemy->sprite = n.sprite;
+    }
+    // EventSounds' enable sounds on the objects that are on (game/EnemyEventSounds.cpp).
+    for (const PrefabNode& n : prefab.nodes) {
+        bool on = n.active;
+        for (const PrefabNode& m : prefab.nodes) // (its parents below the root)
+            on = on && (m.path.empty() || n.path.compare(0, m.path.size() + 1, m.path + "/") != 0 || m.active);
+        for (const Behaviour& b : n.behaviours) {
+            if (!on || b.cls != "EventSounds" || b.Field("m_Enabled", 1.0) == 0.0 || b.Field("useEnableSound", 0.0) == 0.0) continue;
+            const auto it = b.raw.find("enableSound");
+            if (it != b.raw.end())
+                for (const json::Value& s : it->second.arr)
+                    if (s.IsString()) enemy->enableSounds.push_back(s.s);
+        }
     }
     // The Animator binds its write defaults to the object as the prefab has it.
     enemy->ResetAnimator();

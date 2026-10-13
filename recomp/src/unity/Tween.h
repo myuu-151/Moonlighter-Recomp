@@ -14,7 +14,7 @@
 
 namespace unity {
 
-enum class Ease { Linear, OutQuad, InCirc, InCubic };
+enum class Ease { Linear, OutQuad, InCirc, InCubic, OutQuint };
 
 // EaseManager.Evaluate: the eased fraction at `time` of `duration`.
 float EaseEvaluate(Ease ease, float time, float duration);

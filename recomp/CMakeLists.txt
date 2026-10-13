@@ -77,6 +77,11 @@ add_library(mlcore STATIC
     src/game/PoolManager.cpp
     src/game/EnemyProjectile.cpp
     src/game/BrokenGolemTurret.cpp
+    # The FlyingKamikazeGolem, and a root box a script switches on and off.
+    src/game/FlyingKamikazeGolem.cpp
+    src/game/EnemyRootCollider.cpp
+    # MasterAudio's EventSounds on an enemy's objects: OnEnable's sounds and their draws.
+    src/game/EnemyEventSounds.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d)
 
@@ -186,6 +191,13 @@ add_test(NAME enemy_hermit_slime
 # (`-oracle-enemy=BrokenGolemTurret`; skipped if there's none).
 add_test(NAME enemy_broken_turret
          COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_BrokenGolemTurret.jsonl BrokenGolemTurret
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The FlyingKamikazeGolem (game/FlyingKamikazeGolem.h): golems in a walled box (the charge's draw,
+# aim and bug, the root box and attack child switched, the OutQuint return, EnableCharge's
+# draw), and against the game (`-oracle-enemy=FlyingKamikazeGolem`; skipped if there's none).
+add_test(NAME enemy_flyingkamikazegolem
+         COMMAND enemy_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_FlyingKamikazeGolem.jsonl FlyingKamikazeGolem
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The Tangle against the game (data/oracle/tangle.jsonl, `-oracle-tangle`; skipped if there's
