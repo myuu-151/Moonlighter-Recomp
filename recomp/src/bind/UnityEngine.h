@@ -9,6 +9,7 @@
 //   bind/DOTween.h     DOTween
 //   bind/Engine.h      Instantiate, FindObjectOfType, Application, Gizmos, layers
 //   bind/Plugins.h     MasterAudio, AntiCheat's obscured values
+//   bind/Serial.h      serialized values (prefabs, JSON files) into fields; bind/Prefabs.h makes prefabs
 
 #include "bind/Components.h"
 #include "bind/Core.h"
@@ -17,4 +18,5 @@
 #include "bind/Physics.h"
 #include "bind/Plugins.h"
 #include "bind/Scene.h"
+#include "bind/Serial.h"
 #include "bind/Values.h"

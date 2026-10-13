@@ -12,6 +12,13 @@
 #include "cs/String.h"
 #include "cs/Type.h"
 
+#if defined(_WIN32) && defined(ML_CS_STACK_DUMP)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+#endif
+
 namespace cs {
 
 namespace {
@@ -190,9 +197,45 @@ const char* Exception::TypeName() const
 
 const char* Thrown::what() const noexcept { return ex ? ex->cs_typename() : "System.NullReferenceException"; }
 
+namespace {
+// ML_CS_STACK=1 (a build with ML_CS_STACK_DUMP and PDBs): the C++ stack at every C# exception thrown.
+void DumpStack([[maybe_unused]] const char* type)
+{
+#if defined(_WIN32) && defined(ML_CS_STACK_DUMP)
+    static const bool on = std::getenv("ML_CS_STACK") != nullptr;
+    if (!on) return;
+    HANDLE proc = GetCurrentProcess();
+    static bool init = false;
+    if (!init) {
+        SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
+        SymInitialize(proc, nullptr, TRUE);
+        init = true;
+    }
+    void* frames[48];
+    const USHORT n = CaptureStackBackTrace(1, 48, frames, nullptr);
+    std::fprintf(stderr, "cs: throw %s\n", type);
+    alignas(SYMBOL_INFO) char buf[sizeof(SYMBOL_INFO) + 512];
+    for (USHORT i = 0; i < n; i++) {
+        auto* sym = reinterpret_cast<SYMBOL_INFO*>(buf);
+        sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+        sym->MaxNameLen = 511;
+        DWORD64 disp = 0;
+        DWORD ldisp = 0;
+        IMAGEHLP_LINE64 line{};
+        line.SizeOfStruct = sizeof line;
+        const DWORD64 a = reinterpret_cast<DWORD64>(frames[i]);
+        const bool hasSym = SymFromAddr(proc, a, &disp, sym);
+        const bool hasLine = SymGetLineFromAddr64(proc, a, &ldisp, &line);
+        std::fprintf(stderr, "  %s  %s:%lu\n", hasSym ? sym->Name : "?", hasLine ? line.FileName : "?", hasLine ? line.LineNumber : 0ul);
+    }
+#endif
+}
+} // namespace
+
 void Throw(Exception* e)
 {
     if (!e) e = gcnew<NullReferenceException>();
+    DumpStack(e->cs_typename());
     throw Thrown(e);
 }
 

@@ -8,6 +8,7 @@
 // progress/unity_api_gaps.tsv (made by tools/translate survey).
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -51,6 +52,9 @@ struct Color {
 
 // ---- objects -------------------------------------------------------------------------------------
 
+class GameObject;
+class Sprite;
+
 // A serialized value a prefab or an asset gives a field (bind/Prefabs.cpp reads them from
 // prefabs.json); the generated cs_SetField reads it as the field's type.
 class SerialValue {
@@ -63,6 +67,13 @@ public:
     virtual unity::Vector2 AsVector2() const = 0;
     virtual struct Vector3 AsVector3() const = 0;
     virtual struct Color AsColor() const = 0;
+    // A reference to an object of the prefab (nullptr: none, or not one this value can name).
+    virtual GameObject* AsGameObject() const { return nullptr; }
+    virtual Sprite* AsSprite() const { return nullptr; }
+    // A list's or an array's elements (-1: not one), an object's fields (bind/Serial.h).
+    virtual int32_t Length() const { return -1; }
+    virtual void Element(int32_t i, const std::function<void(const SerialValue&)>& f) const { (void)i, (void)f; }
+    virtual void Fields(const std::function<void(const char*, const SerialValue&)>& f) const { (void)f; }
 };
 
 // UnityEngine.Object: a managed object with a native counterpart. Destroy ends the native side:
@@ -84,6 +95,9 @@ public:
         (void)name, (void)value;
         return false;
     }
+    // The serialized fields a loaded object never has null (strings, lists, arrays, [Serializable]
+    // objects) made empty, as Unity's serializer leaves them (generated; bind/Serial.h).
+    virtual void cs_SerialInit() {}
     // Unity's Object.ToString: "<name> (<type>)".
     cs::String* ToString() override;
     int32_t GetInstanceID() { return GetHashCode(); }

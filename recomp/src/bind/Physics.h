@@ -220,6 +220,7 @@ private:
     };
     Body* Find(UnityEngine::Rigidbody2D* rb);
     void SyncAttached(Body& b, Attached& a);
+    void Rescan(Body& b);
     UnityEngine::Vector2 LocalCenter(Body& b, UnityEngine::Collider2D* c);
 
     std::vector<Body> bodies_;

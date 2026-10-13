@@ -48,7 +48,10 @@ void Rigidbody2D::cs_Attached()
 
 void Rigidbody2D::cs_ActiveChanged(bool active)
 {
-    if (P()) P()->SetActive(this, active && simulated_);
+    if (!P()) return;
+    P()->SetActive(this, active && simulated_);
+    // The colliders below it as they are now (an object made inactive and activated: a prefab's).
+    if (active) P()->SyncColliders(this);
 }
 
 void Rigidbody2D::cs_Destroyed()
@@ -230,21 +233,9 @@ void PhysicsScene::Add(Rigidbody2D* rb)
     rb->body_ = &world.AddBody(rb->def_, Vector2{pos.x, pos.y}, go->layer_, b.box->offset_, b.box->size_);
     fixtures_[rb->body_->Body()->GetFixtureList()] = b.box;
     b.box->changed_ = false;
-    // The colliders below without a body of their own.
-    std::vector<Transform*> stack(go->transform_->children_.rbegin(), go->transform_->children_.rend());
-    for (Component* c : go->components_)
-        if (auto* col = dynamic_cast<Collider2D*>(c))
-            if (col != b.box) b.attached.push_back(Attached{col});
-    while (!stack.empty()) {
-        Transform* t = stack.back();
-        stack.pop_back();
-        if (t->gameObject_->GetComponent<Rigidbody2D*>()) continue;
-        for (Component* c : t->gameObject_->components_)
-            if (auto* col = dynamic_cast<Collider2D*>(c)) b.attached.push_back(Attached{col});
-        for (auto it = t->children_.rbegin(); it != t->children_.rend(); ++it) stack.push_back(*it);
-    }
     bodies_.push_back(b);
     Body& added = bodies_.back();
+    Rescan(added);
     for (Attached& a : added.attached) SyncAttached(added, a);
     if (!go->get_activeInHierarchy() || !rb->simulated_) rb->body_->Body()->SetActive(false);
     rb->synced_ = Vector2{pos.x, pos.y};
@@ -281,8 +272,34 @@ void PhysicsScene::PlaceBody(Rigidbody2D* rb, Vector2 bodyPosition)
 
 void PhysicsScene::SyncColliders(Rigidbody2D* rb)
 {
-    if (Body* b = Find(rb))
+    if (Body* b = Find(rb)) {
+        Rescan(*b);
         for (Attached& a : b->attached) SyncAttached(*b, a);
+    }
+}
+
+// The colliders on the body's object (but its box) and below it, down to an object with a
+// Rigidbody2D of its own, in hierarchy order: the ones added since become the body's too.
+void PhysicsScene::Rescan(Body& b)
+{
+    GameObject* go = b.rb->gameObject_;
+    auto add = [&](Collider2D* col) {
+        if (col == b.box) return;
+        for (const Attached& a : b.attached)
+            if (a.collider == col) return;
+        b.attached.push_back(Attached{col});
+    };
+    for (Component* c : go->components_)
+        if (auto* col = dynamic_cast<Collider2D*>(c)) add(col);
+    std::vector<Transform*> stack(go->transform_->children_.rbegin(), go->transform_->children_.rend());
+    while (!stack.empty()) {
+        Transform* t = stack.back();
+        stack.pop_back();
+        if (t->gameObject_->GetComponent<Rigidbody2D*>()) continue;
+        for (Component* c : t->gameObject_->components_)
+            if (auto* col = dynamic_cast<Collider2D*>(c)) add(col);
+        for (auto it = t->children_.rbegin(); it != t->children_.rend(); ++it) stack.push_back(*it);
+    }
 }
 
 void PhysicsScene::SyncAttached(Body& b, Attached& a)
@@ -352,6 +369,7 @@ void PhysicsScene::Sync()
     for (Body& b : bodies_) {
         Rigidbody2D* rb = b.rb;
         if (!rb->body_ || rb->destroyed_ || !rb->gameObject_->get_activeInHierarchy()) continue;
+        Rescan(b);
         for (Attached& a : b.attached) SyncAttached(b, a);
         Transform* t = rb->get_transform();
         const Vector3 p = t->get_position();

@@ -428,7 +428,7 @@ public sealed class Emitter
             if (!IsSerializable(t) || t.TypeKind != TypeKind.Class) return "";
             var sf = t.GetMembers().OfType<IFieldSymbol>().Where(f => !f.IsStatic && !f.IsConst && tr.IsFieldUsedOrFull(f) && SerialKind(f.Type) != null).ToList();
             bool baseHas = t.BaseType != null && N.IsGame(t.BaseType) && IsSerializable(t.BaseType);
-            if (sf.Count == 0 && !baseHas) return "";
+            // (emitted even without fields: SerialObject reads any [Serializable] class through it)
             sb.Append("    bool cs_SetField(const char* name, const ::UnityEngine::SerialValue& v) {\n");
             foreach (var f in sf)
                 sb.Append($"        if (!::std::strcmp(name, \"{f.Name}\")) {{ this->{N.Field(f)} = {SerialKind(f.Type)}; return true; }}\n");
@@ -484,6 +484,15 @@ public sealed class Emitter
                 sb.Append($"        if (!::std::strcmp(name, \"{f.Name}\")) {{ this->{N.Field(f)} = {SerialKind(f.Type)}; return true; }}\n");
             sb.Append($"        return {bt}::cs_SetField(name, v);\n    }}\n");
         }
+        var empties = t.GetMembers().OfType<IFieldSymbol>().Where(f => IsSerializedField(f) && tr.IsFieldUsedOrFull(f) && SerialEmpty(f.Type) != null).ToList();
+        if (empties.Count > 0)
+        {
+            string bt = N.Type(t.BaseType);
+            sb.Append("    void cs_SerialInit() override {\n");
+            sb.Append($"        {bt}::cs_SerialInit();\n");
+            foreach (var f in empties) sb.Append($"        if (!this->{N.Field(f)}) this->{N.Field(f)} = {SerialEmpty(f.Type)};\n");
+            sb.Append("    }\n");
+        }
         return sb.ToString();
     }
 
@@ -514,6 +523,59 @@ public sealed class Emitter
         if (n == "UnityEngine.Vector2") return "v.AsVector2()";
         if (n == "UnityEngine.Vector3") return "v.AsVector3()";
         if (n == "UnityEngine.Color") return "v.AsColor()";
+        // A reference to an object of the prefab (its path below the prefab's root): the object, or
+        // its component of the field's type.
+        if (n == "UnityEngine.GameObject") return "v.AsGameObject()";
+        if (n == "UnityEngine.Sprite") return "v.AsSprite()";
+        if (t is INamedTypeSymbol nt && t.TypeKind == TypeKind.Class && DerivesFrom(nt, "UnityEngine.Component") && (N.IsGame(nt) || tr.Bind.FindType(nt) != null))
+            return $"(v.AsGameObject() ? v.AsGameObject()->template GetComponent<{N.Ref(t)}>() : nullptr)";
+        // Lists and arrays of what reads element by element, a [Serializable] game class's object.
+        if (t is INamedTypeSymbol lt && lt.IsGenericType && lt.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>" && SerialElement(lt.TypeArguments[0]))
+            return $"::UnityEngine::SerialList<{N.Ref(lt.TypeArguments[0])}>(v)";
+        if (t is IArrayTypeSymbol at && at.Rank == 1 && SerialElement(at.ElementType))
+            return $"::UnityEngine::SerialArray<{N.Ref(at.ElementType)}>(v)";
+        if (t is INamedTypeSymbol ct && SerialClass(ct))
+            return $"::UnityEngine::SerialObject<{N.Type(ct)}>(v)";
+        return null;
+    }
+
+    // A [Serializable] game class SerialObject makes (bind/Serial.h): its constructor, its cs_SetField.
+    bool SerialClass(INamedTypeSymbol ct) =>
+        ct.TypeKind == TypeKind.Class && N.IsGame(ct) && IsSerializable(ct) && !DerivesFrom(ct, "UnityEngine.Object") && !ct.IsAbstract &&
+        Names.AllTypeParameters(ct).Count == 0 && ct.InstanceConstructors.FirstOrDefault(c => c.Parameters.Length == 0) is IMethodSymbol ctor &&
+        tr.Methods.TryGetValue(ctor, out var r) && !r.Stub;
+
+    // An element SerialRead (bind/Serial.h) reads.
+    bool SerialElement(ITypeSymbol t)
+    {
+        if (t.SpecialType is SpecialType.System_Boolean or SpecialType.System_Int32 or SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_String) return true;
+        if (t.TypeKind == TypeKind.Enum) return true;
+        string n = t.ToDisplayString();
+        if (n is "UnityEngine.Vector2" or "UnityEngine.Vector3" or "UnityEngine.Color" or "UnityEngine.GameObject") return true;
+        if (t is INamedTypeSymbol nt && t.TypeKind == TypeKind.Class && DerivesFrom(nt, "UnityEngine.Object") && (N.IsGame(nt) || tr.Bind.FindType(nt) != null)) return true;
+        return t is INamedTypeSymbol ct && SerialClass(ct);
+    }
+
+    // Unity serializes it: public (or [SerializeField]), not static, const, readonly or [NonSerialized].
+    static bool IsSerializedField(IFieldSymbol f)
+    {
+        if (f.IsStatic || f.IsConst || f.IsReadOnly || f.AssociatedSymbol != null) return false;
+        var attrs = f.GetAttributes().Select(a => a.AttributeClass?.ToDisplayString()).ToList();
+        if (attrs.Contains("System.NonSerializedAttribute")) return false;
+        return f.DeclaredAccessibility == Accessibility.Public || attrs.Contains("UnityEngine.SerializeField");
+    }
+
+    // What a serialized field of a loaded object is when the data doesn't say (cs_SerialInit): an
+    // empty string, list or array, a [Serializable] class's new object; null: a kind it leaves be.
+    string SerialEmpty(ITypeSymbol t)
+    {
+        if (t.SpecialType == SpecialType.System_String) return "::cs::String::get_Empty()";
+        if (t is INamedTypeSymbol lt && lt.IsGenericType && lt.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>" && SerialElement(lt.TypeArguments[0]))
+            return $"::cs::New<{N.Type(lt)}>()";
+        if (t is IArrayTypeSymbol at && at.Rank == 1 && SerialElement(at.ElementType))
+            return $"::cs::Array<{N.Ref(at.ElementType)}>::New(0)";
+        if (t is INamedTypeSymbol ct && SerialClass(ct))
+            return $"::cs::New<{N.Type(ct)}>()";
         return null;
     }
 

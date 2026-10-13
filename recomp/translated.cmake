@@ -31,7 +31,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 include(${ML_GEN_DIR}/sources.cmake)
 add_library(mlgen STATIC ${ML_GEN_SOURCES}
             src/bind/Core.cpp src/bind/Scene.cpp src/bind/Physics.cpp src/bind/Components.cpp src/bind/DOTween.cpp
-            src/bind/Engine.cpp src/bind/Plugins.cpp)
+            src/bind/Engine.cpp src/bind/Plugins.cpp src/bind/Prefabs.cpp src/bind/Serial.cpp)
 target_include_directories(mlgen PUBLIC ${ML_GEN_DIR} src)
 target_link_libraries(mlgen PUBLIC mlcore)
 if(MSVC)
@@ -41,12 +41,41 @@ else()
     target_compile_options(mlgen PRIVATE -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable)
 endif()
 
+# ML_TRANSLATED_DEBUG: PDBs for the translated code and its tests, and ML_CS_STACK=1 printing the C++
+# stack at each C# exception thrown (finding where translated code dereferenced null).
+option(ML_TRANSLATED_DEBUG "PDBs for the translated code; ML_CS_STACK=1 prints the stack at each C# throw" OFF)
+if(ML_TRANSLATED_DEBUG AND MSVC)
+    set_source_files_properties(src/cs/Object.cpp PROPERTIES COMPILE_DEFINITIONS ML_CS_STACK_DUMP)
+    target_compile_options(mlgen PRIVATE /Zi)
+endif()
+function(ml_translated_debug target)
+    if(ML_TRANSLATED_DEBUG AND MSVC)
+        target_compile_options(${target} PRIVATE /Zi)
+        target_link_options(${target} PRIVATE /DEBUG)
+    endif()
+endfunction()
+
 # The oracle tests against the translated classes: tests/translated holds headers named like
 # the hand port's (game/Cave.h...) that name the translated classes instead, and the glue that
 # drives them as the game does.
 add_executable(cave_oracle_translated tests/cave_oracle_test.cpp tests/translated/Adapters.cpp)
 target_include_directories(cave_oracle_translated BEFORE PRIVATE tests/translated)
 target_link_libraries(cave_oracle_translated PRIVATE mlgen)
+ml_translated_debug(cave_oracle_translated)
 add_test(NAME cave_oracle_translated
          COMMAND cave_oracle_translated ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The BabySlime against the game (data/oracle/slime.jsonl, slime_bis.jsonl; tests/slime_test's
+# rows) with the translated BabySlimeBehaviour, EnemyBehaviour, Enemy, EnemyStats and PolyNav in
+# place of the hand port, on the scene facade (src/bind) and the stand-ins of tests/translated/scene.
+add_executable(slime_translated_test tests/translated/slime_translated_test.cpp tests/translated/scene/Standins.cpp)
+target_include_directories(slime_translated_test PRIVATE tests/translated)
+target_link_libraries(slime_translated_test PRIVATE mlgen)
+ml_translated_debug(slime_translated_test)
+add_test(NAME slime_translated
+         COMMAND slime_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME slime_bis_translated
+         COMMAND slime_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime_bis.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
