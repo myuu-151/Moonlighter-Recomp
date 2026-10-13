@@ -28,8 +28,42 @@ public sealed class Translator
         public string Body;           // the C++ statements (null: no body)
         public string Error;          // an unsupported construct
         public List<string> Gaps = new();
-        public bool Translated => Error == null && Gaps.Count == 0;
+        public bool Stub;             // declared only: units.txt stubs its type (reaching it throws)
+        public bool Hand;             // declared only: units.txt's `hand`, defined in hand-written C++
+        public bool Translated => Error == null && Gaps.Count == 0 && !Stub && !Hand;
         public int Lines;
+    }
+
+    // units.txt's `stub <type>` and `stub-others`: types whose methods are declared but not
+    // translated (a call compiles; reaching it at run time throws), so the closure stops there.
+    readonly HashSet<INamedTypeSymbol> stubTypes = new(SymbolEqualityComparer.Default);
+    readonly HashSet<INamedTypeSymbol> listedTypes = new(SymbolEqualityComparer.Default);
+    readonly HashSet<IMethodSymbol> listedMethods = new(SymbolEqualityComparer.Default);
+    // units.txt's `hand <type> <member...>`: game methods whose bodies are written by hand (a
+    // driver's stand-in for a service the translated code calls: the hero, the camera, the
+    // room's bookkeeping); declared like the translated ones, defined elsewhere.
+    readonly HashSet<IMethodSymbol> handMethods = new(SymbolEqualityComparer.Default);
+    // Types named by `type <name> <members...>`: what calls reach of them translates, but the
+    // engine's seeds (their messages, overrides, interface implementations) don't: those are
+    // declared as stubs unless listed (a scene service the enemies reach for one property).
+    readonly HashSet<INamedTypeSymbol> partialTypes = new(SymbolEqualityComparer.Default);
+    bool stubOthers;
+    public bool IsHand(IMethodSymbol m) => handMethods.Contains(m.OriginalDefinition);
+
+    // Stubbing is by type: a type the units name (whole or some of its members) translates what
+    // the closure reaches of it; a compiler-generated class (a closure, an iterator) follows the
+    // methods that use it, so it is never stubbed itself.
+    bool IsStubbed(IMethodSymbol m)
+    {
+        var t = m.ContainingType.OriginalDefinition;
+        if (listedMethods.Contains(m)) return false;
+        for (var o = t; o != null; o = o.ContainingType)
+        {
+            if (stubTypes.Contains(o)) return true;
+            if (listedTypes.Contains(o)) return false;
+            if (o.Name.StartsWith("_003C", StringComparison.Ordinal) || o.IsImplicitlyDeclared) return false;
+        }
+        return stubOthers;
     }
 
     readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
@@ -86,7 +120,18 @@ public sealed class Translator
         foreach (var i in t.Interfaces) if (N.IsGame(i)) NeedType(i);
     }
 
-    public void NeedMethod(IMethodSymbol m)
+    // A seed of the engine's (a message, an override, an interface implementation).
+    void NeedSeed(IMethodSymbol m)
+    {
+        var o = m.OriginalDefinition;
+        var t = o.ContainingType.OriginalDefinition;
+        bool partial = partialTypes.Contains(t) && !fullTypes.Contains(t) && !listedMethods.Contains(o) && !handMethods.Contains(o);
+        NeedMethod(m, partial);
+    }
+
+    public void NeedMethod(IMethodSymbol m) => NeedMethod(m, false);
+
+    void NeedMethod(IMethodSymbol m, bool seedStub)
     {
         m = m.OriginalDefinition;
         if (m.ReducedFrom != null) m = m.ReducedFrom.OriginalDefinition;
@@ -94,7 +139,8 @@ public sealed class Translator
         if (m.MethodKind == MethodKind.DelegateInvoke) return;
         NeedType(m.ContainingType);
         if (methods.ContainsKey(m)) return;
-        methods[m] = new MethodResult { M = m };
+        bool hand = handMethods.Contains(m);
+        methods[m] = new MethodResult { M = m, Hand = hand, Stub = !hand && (seedStub || IsStubbed(m)) };
         queue.Enqueue(m);
         // overridden declarations are part of the class hierarchy's C++ (override needs them)
         if (m.OverriddenMethod != null) NeedMethod(m.OverriddenMethod);
@@ -169,6 +215,9 @@ public sealed class Translator
     //                              type <MetadataName> [Member ...]   (the type; only those members if given)
     public void AddUnits(string path)
     {
+        // Two passes: first what is listed (so a stub decision never comes before the listing
+        // that overrides it), then the closure's seeds.
+        var actions = new List<Action>();
         int n = 0;
         foreach (var raw in File.ReadLines(path))
         {
@@ -178,39 +227,110 @@ public sealed class Translator
             if (hash >= 0) line = line[..hash].Trim();
             if (line.Length == 0) continue;
             var f = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            int at = n;
             switch (f[0])
             {
                 case "all":
-                    AddAll();
+                    actions.Add(AddAll);
                     break;
                 case "file":
                 {
                     var tree = GC.Tree(f[1]);
                     var model = GC.Model(tree);
-                    foreach (var decl in tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
-                        if (model.GetDeclaredSymbol(decl) is INamedTypeSymbol t) AddWhole(t);
+                    var types = tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>()
+                        .Select(d => model.GetDeclaredSymbol(d)).OfType<INamedTypeSymbol>().ToList();
+                    foreach (var t in types) ListWhole(t);
+                    actions.Add(() => { foreach (var t in types) AddWhole(t); });
+                    break;
+                }
+                case "stub":
+                    stubTypes.Add(GC.Type(f[1]));
+                    break;
+                case "stub-others":
+                    stubOthers = true;
+                    break;
+                case "hand":
+                {
+                    var t = GC.Type(f[1]);
+                    if (f.Length < 3) throw new UsageException($"{path}:{at}: want `hand <type> <member...>`");
+                    foreach (var name in f.Skip(2))
+                    {
+                        var ms = name == ".ctor" ? t.InstanceConstructors.Cast<ISymbol>().ToList() : t.GetMembers(name).ToList();
+                        if (ms.Count == 0) throw new UsageException($"{path}:{at}: no member {name} in {t}");
+                        foreach (var s in ms)
+                            switch (s)
+                            {
+                                case IMethodSymbol hm: handMethods.Add(hm.OriginalDefinition); break;
+                                case IPropertySymbol hp:
+                                    if (hp.GetMethod != null) handMethods.Add(hp.GetMethod.OriginalDefinition);
+                                    if (hp.SetMethod != null) handMethods.Add(hp.SetMethod.OriginalDefinition);
+                                    break;
+                                default: throw new UsageException($"{path}:{at}: {name} in {t} is not a method or property");
+                            }
+                    }
+                    // (declared whether or not the closure reaches them: the hand-written file defines them all)
+                    var hands = f.Skip(2).SelectMany(name => name == ".ctor" ? t.InstanceConstructors.Cast<ISymbol>() : t.GetMembers(name)).ToList();
+                    actions.Add(() =>
+                    {
+                        foreach (var s in hands)
+                            if (s is IMethodSymbol hm) NeedMethod(hm);
+                            else if (s is IPropertySymbol hp)
+                            {
+                                if (hp.GetMethod != null) NeedMethod(hp.GetMethod);
+                                if (hp.SetMethod != null) NeedMethod(hp.SetMethod);
+                            }
+                    });
                     break;
                 }
                 case "type":
                 {
                     var t = GC.Type(f[1]);
-                    if (f.Length == 2) AddWhole(t);
-                    else
+                    if (f.Length == 2)
+                    {
+                        ListWhole(t);
+                        actions.Add(() => AddWhole(t));
+                        break;
+                    }
+                    var members = new List<ISymbol>();
+                    foreach (var name in f.Skip(2))
+                    {
+                        var ms = t.GetMembers(name).ToList();
+                        if (name == ".ctor") ms = t.InstanceConstructors.Cast<ISymbol>().ToList();
+                        if (ms.Count == 0) throw new UsageException($"{path}:{at}: no member {name} in {t}");
+                        members.AddRange(ms);
+                    }
+                    foreach (var m in members) ListMember(m);
+                    listedTypes.Add(t.OriginalDefinition); // (named: what the closure reaches of it translates)
+                    partialTypes.Add(t.OriginalDefinition);
+                    actions.Add(() =>
                     {
                         NeedType(t);
-                        foreach (var name in f.Skip(2))
-                        {
-                            var ms = t.GetMembers(name).ToList();
-                            if (name == ".ctor") ms = t.InstanceConstructors.Cast<ISymbol>().ToList();
-                            if (ms.Count == 0) throw new UsageException($"{path}:{n}: no member {name} in {t}");
-                            foreach (var m in ms) AddMember(m);
-                        }
-                    }
+                        foreach (var m in members) AddMember(m);
+                    });
                     break;
                 }
                 default:
-                    throw new UsageException($"{path}:{n}: want `file <path>` or `type <name> [members]`");
+                    throw new UsageException($"{path}:{n}: want `file <path>`, `type <name> [members]`, `hand <name> <members>`, `stub <name>` or `stub-others`");
             }
+        }
+        foreach (var a in actions) a();
+    }
+
+    void ListWhole(INamedTypeSymbol t)
+    {
+        listedTypes.Add(t.OriginalDefinition);
+        foreach (var nt in t.GetTypeMembers()) ListWhole(nt);
+    }
+
+    void ListMember(ISymbol m)
+    {
+        switch (m)
+        {
+            case IMethodSymbol ms: listedMethods.Add(ms.OriginalDefinition); break;
+            case IPropertySymbol p:
+                if (p.GetMethod != null) listedMethods.Add(p.GetMethod.OriginalDefinition);
+                if (p.SetMethod != null) listedMethods.Add(p.SetMethod.OriginalDefinition);
+                break;
         }
     }
 
@@ -229,6 +349,7 @@ public sealed class Translator
     {
         t = t.OriginalDefinition;
         fullTypes.Add(t);
+        listedTypes.Add(t);
         NeedType(t);
         if (t.TypeKind is TypeKind.Class or TypeKind.Struct && !t.IsAbstract && !t.IsStatic) constructed.Add(t);
         foreach (var m in t.GetMembers()) AddMember(m);
@@ -240,11 +361,12 @@ public sealed class Translator
         switch (m)
         {
             case IMethodSymbol ms when ms.MethodKind != MethodKind.DelegateInvoke && ms.ContainingType.TypeKind != TypeKind.Delegate:
+                listedMethods.Add(ms.OriginalDefinition);
                 NeedMethod(ms);
                 break;
             case IPropertySymbol p:
-                if (p.GetMethod != null) NeedMethod(p.GetMethod);
-                if (p.SetMethod != null) NeedMethod(p.SetMethod);
+                if (p.GetMethod != null) { listedMethods.Add(p.GetMethod.OriginalDefinition); NeedMethod(p.GetMethod); }
+                if (p.SetMethod != null) { listedMethods.Add(p.SetMethod.OriginalDefinition); NeedMethod(p.SetMethod); }
                 break;
             case IEventSymbol e:
                 UseEvent(e);
@@ -267,19 +389,23 @@ public sealed class Translator
             foreach (var t in types.ToList())
             {
                 if (StaticInitActive(t) && t.StaticConstructors.FirstOrDefault() is IMethodSymbol cctor) NeedMethod(cctor);
+                // The engine calls a MonoBehaviour's messages: they are seeds of any one in use.
+                if (t.TypeKind == TypeKind.Class && Emitter.DerivesFrom(t, "UnityEngine.MonoBehaviour"))
+                    foreach (var m in t.GetMembers().OfType<IMethodSymbol>())
+                        if (!m.IsStatic && Emitter.Messages.Contains(m.Name)) NeedSeed(m);
                 if (t.TypeKind is not (TypeKind.Class or TypeKind.Struct)) continue;
                 foreach (var m in t.GetMembers().OfType<IMethodSymbol>())
                 {
                     if (methods.ContainsKey(m)) continue;
                     for (var o = m.OverriddenMethod; o != null; o = o.OverriddenMethod)
-                        if (methods.ContainsKey(o.OriginalDefinition)) { NeedMethod(m); break; }
+                        if (methods.ContainsKey(o.OriginalDefinition)) { NeedSeed(m); break; }
                 }
                 foreach (var i in t.AllInterfaces)
                     foreach (var im in i.GetMembers().OfType<IMethodSymbol>())
                     {
                         if (!N.IsGame(im) && !methods.ContainsKey(im.OriginalDefinition) && !IsRuntimeInterfaceMember(im)) continue;
                         if (N.IsGame(im) && !methods.ContainsKey(im.OriginalDefinition)) continue;
-                        if (t.FindImplementationForInterfaceMember(im) is IMethodSymbol impl && N.IsGame(impl)) NeedMethod(impl);
+                        if (t.FindImplementationForInterfaceMember(im) is IMethodSymbol impl && N.IsGame(impl)) NeedSeed(impl);
                     }
             }
             // Accessors of auto-properties and field-like events of used types come with them.
@@ -328,6 +454,11 @@ public sealed class Translator
     void TranslateMethod(IMethodSymbol m)
     {
         var r = methods[m];
+        if (r.Stub || r.Hand)
+        {
+            // Declared with a throwing body; its signature's types are still declared.
+            return;
+        }
         current = r;
         try
         {
@@ -400,6 +531,7 @@ public sealed class Translator
     public IReadOnlyDictionary<IMethodSymbol, MethodResult> Methods => methods;
     public bool IsFull(INamedTypeSymbol t) => fullTypes.Contains(t.OriginalDefinition);
     public bool IsFieldUsed(IFieldSymbol f) => usedFields.Contains(f.OriginalDefinition);
+    public bool IsFieldUsedOrFull(IFieldSymbol f) => usedFields.Contains(f.OriginalDefinition) || fullTypes.Contains(f.ContainingType.OriginalDefinition) && f.AssociatedSymbol == null;
     public bool IsEventUsed(IEventSymbol e) => usedEvents.Contains(e.OriginalDefinition);
     public IReadOnlyCollection<string> Includes => includes;
 }

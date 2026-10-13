@@ -1,4 +1,6 @@
-#include "bind/UnityEngine.h"
+#include "bind/Core.h"
+
+#include "bind/Scene.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -32,14 +34,24 @@ void Print(const char* level, cs::Object* message)
 
 std::vector<Object*>& Object::Live()
 {
-    static std::vector<Object*> live;
-    return live;
+    static auto* live = new std::vector<Object*>(); // never destroyed: objects outlive it at exit
+    return *live;
 }
 
 Object::Object()
 {
     (void)gLiveRoots;
     Live().push_back(this);
+}
+
+Object::Object(const Object& o) : cs::Object(o), destroyed_(false), name_(o.name_)
+{
+    Live().push_back(this);
+}
+
+Object* Object::cs_Clone()
+{
+    cs::NotTranslated((std::string("Instantiate of a ") + cs_typename() + " (bind/Engine.cpp)").c_str());
 }
 
 Object::~Object()
@@ -49,9 +61,30 @@ Object::~Object()
     if (it != l.end()) l.erase(it);
 }
 
+cs::String* Object::ToString()
+{
+    std::string type = cs_typename();
+    size_t dot = type.rfind('.');
+    if (dot != std::string::npos) type = type.substr(dot + 1);
+    return cs::String::Concat(get_name(), cs::String::FromAscii((" (" + type + ")").c_str()));
+}
+
+// Destroy(obj): at the frame's end (the scene's ProcessDestroys; the object compares unequal to
+// null until then). Without a scene (the generation's tests): at once.
 void Object::Destroy(Object* o)
 {
-    if (o) o->destroyed_ = true;
+    if (!o) return;
+    if (bind::Scene::current) bind::Scene::current->MarkDestroy(o);
+    else o->destroyed_ = true;
+}
+
+// Destroy(obj, t): when the delayed calls' pass reaches it (the scene's), destroyed then.
+void Object::Destroy(Object* o, float delay)
+{
+    if (!o) return;
+    bind::Scene* s = bind::Scene::current;
+    if (!s) cs::NotTranslated("UnityEngine.Object.Destroy(obj, t) without a scene");
+    s->calls.Destroy(o, delay, [s, o] { s->DestroyNow(o); });
 }
 
 void Resources::SetTextRoot(const std::string& dir) { gTextRoot = dir; }

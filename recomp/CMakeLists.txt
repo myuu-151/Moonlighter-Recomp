@@ -147,6 +147,12 @@ add_executable(room_doors_test tests/room_doors_test.cpp)
 target_link_libraries(room_doors_test PRIVATE mlcore)
 add_test(NAME room_doors COMMAND room_doors_test)
 
+# The runtime's collector (docs/translator_plan.md, "Memory"): what each kind of field keeps.
+add_executable(cs_gc_test tests/cs_gc_test.cpp)
+target_link_libraries(cs_gc_test PRIVATE mlcore)
+add_test(NAME cs_gc COMMAND cs_gc_test)
+set_tests_properties(cs_gc PROPERTIES ENVIRONMENT "ML_GC_POISON=1")
+
 add_executable(physics_test tests/physics_test.cpp)
 target_link_libraries(physics_test PRIVATE mlcore)
 add_test(NAME physics COMMAND physics_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)

@@ -8,30 +8,46 @@
 #include <map>
 #include <string>
 
+#if defined(_WIN32)
+#include <malloc.h> // _msize (ML_GC_POISON)
+#endif
+
 #include "cs/Dictionary.h"
 #include "cs/String.h"
 #include "cs/Type.h"
 
+#if defined(_WIN32) && defined(ML_CS_STACK_DUMP)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+#endif
+
 namespace cs {
 
 namespace {
-Heap gDefaultHeap;
-Heap* gCurrent = &gDefaultHeap;
+// The program's own heap: never destroyed (at exit, other statics may still point into it).
+Heap& DefaultHeap()
+{
+    static Heap* h = new Heap();
+    return *h;
+}
+Heap* gCurrent = nullptr;
 
 std::vector<RootSource>& Sources()
 {
-    static std::vector<RootSource> s;
-    return s;
+    static auto* s = new std::vector<RootSource>(); // never destroyed (used until exit)
+    return *s;
 }
 RootBase* gRoots = nullptr;
 uint32_t gNextHash = 0x2545F491u;
 } // namespace
 
-Heap& CurrentHeap() { return *gCurrent; }
+Heap& CurrentHeap() { return gCurrent ? *gCurrent : DefaultHeap(); }
 
-void SetCurrentHeap(Heap* heap) { gCurrent = heap ? heap : &gDefaultHeap; }
+void SetCurrentHeap(Heap* heap) { gCurrent = heap ? heap : &DefaultHeap(); }
 
-StaticScope::StaticScope() : saved_(gCurrent) { gCurrent = &gDefaultHeap; }
+StaticScope::StaticScope() : saved_(gCurrent) { gCurrent = &DefaultHeap(); }
 StaticScope::~StaticScope() { gCurrent = saved_; }
 
 // ---- Object ------------------------------------------------------------------------------------
@@ -73,7 +89,8 @@ void Heap::Clear()
     Object* o = head_;
     head_ = nullptr;
     count_ = 0;
-    if (this == &gDefaultHeap) {
+    Heap& program = DefaultHeap();
+    if (this == &program) {
         while (o) {
             Object* next = o->gc_next_;
             delete o;
@@ -89,9 +106,9 @@ void Heap::Clear()
     while (o) {
         Object* next = o->gc_next_;
         if (o->gc_mark_ == t.Epoch()) {
-            o->gc_next_ = gDefaultHeap.head_;
-            gDefaultHeap.head_ = o;
-            gDefaultHeap.count_++;
+            o->gc_next_ = program.head_;
+            program.head_ = o;
+            program.count_++;
         } else {
             dead.push_back(o);
         }
@@ -100,12 +117,35 @@ void Heap::Clear()
     for (Object* d : dead) delete d;
 }
 
+namespace {
+// ML_GC_POISON=1 (a check, not for the game): what Collect frees is destroyed, overwritten with
+// 0xDD and never handed back to the allocator, so a reference the roots missed reads garbage (a
+// crash at its first virtual call, or a mismatch) instead of a block that happens to be intact.
+void Free(Object* o)
+{
+    static const bool poison = std::getenv("ML_GC_POISON") != nullptr;
+    if (!poison) {
+        delete o;
+        return;
+    }
+    void* start = dynamic_cast<void*>(o);
+#if defined(_WIN32)
+    const size_t size = _msize(start);
+#else
+    const size_t size = sizeof(Object);
+#endif
+    o->~Object();
+    std::memset(start, 0xDD, size);
+}
+} // namespace
+
 size_t Heap::Collect()
 {
     Tracer t;
     TraceRoots(t);
     // Objects without a generated cs_trace (the hand port's) can't say what they reference:
-    // they are kept, and so is everything they might reach.
+    // they are kept (and so is what they reference only if something traced reaches it too:
+    // hand-written code keeping a translated object holds it in a cs::Root).
     for (Object* o = head_; o; o = o->gc_next_)
         if (!o->cs_traced()) t.Mark(o);
     t.Drain();
@@ -116,7 +156,7 @@ size_t Heap::Collect()
             link = &o->gc_next_;
         } else {
             *link = o->gc_next_;
-            delete o;
+            Free(o);
             count_--;
             freed++;
         }
@@ -184,9 +224,45 @@ const char* Exception::TypeName() const
 
 const char* Thrown::what() const noexcept { return ex ? ex->cs_typename() : "System.NullReferenceException"; }
 
+namespace {
+// ML_CS_STACK=1 (a build with ML_CS_STACK_DUMP and PDBs): the C++ stack at every C# exception thrown.
+void DumpStack([[maybe_unused]] const char* type)
+{
+#if defined(_WIN32) && defined(ML_CS_STACK_DUMP)
+    static const bool on = std::getenv("ML_CS_STACK") != nullptr;
+    if (!on) return;
+    HANDLE proc = GetCurrentProcess();
+    static bool init = false;
+    if (!init) {
+        SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
+        SymInitialize(proc, nullptr, TRUE);
+        init = true;
+    }
+    void* frames[48];
+    const USHORT n = CaptureStackBackTrace(1, 48, frames, nullptr);
+    std::fprintf(stderr, "cs: throw %s\n", type);
+    alignas(SYMBOL_INFO) char buf[sizeof(SYMBOL_INFO) + 512];
+    for (USHORT i = 0; i < n; i++) {
+        auto* sym = reinterpret_cast<SYMBOL_INFO*>(buf);
+        sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+        sym->MaxNameLen = 511;
+        DWORD64 disp = 0;
+        DWORD ldisp = 0;
+        IMAGEHLP_LINE64 line{};
+        line.SizeOfStruct = sizeof line;
+        const DWORD64 a = reinterpret_cast<DWORD64>(frames[i]);
+        const bool hasSym = SymFromAddr(proc, a, &disp, sym);
+        const bool hasLine = SymGetLineFromAddr64(proc, a, &ldisp, &line);
+        std::fprintf(stderr, "  %s  %s:%lu\n", hasSym ? sym->Name : "?", hasLine ? line.FileName : "?", hasLine ? line.LineNumber : 0ul);
+    }
+#endif
+}
+} // namespace
+
 void Throw(Exception* e)
 {
     if (!e) e = gcnew<NullReferenceException>();
+    DumpStack(e->cs_typename());
     throw Thrown(e);
 }
 

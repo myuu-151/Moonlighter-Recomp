@@ -33,6 +33,9 @@ public sealed class Emitter
         public List<IFieldSymbol> StaticFields = new();
         public List<IEventSymbol> Events = new();
         public bool Generic;
+        // The static fields the collector traces as roots: references and structs, and the
+        // delegates of static field-like events (a subscriber's handler is held only there).
+        public bool HasTracedStatics => StaticFields.Any(f => NeedsTrace(f.Type)) || Events.Any(e => e.IsStatic);
     }
 
     public void Write()
@@ -77,6 +80,24 @@ public sealed class Emitter
         }
         h.Append("\n// ---- generic types and methods ----\n\n").Append(templates);
 
+        // AddComponent by the script's name (a prefab's MonoBehaviours, bind's prefab builder).
+        var scripts = ordered.Select(o => o.T).Where(t => t.TypeKind == TypeKind.Class && !t.IsAbstract && !t.IsGenericType &&
+                                                          !t.Name.StartsWith("_003C", StringComparison.Ordinal) && DerivesFrom(t, "UnityEngine.MonoBehaviour")).ToList();
+        if (scripts.Count > 0)
+        {
+            h.Append("\nnamespace gen {\n// The translated MonoBehaviour named `name` (its class name, or its full name) added to `go`; nullptr if none.\n");
+            h.Append("::UnityEngine::Component* cs_AddComponent(::UnityEngine::GameObject* go, const char* name);\n}\n");
+            var sc = Cpp("components.cs");
+            sc.Append("#include <cstring>\n\nnamespace gen {\n::UnityEngine::Component* cs_AddComponent(::UnityEngine::GameObject* go, const char* name) {\n");
+            foreach (var t in scripts)
+            {
+                string full = t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
+                string cond = $"!::std::strcmp(name, \"{t.Name}\")" + (full != t.Name ? $" || !::std::strcmp(name, \"{full}\")" : "");
+                sc.Append($"    if ({cond}) return ::cs::nc(go)->AddComponent<{N.Ref(t)}>();\n");
+            }
+            sc.Append("    return nullptr;\n}\n} // namespace gen\n");
+        }
+
         File.WriteAllText(Path.Combine(outDir, "game.h"), h.ToString(), new UTF8Encoding(false));
         var written = new List<string>();
         foreach (var (file, sb) in cpp.OrderBy(kv => kv.Key, StringComparer.Ordinal))
@@ -114,7 +135,7 @@ public sealed class Emitter
                     if (f.IsStatic) o.StaticFields.Add(f);
                     else o.Fields.Add(f);
                     break;
-                case IEventSymbol e when tr.IsEventUsed(e) || tr.IsFull(t):
+                case IEventSymbol e when tr.IsEventUsed(e) || tr.IsFull(t) || e.AddMethod != null && tr.Methods.ContainsKey(e.AddMethod) || e.RemoveMethod != null && tr.Methods.ContainsKey(e.RemoveMethod):
                     if (tr.IsFieldLikeEvent(e)) o.Events.Add(e);
                     break;
             }
@@ -230,6 +251,7 @@ public sealed class Emitter
         }
         foreach (var i in t.Interfaces)
         {
+            if (!InterfaceMapped(i)) continue; // an unbound interface (a gap): not a base, its members plain methods
             string it = TryType(i);
             if (it != null) bases.Add("public virtual " + it);
         }
@@ -247,7 +269,9 @@ public sealed class Emitter
 
         // static initialization: __si() runs the static constructor once
         bool si = tr.StaticInitActive(t);
-        bool siGeneric = o.Generic && o.StaticFields.Any(f => NeedsTrace(f.Type));
+        // (a generic type's statics register as roots per instantiation, at its first static access:
+        // Translator.NeedsSiCall)
+        bool siGeneric = o.Generic && o.HasTracedStatics;
         if (si || siGeneric)
         {
             sb.Append("    static int8_t cs_cctor_state_;\n");
@@ -274,6 +298,9 @@ public sealed class Emitter
 
         // interface implementations that forward to the C# implementing member
         if (!isInterface) sb.Append(Forwarders(t));
+        // Unity's side of a MonoBehaviour: its messages, SendMessage / Invoke by name, the
+        // serialized fields a prefab sets.
+        if (!isInterface && !isStruct) sb.Append(UnityMembers(t));
 
         // runtime support
         if (!isInterface && !isStruct)
@@ -283,7 +310,7 @@ public sealed class Emitter
             sb.Append("    bool cs_traced() const override { return true; }\n");
             sb.Append("    void cs_trace(::cs::Tracer& t) override;\n");
         }
-        if (o.StaticFields.Any(f => NeedsTrace(f.Type)))
+        if (o.HasTracedStatics)
             sb.Append("    static void cs_trace_statics(::cs::Tracer& t);\n");
         sb.Append("};\n");
         if (isStruct)
@@ -311,7 +338,7 @@ public sealed class Emitter
         return false;
     }
 
-    static bool NeedsTrace(ITypeSymbol t) => Names.IsRef(t) || t.TypeKind == TypeKind.TypeParameter || t.IsValueType && t.SpecialType == SpecialType.None && t.TypeKind != TypeKind.Enum;
+    internal static bool NeedsTrace(ITypeSymbol t) => Names.IsRef(t) || t.TypeKind == TypeKind.TypeParameter || t.IsValueType && t.SpecialType == SpecialType.None && t.TypeKind != TypeKind.Enum;
 
     string TryType(ITypeSymbol t)
     {
@@ -337,10 +364,10 @@ public sealed class Emitter
         if (m.IsGenericMethod && (m.IsVirtual || m.IsAbstract || m.IsOverride)) tmpl = "/* virtual generic method: not translatable */ " + tmpl;
 
         // accessors written in the class itself
-        if (m.AssociatedSymbol is IPropertySymbol p && tr.IsAutoProperty(p))
+        if (m.AssociatedSymbol is IPropertySymbol p && tr.IsAutoProperty(p) && !tr.IsHand(m))
         {
             string f = Names.Ident(p.Name);
-            string guard = p.IsStatic && tr.StaticInitActive(t) ? "__si(); " : "";
+            string guard = p.IsStatic && (tr.StaticInitActive(t) || o.Generic && o.HasTracedStatics) ? "__si(); " : "";
             string virt = AccessorVirtual(m);
             if (m.MethodKind == MethodKind.PropertyGet) return $"{(m.IsStatic ? "static " : virt)}{ret} {name}() {{ {guard}return {f}; }}{Override(m)}";
             return $"{(m.IsStatic ? "static " : virt)}void {name}({TypeOrGap(p.Type)} value) {{ {guard}{f} = value; }}{Override(m)}";
@@ -350,11 +377,22 @@ public sealed class Emitter
             string dt = N.Type(e.Type);
             string f = Names.Ident(e.Name);
             string op = m.MethodKind == MethodKind.EventAdd ? "Combine" : "Remove";
-            return $"{(m.IsStatic ? "static " : AccessorVirtual(m))}void {name}({dt}* value) {{ {f} = {dt}::{op}({f}, value); }}{Override(m)}";
+            // (a static event's accessor is a static method: its type's static initialization first,
+            // as for a static auto-property; a generic type's registers its static roots)
+            string guard = m.IsStatic && (tr.StaticInitActive(t) || o.Generic && o.HasTracedStatics) ? "__si(); " : "";
+            return $"{(m.IsStatic ? "static " : AccessorVirtual(m))}void {name}({dt}* value) {{ {guard}{f} = {dt}::{op}({f}, value); }}{Override(m)}";
+        }
+        if (m.IsGenericMethod && (m.IsVirtual || m.IsAbstract || m.IsOverride || t.TypeKind == TypeKind.Interface || m.ExplicitInterfaceImplementations.Length > 0))
+        {
+            // C++ has no virtual templates: a plain template here; calls that would dispatch
+            // are reported as unsupported (Body.CallCode). Abstract ones throw if reached.
+            if (t.TypeKind == TypeKind.Interface || m.IsAbstract)
+                return $"{tmpl}{ret} {name}({Params(m)}) {{ ::cs::NotTranslated(\"{Names.FullName(t)}::{m.Name} (a virtual generic method)\"); }}";
+            return $"{tmpl}{ret} {name}({Params(m)});";
         }
         string mods = "";
         if (m.IsStatic || m.MethodKind == MethodKind.StaticConstructor) mods = "static ";
-        else if ((m.IsVirtual || m.IsAbstract || m.IsOverride) && !m.IsGenericMethod) mods = "virtual ";
+        else if (m.IsVirtual || m.IsAbstract || m.IsOverride) mods = "virtual ";
         else if (t.TypeKind == TypeKind.Interface) mods = "virtual ";
         if (m.MethodKind == MethodKind.ExplicitInterfaceImplementation || m.ExplicitInterfaceImplementations.Length > 0) mods = "virtual ";
         string tail = "";
@@ -367,9 +405,198 @@ public sealed class Emitter
 
     // `override` when the C++ base declares the method: a translated override, an explicit
     // interface implementation, or System.Object's ToString/Equals/GetHashCode.
+    // ---- the Unity side of a class ----
+
+    // The messages Unity sends a MonoBehaviour by name (no inheritance needed in C#): each the
+    // class declares gets an override of the facade's hook (recomp/src/bind/Scene.h).
+    public static readonly string[] Messages =
+    {
+        "Awake", "OnEnable", "Start", "Update", "FixedUpdate", "LateUpdate", "OnDisable", "OnDestroy",
+        "OnTriggerEnter2D", "OnTriggerExit2D", "OnTriggerStay2D", "OnCollisionEnter2D", "OnCollisionExit2D", "OnCollisionStay2D",
+        "OnBecameVisible", "OnBecameInvisible", "OnApplicationQuit", "OnApplicationPause", "OnApplicationFocus",
+    };
+
+    public static bool DerivesFrom(INamedTypeSymbol t, string fullName)
+    {
+        for (var b = t; b != null; b = b.BaseType)
+            if (b.ToDisplayString() == fullName) return true;
+        return false;
+    }
+
+    static bool IsSerializable(INamedTypeSymbol t) =>
+        t.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "System.SerializableAttribute");
+
+    string UnityMembers(INamedTypeSymbol t)
+    {
+        var sb = new StringBuilder();
+        if (!DerivesFrom(t, "UnityEngine.Object"))
+        {
+            // A [Serializable] class's fields as a JSON file or an asset gives them (FullSerializer's,
+            // JsonUtility's reflection): not virtual, the base's after its own.
+            if (!IsSerializable(t) || t.TypeKind != TypeKind.Class) return "";
+            var sf = t.GetMembers().OfType<IFieldSymbol>().Where(f => !f.IsStatic && !f.IsConst && tr.IsFieldUsedOrFull(f) && SerialKind(f.Type) != null).ToList();
+            bool baseHas = t.BaseType != null && N.IsGame(t.BaseType) && IsSerializable(t.BaseType);
+            // (emitted even without fields: SerialObject reads any [Serializable] class through it)
+            sb.Append("    bool cs_SetField(const char* name, const ::UnityEngine::SerialValue& v) {\n");
+            foreach (var f in sf)
+                sb.Append($"        if (!::std::strcmp(name, \"{f.Name}\")) {{ this->{N.Field(f)} = {SerialKind(f.Type)}; return true; }}\n");
+            sb.Append(baseHas ? $"        return {N.Type(t.BaseType)}::cs_SetField(name, v);\n    }}\n" : "        (void)v;\n        return false;\n    }\n");
+            return sb.ToString();
+        }
+        bool mono = DerivesFrom(t, "UnityEngine.MonoBehaviour");
+        // Instantiate's copy (bind/Engine.cpp): the whole object.
+        if (!t.IsAbstract && !t.IsGenericType && Names.AllTypeParameters(t).Count == 0)
+            sb.Append($"    ::UnityEngine::Object* cs_Clone() override {{ return ::cs::gcnew<{N.FlatName(t)}>(*this); }}\n");
+        // (A stubbed class's messages aren't hooked: what they do is the driver's to stand in for.)
+        var mine = t.GetMembers().OfType<IMethodSymbol>().Where(m => tr.Methods.TryGetValue(m, out var mr) && !mr.Stub && !m.IsStatic && m.MethodKind == MethodKind.Ordinary && !m.IsGenericMethod).ToList();
+        if (mono)
+        {
+            foreach (var name in Messages)
+            {
+                var m = mine.FirstOrDefault(x => x.Name == name);
+                if (m == null) continue;
+                string args = string.Join(", ", m.Parameters.Select(Body.ParamName));
+                string ps = string.Join(", ", m.Parameters.Select(p => TypeOrGap(p.Type) + " " + Body.ParamName(p)));
+                // (a message with a parameter Unity calls only with its type: Collider2D, Collision2D, bool)
+                sb.Append($"    void cs_{name}({ps}) override {{ this->{N.Method(m)}({args}); }}\n");
+            }
+            // SendMessage / Invoke / an Animator's events: by name, the class's own methods first.
+            var named = mine.Where(m => m.Parameters.Length <= 1 && m.Parameters.All(p => p.RefKind == RefKind.None)).ToList();
+            if (named.Count > 0)
+            {
+                string bt = N.Type(t.BaseType);
+                sb.Append("    bool cs_Message(::cs::String* name, const ::UnityEngine::MessageArgs& a) override {\n");
+                foreach (var g in named.GroupBy(m => m.Name))
+                {
+                    sb.Append($"        if (::UnityEngine::MessageIs(name, {Names.StringLiteral(g.Key)})) {{\n");
+                    foreach (var m in g.OrderBy(m => m.Parameters.Length))
+                    {
+                        if (m.Parameters.Length == 0) { sb.Append($"            this->{N.Method(m)}(); return true;\n"); break; }
+                        string arg = MessageArg(m.Parameters[0].Type);
+                        if (arg == null) continue;
+                        sb.Append($"            this->{N.Method(m)}({arg}); return true;\n");
+                        break;
+                    }
+                    sb.Append("        }\n");
+                }
+                sb.Append($"        return {bt}::cs_Message(name, a);\n    }}\n");
+            }
+        }
+        // The serialized fields a prefab or asset sets (the simple kinds; others the caller does).
+        var fields = t.GetMembers().OfType<IFieldSymbol>().Where(f => !f.IsStatic && !f.IsConst && tr.IsFieldUsedOrFull(f) && SerialKind(f.Type) != null).ToList();
+        if (fields.Count > 0)
+        {
+            string bt = N.Type(t.BaseType);
+            sb.Append("    bool cs_SetField(const char* name, const ::UnityEngine::SerialValue& v) override {\n");
+            foreach (var f in fields)
+                sb.Append($"        if (!::std::strcmp(name, \"{f.Name}\")) {{ this->{N.Field(f)} = {SerialKind(f.Type)}; return true; }}\n");
+            sb.Append($"        return {bt}::cs_SetField(name, v);\n    }}\n");
+        }
+        var empties = t.GetMembers().OfType<IFieldSymbol>().Where(f => IsSerializedField(f) && tr.IsFieldUsedOrFull(f) && SerialEmpty(f.Type) != null).ToList();
+        if (empties.Count > 0)
+        {
+            string bt = N.Type(t.BaseType);
+            sb.Append("    void cs_SerialInit() override {\n");
+            sb.Append($"        {bt}::cs_SerialInit();\n");
+            foreach (var f in empties) sb.Append($"        if (!this->{N.Field(f)}) this->{N.Field(f)} = {SerialEmpty(f.Type)};\n");
+            sb.Append("    }\n");
+        }
+        return sb.ToString();
+    }
+
+    // An Animator event's or SendMessage's argument as the method's parameter type.
+    string MessageArg(ITypeSymbol t) => t.SpecialType switch
+    {
+        SpecialType.System_Single => "a.event ? a.event->floatParameter : ::cs::Unbox<float>(a.value)",
+        SpecialType.System_Int32 => "a.event ? a.event->intParameter : ::cs::Unbox<int32_t>(a.value)",
+        SpecialType.System_String => "a.event ? ::cs::String::FromUtf8(a.event->stringParameter) : ::cs::Cast<::cs::String>(a.value)",
+        SpecialType.System_Boolean => "::cs::Unbox<bool>(a.value)",
+        SpecialType.System_Object => "a.value",
+        _ => Names.IsRef(t) && t.TypeKind == TypeKind.Class ? $"::cs::Cast<{N.Type(t)}>(a.value)" : null,
+    };
+
+    // How a serialized field reads from a prefab's value, or null for a kind the caller sets.
+    string SerialKind(ITypeSymbol t)
+    {
+        switch (t.SpecialType)
+        {
+            case SpecialType.System_Boolean: return "v.AsBool()";
+            case SpecialType.System_Int32: return "v.AsInt()";
+            case SpecialType.System_Single: return "v.AsFloat()";
+            case SpecialType.System_Double: return "static_cast<double>(v.AsFloat())";
+            case SpecialType.System_String: return "v.AsString()";
+        }
+        if (t.TypeKind == TypeKind.Enum) return $"static_cast<{N.Type(t)}>(v.AsInt())";
+        string n = t.ToDisplayString();
+        if (n == "UnityEngine.Vector2") return "v.AsVector2()";
+        if (n == "UnityEngine.Vector3") return "v.AsVector3()";
+        if (n == "UnityEngine.Color") return "v.AsColor()";
+        // A reference to an object of the prefab (its path below the prefab's root): the object, or
+        // its component of the field's type.
+        if (n == "UnityEngine.GameObject") return "v.AsGameObject()";
+        if (n == "UnityEngine.Sprite") return "v.AsSprite()";
+        if (t is INamedTypeSymbol nt && t.TypeKind == TypeKind.Class && DerivesFrom(nt, "UnityEngine.Component") && (N.IsGame(nt) || tr.Bind.FindType(nt) != null))
+            return $"(v.AsGameObject() ? v.AsGameObject()->template GetComponent<{N.Ref(t)}>() : nullptr)";
+        // Lists and arrays of what reads element by element, a [Serializable] game class's object.
+        if (t is INamedTypeSymbol lt && lt.IsGenericType && lt.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>" && SerialElement(lt.TypeArguments[0]))
+            return $"::UnityEngine::SerialList<{N.Ref(lt.TypeArguments[0])}>(v)";
+        if (t is IArrayTypeSymbol at && at.Rank == 1 && SerialElement(at.ElementType))
+            return $"::UnityEngine::SerialArray<{N.Ref(at.ElementType)}>(v)";
+        if (t is INamedTypeSymbol ct && SerialClass(ct))
+            return $"::UnityEngine::SerialObject<{N.Type(ct)}>(v)";
+        return null;
+    }
+
+    // A [Serializable] game class SerialObject makes (bind/Serial.h): its constructor, its cs_SetField.
+    bool SerialClass(INamedTypeSymbol ct) =>
+        ct.TypeKind == TypeKind.Class && N.IsGame(ct) && IsSerializable(ct) && !DerivesFrom(ct, "UnityEngine.Object") && !ct.IsAbstract &&
+        Names.AllTypeParameters(ct).Count == 0 && ct.InstanceConstructors.FirstOrDefault(c => c.Parameters.Length == 0) is IMethodSymbol ctor &&
+        tr.Methods.TryGetValue(ctor, out var r) && !r.Stub;
+
+    // An element SerialRead (bind/Serial.h) reads.
+    bool SerialElement(ITypeSymbol t)
+    {
+        if (t.SpecialType is SpecialType.System_Boolean or SpecialType.System_Int32 or SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_String) return true;
+        if (t.TypeKind == TypeKind.Enum) return true;
+        string n = t.ToDisplayString();
+        if (n is "UnityEngine.Vector2" or "UnityEngine.Vector3" or "UnityEngine.Color" or "UnityEngine.GameObject") return true;
+        if (t is INamedTypeSymbol nt && t.TypeKind == TypeKind.Class && DerivesFrom(nt, "UnityEngine.Object") && (N.IsGame(nt) || tr.Bind.FindType(nt) != null)) return true;
+        return t is INamedTypeSymbol ct && SerialClass(ct);
+    }
+
+    // Unity serializes it: public (or [SerializeField]), not static, const, readonly or [NonSerialized].
+    static bool IsSerializedField(IFieldSymbol f)
+    {
+        if (f.IsStatic || f.IsConst || f.IsReadOnly || f.AssociatedSymbol != null) return false;
+        var attrs = f.GetAttributes().Select(a => a.AttributeClass?.ToDisplayString()).ToList();
+        if (attrs.Contains("System.NonSerializedAttribute")) return false;
+        return f.DeclaredAccessibility == Accessibility.Public || attrs.Contains("UnityEngine.SerializeField");
+    }
+
+    // What a serialized field of a loaded object is when the data doesn't say (cs_SerialInit): an
+    // empty string, list or array, a [Serializable] class's new object; null: a kind it leaves be.
+    string SerialEmpty(ITypeSymbol t)
+    {
+        if (t.SpecialType == SpecialType.System_String) return "::cs::String::get_Empty()";
+        if (t is INamedTypeSymbol lt && lt.IsGenericType && lt.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>" && SerialElement(lt.TypeArguments[0]))
+            return $"::cs::New<{N.Type(lt)}>()";
+        if (t is IArrayTypeSymbol at && at.Rank == 1 && SerialElement(at.ElementType))
+            return $"::cs::Array<{N.Ref(at.ElementType)}>::New(0)";
+        if (t is INamedTypeSymbol ct && SerialClass(ct))
+            return $"::cs::New<{N.Type(ct)}>()";
+        return null;
+    }
+
+    // Is the interface a C++ base: a game interface, or one bindings.tsv maps.
+    bool InterfaceMapped(INamedTypeSymbol i) => N.IsGame(i) || tr.Bind.FindType(i) != null;
+
     string Override(IMethodSymbol m)
     {
-        if (m.ExplicitInterfaceImplementations.Length > 0) return " override";
+        if (m.ExplicitInterfaceImplementations.Length > 0)
+        {
+            var im = m.ExplicitInterfaceImplementations[0];
+            return InterfaceMapped(im.ContainingType) && !im.IsGenericMethod ? " override" : "";
+        }
         if (!m.IsOverride) return "";
         var o = m.OverriddenMethod;
         if (o == null) return "";
@@ -393,9 +620,11 @@ public sealed class Emitter
         var done = new HashSet<string>(StringComparer.Ordinal);
         foreach (var i in direct)
         {
+            if (!InterfaceMapped(i)) continue;
             foreach (var im in i.GetMembers().OfType<IMethodSymbol>())
             {
                 if (N.IsGame(im) && !tr.Methods.ContainsKey(im.OriginalDefinition)) continue;
+                if (im.IsGenericMethod) continue; // C++ has no virtual templates: not dispatched through the interface
                 var impl = t.FindImplementationForInterfaceMember(im) as IMethodSymbol;
                 if (impl == null) { sb.Append($"    // no implementation of {im}\n"); continue; }
                 if (impl.ExplicitInterfaceImplementations.Any(x => SymbolEqualityComparer.Default.Equals(x.OriginalDefinition, im.OriginalDefinition))
@@ -438,12 +667,13 @@ public sealed class Emitter
         foreach (var f in o.StaticFields)
             sb.Append($"{tmpl}{TypeOrGap(f.Type)} {cls}::{N.Field(f)}{{}};\n");
         bool si = tr.StaticInitActive(t);
-        bool siGeneric = o.Generic && o.StaticFields.Any(f => NeedsTrace(f.Type));
+        bool siGeneric = o.Generic && o.HasTracedStatics;
         if (si || siGeneric) sb.Append($"{tmpl}int8_t {cls}::cs_cctor_state_ = 0;\n");
-        if (o.StaticFields.Any(f => NeedsTrace(f.Type)))
+        if (o.HasTracedStatics)
         {
             sb.Append($"{tmpl}void {cls}::cs_trace_statics(::cs::Tracer& t) {{");
             foreach (var f in o.StaticFields.Where(f => NeedsTrace(f.Type))) sb.Append($" ::cs::TraceField(t, {N.Field(f)});");
+            foreach (var e in o.Events.Where(e => e.IsStatic)) sb.Append($" ::cs::TraceField(t, {Names.Ident(e.Name)});");
             sb.Append(" }\n");
             if (!o.Generic) sb.Append($"static const bool cs_roots_{N.FlatName(t)} = ::cs::RegisterRoots(&{cls}::cs_trace_statics);\n");
         }
@@ -471,6 +701,7 @@ public sealed class Emitter
         foreach (var m in o.Methods)
         {
             var r = tr.Methods[m];
+            if (r.Hand) continue; // (defined by hand: units.txt's `hand`)
             if (m.AssociatedSymbol is IPropertySymbol p && tr.IsAutoProperty(p)) continue;
             if (m.AssociatedSymbol is IEventSymbol e && tr.IsFieldLikeEvent(e)) continue;
             if (m.IsAbstract || t.TypeKind == TypeKind.Interface) continue;
@@ -487,7 +718,7 @@ public sealed class Emitter
             }
             else
             {
-                string why = r.Error ?? ("missing: " + string.Join("; ", r.Gaps));
+                string why = r.Stub ? "stubbed by units.txt (reaching it is an error)" : r.Error ?? ("missing: " + string.Join("; ", r.Gaps));
                 msb.Append($"    // not translated: {why.Replace("\n", " ")}\n");
                 msb.Append($"    ::cs::NotTranslated(\"{Names.FullName(t)}::{m.Name}\");\n");
                 foreach (var prm in m.Parameters) msb.Append($"    (void){Body.ParamName(prm)};\n");
@@ -523,7 +754,7 @@ public sealed class Emitter
         var sb = new StringBuilder("# tools/translate: every translated method. status: ok, error (an unsupported construct), gaps (bindings missing)\n# type\tmethod\tstatus\tdetail\n");
         foreach (var (m, r) in tr.Methods.OrderBy(kv => Names.FullName(kv.Key.ContainingType), StringComparer.Ordinal).ThenBy(kv => kv.Key.Name, StringComparer.Ordinal))
         {
-            string status = r.Error != null ? "error" : r.Gaps.Count > 0 ? "gaps" : "ok";
+            string status = r.Hand ? "hand" : r.Stub ? "stub" : r.Error != null ? "error" : r.Gaps.Count > 0 ? "gaps" : "ok";
             string detail = r.Error ?? string.Join("; ", r.Gaps);
             sb.Append($"{Names.FullName(m.ContainingType)}\t{m.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}\t{status}\t{detail.Replace('\t', ' ').Replace('\n', ' ')}\n");
         }

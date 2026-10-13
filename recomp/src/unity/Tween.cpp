@@ -143,6 +143,18 @@ void Tweens::OnComplete(int id, std::function<void()> callback)
         }
 }
 
+void Tweens::SetEase(int id, Ease ease)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id) t.ease = ease;
+}
+
+void Tweens::SetUnscaled(int id, bool unscaled)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id) t.unscaled = unscaled;
+}
+
 void Tweens::SetTarget(int id, const void* target)
 {
     for (Tween& t : tweens_)

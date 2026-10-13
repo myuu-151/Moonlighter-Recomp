@@ -44,6 +44,40 @@ public:
     int32_t GetHashCode() override { return static_cast<int32_t>(reinterpret_cast<uintptr_t>(list_.empty() ? nullptr : list_[0].id) >> 2); }
     Object* get_Target() const { return list_.empty() ? nullptr : list_.back().target; }
     const std::vector<Entry>& Entries() const { return list_; }
+    // An empty delegate of this one's type (System.Delegate.Combine / Remove make their result so).
+    virtual DelegateBase* cs_NewSame() const = 0;
+
+    // System.Delegate.Combine(a, b) / Remove(source, value) on delegates typed as System.Delegate
+    // (the result has the operands' type; the caller casts it back, as C# does).
+    static DelegateBase* Combine(DelegateBase* a, DelegateBase* b)
+    {
+        if (!a) return b;
+        if (!b) return a;
+        DelegateBase* d = a->cs_NewSame();
+        d->list_ = a->list_;
+        d->list_.insert(d->list_.end(), b->list_.begin(), b->list_.end());
+        return d;
+    }
+    static DelegateBase* Remove(DelegateBase* source, DelegateBase* value)
+    {
+        if (!source) return nullptr;
+        if (!value) return source;
+        const auto& s = source->list_;
+        const auto& v = value->list_;
+        if (v.size() > s.size()) return source;
+        for (size_t i = s.size() - v.size() + 1; i-- > 0;) {
+            bool match = true;
+            for (size_t j = 0; j < v.size() && match; j++) match = s[i + j].target == v[j].target && s[i + j].id == v[j].id;
+            if (match) {
+                if (s.size() == v.size()) return nullptr;
+                DelegateBase* d = source->cs_NewSame();
+                d->list_.assign(s.begin(), s.begin() + static_cast<std::ptrdiff_t>(i));
+                d->list_.insert(d->list_.end(), s.begin() + static_cast<std::ptrdiff_t>(i + v.size()), s.end());
+                return d;
+            }
+        }
+        return source;
+    }
 
 protected:
     std::vector<Entry> list_;
@@ -80,6 +114,7 @@ public:
         Thunk t = [](void*, A... args) -> R { return Fn(args...); };
         return Make(nullptr, nullptr, t, &id);
     }
+    DelegateBase* cs_NewSame() const override { return gcnew<Delegate>(); }
     static Delegate* Make(Object* target, void* self, Thunk t, const void* id)
     {
         auto* d = gcnew<Delegate>();

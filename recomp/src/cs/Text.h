@@ -67,6 +67,10 @@ public:
     }
     StringBuilder* AppendLine() { return Append(String::FromAscii("\r\n")); }
     StringBuilder* AppendLine(String* s) { return Append(s)->AppendLine(); }
+    StringBuilder* AppendFormat(String* format, Object* a) { return Append(String::Format(format, a)); }
+    StringBuilder* AppendFormat(String* format, Object* a, Object* b) { return Append(String::Format(format, a, b)); }
+    StringBuilder* AppendFormat(String* format, Object* a, Object* b, Object* c) { return Append(String::Format(format, a, b, c)); }
+    StringBuilder* AppendFormat(String* format, Array<Object*>* args) { return Append(String::Format(format, args)); }
     StringBuilder* Insert(int32_t index, String* s)
     {
         if (index < 0 || index > get_Length()) ThrowArgumentOutOfRange();
@@ -158,6 +162,8 @@ public:
     bool cs_traced() const override { return true; }
     static StringComparer* get_Ordinal();
     static StringComparer* get_OrdinalIgnoreCase();
+    using Object::Equals; // (object.Equals / GetHashCode stay callable beside the comparer's)
+    using Object::GetHashCode;
     bool Equals(String* a, String* b);
     int32_t GetHashCode(String* s);
     int32_t Compare(String* a, String* b);

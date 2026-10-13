@@ -18,6 +18,7 @@
 #include "cs/Collections.h"
 #include "cs/Delegate.h"
 #include "cs/Object.h"
+#include "cs/Vector.h"
 
 namespace cs {
 
@@ -120,14 +121,14 @@ public:
             int32_t n = c->ICollection_1_get_Count();
             if (n > 0) {
                 EnsureCapacity(get_Count() + n);
-                std::vector<T> copy;
+                Vector<T> copy;
                 if (auto* l = dynamic_cast<List<T>*>(collection)) copy = l->items_;
                 else {
                     Array<T>* tmp = Array<T>::New(n);
                     c->ICollection_1_CopyTo(tmp, 0);
                     copy = tmp->vec();
                 }
-                items_.insert(items_.begin() + index, copy.begin(), copy.end());
+                items_.insert_at(static_cast<size_t>(index), copy);
             }
         } else {
             IEnumerator_1<T>* e = collection->IEnumerable_1_GetEnumerator();
@@ -141,7 +142,7 @@ public:
     {
         if (static_cast<uint32_t>(index) > static_cast<uint32_t>(get_Count())) ThrowArgumentOutOfRange();
         if (get_Count() == capacity_) EnsureCapacity(get_Count() + 1);
-        items_.insert(items_.begin() + index, v);
+        items_.insert_at(static_cast<size_t>(index), v);
         version_++;
     }
 
@@ -190,7 +191,7 @@ public:
     void RemoveAt(int32_t i)
     {
         if (static_cast<uint32_t>(i) >= items_.size()) ThrowArgumentOutOfRange();
-        items_.erase(items_.begin() + i);
+        items_.erase_at(static_cast<size_t>(i));
         version_++;
     }
     void RemoveRange(int32_t index, int32_t count)
@@ -198,7 +199,7 @@ public:
         if (index < 0 || count < 0) ThrowArgumentOutOfRange();
         if (get_Count() - index < count) ThrowArgument("Offset and length were out of bounds for the array or count is greater than the number of elements from index to the end of the source collection.");
         if (count > 0) {
-            items_.erase(items_.begin() + index, items_.begin() + index + count);
+            items_.erase_at(static_cast<size_t>(index), static_cast<size_t>(count));
             version_++;
         }
     }
@@ -319,18 +320,18 @@ public:
         if (get_Count() - index < count) ThrowArgument("Offset and length were out of bounds.");
         List* l = gcnew<List>();
         l->__ctor(count);
-        l->items_.assign(items_.begin() + index, items_.begin() + index + count);
+        for (int32_t k = index; k < index + count; k++) l->items_.push_back(items_[static_cast<size_t>(k)]);
         return l;
     }
     void Reverse()
     {
-        std::reverse(items_.begin(), items_.end());
+        items_.reverse(0, items_.size());
         version_++;
     }
     void Reverse(int32_t index, int32_t count)
     {
         if (index < 0 || count < 0 || get_Count() - index < count) ThrowArgumentOutOfRange();
-        std::reverse(items_.begin() + index, items_.begin() + index + count);
+        items_.reverse(static_cast<size_t>(index), static_cast<size_t>(count));
         version_++;
     }
     void CopyTo(Array<T>* dest) { CopyTo(dest, 0); }
@@ -338,7 +339,7 @@ public:
     {
         nc(dest);
         if (index < 0 || index + get_Count() > dest->get_Length()) ThrowArgument("Destination array was not long enough.");
-        std::copy(items_.begin(), items_.end(), dest->vec().begin() + index);
+        for (size_t k = 0; k < items_.size(); k++) dest->vec()[static_cast<size_t>(index) + k] = items_[k];
     }
     void TrimExcess()
     {
@@ -414,6 +415,13 @@ public:
             index = 0;
             current = T{};
         }
+        // The collector: an enumerator a lowered foreach keeps in an iterator's state machine
+        // (or a boxed one) may be all that holds its list (`foreach (x in new List<T>(...))`).
+        friend void cs_trace_value(Tracer& t, const Enumerator& e)
+        {
+            t.Mark(e.list);
+            TraceField(t, e.current);
+        }
     };
     Enumerator GetEnumerator()
     {
@@ -423,9 +431,9 @@ public:
         return e;
     }
 
-    typename std::vector<T>::const_iterator begin() const { return items_.begin(); }
-    typename std::vector<T>::const_iterator end() const { return items_.end(); }
-    std::vector<T>& vec() { return items_; }
+    auto begin() const { return items_.begin(); }
+    auto end() const { return items_.end(); }
+    Vector<T>& vec() { return items_; }
 
     // ---- the interfaces ----
     IEnumerator_1<T>* IEnumerable_1_GetEnumerator() override { return gcnew<BoxedEnumerator<T, Enumerator>>(GetEnumerator()); }
@@ -594,7 +602,7 @@ private:
         }
     }
 
-    std::vector<T> items_;
+    Vector<T> items_;
     int32_t capacity_ = 0;
     int32_t version_ = 0;
 };

@@ -9,6 +9,7 @@
 
 #include "cs/Collections.h"
 #include "cs/Object.h"
+#include "cs/Vector.h"
 
 namespace cs {
 
@@ -24,14 +25,20 @@ public:
     }
     static Array* Of(std::initializer_list<T> items)
     {
-        Array* a = gcnew<Array>(static_cast<int32_t>(items.size()));
-        std::copy(items.begin(), items.end(), a->items_.begin());
+        Array* a = gcnew<Array>(0);
+        a->items_ = Vector<T>(items);
         return a;
     }
-    static Array* FromVector(std::vector<T> v)
+    static Array* FromVector(const std::vector<T>& v)
     {
         Array* a = gcnew<Array>(0);
-        a->items_ = std::move(v);
+        a->items_ = Vector<T>(v);
+        return a;
+    }
+    static Array* FromVector(const Vector<T>& v)
+    {
+        Array* a = gcnew<Array>(0);
+        a->items_ = v;
         return a;
     }
 
@@ -65,24 +72,24 @@ public:
     }
     T& at(uint32_t i) { return at(static_cast<int64_t>(i)); }
     T* data() { return items_.data(); }
-    std::vector<T>& vec() { return items_; }
+    Vector<T>& vec() { return items_; }
 
     Object* Clone() { return FromVector(items_); }
     // Array.Clear(array, index, length), Array.Copy, CopyTo.
     void ClearRange(int32_t index, int32_t length)
     {
         if (index < 0 || length < 0 || index + length > get_Length()) ThrowIndexOutOfRange();
-        std::fill(items_.begin() + index, items_.begin() + index + length, T{});
+        for (int32_t k = index; k < index + length; k++) items_[static_cast<size_t>(k)] = T{};
     }
     void CopyTo(Array* dest, int32_t index)
     {
         nc(dest);
         if (index < 0 || index + get_Length() > dest->get_Length()) Throw<ArgumentException>();
-        std::copy(items_.begin(), items_.end(), dest->items_.begin() + index);
+        for (size_t k = 0; k < items_.size(); k++) dest->items_[static_cast<size_t>(index) + k] = items_[k];
     }
 
-    typename std::vector<T>::iterator begin() { return items_.begin(); }
-    typename std::vector<T>::iterator end() { return items_.end(); }
+    auto begin() { return items_.begin(); }
+    auto end() { return items_.end(); }
 
     // ---- the interfaces arrays implement ----
     IEnumerator_1<T>* IEnumerable_1_GetEnumerator() override;
@@ -108,7 +115,7 @@ public:
     }
 
 private:
-    std::vector<T> items_;
+    Vector<T> items_;
 };
 
 // The enumerator arrays hand out through IEnumerable<T> (SZGenericArrayEnumerator).
@@ -186,7 +193,7 @@ public:
 
 private:
     int32_t n0_, n1_;
-    std::vector<T> items_;
+    Vector<T> items_;
 };
 
 } // namespace cs

@@ -2,13 +2,15 @@
 // System.String: an immutable UTF-16 string (a reference type: cs::String*, null is not "").
 // Ordinal operations are exact. Culture-sensitive ones (Compare, StartsWith/EndsWith/IndexOf
 // with a string, ToLower/ToUpper) follow en-US, the culture OptionsPanel.Load sets for every
-// thread, and are exact for ASCII text; other text falls back to ordinal (listed in
-// progress/unity_api_gaps.tsv as culture collation).
+// thread: exact for ASCII letters and digits; where punctuation decides (Mono's collator orders
+// symbols its own way and ignores the hyphen and the apostrophe at the first level) and past
+// ASCII they fall back to code-unit order (docs/translator_plan.md, "Known approximations").
 
 #include <cstdint>
 #include <initializer_list>
 #include <string>
 
+#include "cs/Interfaces.h"
 #include "cs/Object.h"
 
 namespace cs {
@@ -16,9 +18,13 @@ namespace cs {
 template <typename T>
 class Array;
 
-class String : public Object {
+class String : public Object, public virtual IEnumerable_1<char16_t> {
 public:
     explicit String(std::u16string s) : s_(std::move(s)) {}
+
+    // foreach over a string through IEnumerable<char> (CharEnumerator)
+    IEnumerator_1<char16_t>* IEnumerable_1_GetEnumerator() override;
+    IEnumerator* IEnumerable_GetEnumerator() override;
 
     const char* cs_typename() const override { return "System.String"; }
     bool cs_traced() const override { return true; }
@@ -32,6 +38,8 @@ public:
     static String* FromAscii(const char* s);
     // A literal: interned, so equal literals are the same object (as C# literals are).
     static String* Literal(const char16_t* s, size_t n);
+    // A literal too long for one C++ string literal, in pieces.
+    static String* LiteralChunks(std::initializer_list<const char16_t*> chunks);
     static String* Intern(String* s);
     static String* get_Empty();
 
@@ -131,6 +139,13 @@ double ParseDouble(String* s);
 bool TryParseDouble(String* s, double& result);
 
 } // namespace cs
+
+// A long literal in pieces: `CS_LIT_CHUNKS(u"part1", u"part2")`, interned once per use site.
+#define CS_LIT_CHUNKS(...)          \
+    ([]() -> ::cs::String* {          \
+        static ::cs::String* s_ = ::cs::String::LiteralChunks({__VA_ARGS__}); \
+        return s_;          \
+    }())
 
 // A string literal (UTF-16): `CS_LIT(u"text")`, interned once per use site.
 #define CS_LIT(lit)                                                                            \

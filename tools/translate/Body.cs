@@ -87,9 +87,16 @@ public sealed class Body
     {
         if (locals.TryGetValue(l, out var n)) return n;
         n = Fresh("l_" + l.Name);
+        // A ref local is a pointer to its variable (hoisted declarations can't be references):
+        // reads and writes go through (*l_x), the declaration takes the address.
+        if (l.IsRef)
+        {
+            hoisted.Add((N.Ref(l.Type) + "*", n));
+            refLocals.Add(n);
+            n = "(*" + n + ")";
+        }
+        else hoisted.Add((N.Ref(l.Type), n));
         locals[l] = n;
-        if (l.IsRef) throw new TranslateException("ref local");
-        hoisted.Add((N.Ref(l.Type), n));
         return n;
     }
 
@@ -124,7 +131,8 @@ public sealed class Body
                     {
                         string name = Local(v.Symbol);
                         var init = v.Initializer?.Value ?? d.Initializer?.Value;
-                        if (init != null) Line($"{name} = {Coerce(Expr(init), v.Symbol.Type)};");
+                        if (init != null && v.Symbol.IsRef) Line($"{name.Substring(2, name.Length - 3)} = &{LValue(init).C};");
+                        else if (init != null) Line($"{name} = {Coerce(Expr(init), v.Symbol.Type)};");
                     }
                 break;
             case IExpressionStatementOperation es:
@@ -617,9 +625,26 @@ public sealed class Body
 
     public Ex Expr(IOperation op)
     {
+        // A value of a type with no C++ mapping can't be used: the method waits on that binding.
+        if (op.Type != null && op.Type.TypeKind != TypeKind.Error) TouchType(op.Type);
         var e = ExprCore(op);
         e.T ??= op.Type;
         return e;
+    }
+
+    // Records the gaps of a type (and of the engine bases a game type derives from: an object
+    // of a class whose base isn't mapped can't be used as any of its mapped bases).
+    void TouchType(ITypeSymbol t)
+    {
+        try { N.Ref(t); } catch (TranslateException) { }
+        if (t.TypeKind != TypeKind.Class || !N.IsGame(t)) return;
+        // the first engine base of a game class: mapped, or the class can't be used as one
+        for (var b = (t as INamedTypeSymbol)?.BaseType; b != null && b.SpecialType != SpecialType.System_Object; b = b.BaseType)
+        {
+            if (N.IsGame(b)) continue;
+            if (tr.Bind.FindType(b) == null) tr.Gap(b, "type");
+            break;
+        }
     }
 
     Ex ExprCore(IOperation op)
@@ -819,7 +844,8 @@ public sealed class Body
         if (fs.IsStatic)
         {
             string cls = N.Type(fs.ContainingType);
-            return new Ex(tr.NeedsStaticInit(fs.ContainingType) ? $"({cls}::__si(), {cls}::{N.Field(fs)})" : $"{cls}::{N.Field(fs)}");
+            bool si = tr.NeedsStaticInit(fs.ContainingType) || GenericStaticRoot(fs.ContainingType, Emitter.NeedsTrace(fs.Type));
+            return new Ex(si ? $"({cls}::__si(), {cls}::{N.Field(fs)})" : $"{cls}::{N.Field(fs)}");
         }
         {
             bool isThis = f.Instance is IInstanceReferenceOperation;
@@ -827,6 +853,11 @@ public sealed class Body
             return new Ex($"{recv}{(isValue ? "." : "->")}{N.Field(fs)}", pure: isThis);
         }
     }
+
+    // A generic type's static references are roots of the collector per instantiation, registered by
+    // its __si() (Emitter: siGeneric): an access to a traced static (a reference, a struct, an event)
+    // calls it even when the type has no static initialization to run.
+    static bool GenericStaticRoot(INamedTypeSymbol t, bool traced) => traced && Names.AllTypeParameters(t.OriginalDefinition).Count > 0;
 
     Ex EventField(IEventReferenceOperation ev)
     {
@@ -838,7 +869,8 @@ public sealed class Body
         if (es.IsStatic)
         {
             string cls = N.Type(es.ContainingType);
-            return new Ex(tr.NeedsStaticInit(es.ContainingType) ? $"({cls}::__si(), {cls}::{Names.Ident(es.Name)})" : $"{cls}::{Names.Ident(es.Name)}");
+            bool si = tr.NeedsStaticInit(es.ContainingType) || GenericStaticRoot(es.ContainingType, true);
+            return new Ex(si ? $"({cls}::__si(), {cls}::{Names.Ident(es.Name)})" : $"{cls}::{Names.Ident(es.Name)}");
         }
         string recv = Receiver(ev.Instance, out bool isValue);
         return new Ex($"{recv}{(isValue ? "." : "->")}{Names.Ident(es.Name)}");
@@ -926,6 +958,7 @@ public sealed class Body
     }
 
     readonly HashSet<Ex> refArgs = new();
+    readonly HashSet<string> refLocals = new(StringComparer.Ordinal);
 
     static bool IsSimpleLocal(Ex e) => e.C.StartsWith("l_") || e.C.StartsWith("p_") || e.C == "this";
 
@@ -967,6 +1000,8 @@ public sealed class Body
         string argText = string.Join(", ", args.Select(a => a.C));
         if (!N.IsGame(m))
             return ExternalCall(m, recv, recvType, isThis, args, prop, out pure);
+        if (m.IsGenericMethod && !nonVirtual && (m.IsVirtual || m.IsAbstract || m.IsOverride || m.ContainingType.TypeKind == TypeKind.Interface))
+            throw new TranslateException("a call to a virtual generic method (C++ has no virtual templates)");
         tr.NeedMethod(m);
         string name = N.Method(m);
         string targs = m.IsGenericMethod ? "<" + string.Join(", ", m.TypeArguments.Select(N.Ref)) + ">" : "";
@@ -1005,8 +1040,22 @@ public sealed class Body
         };
         ISymbol key = m;
         if (kind is "get" or "set" && m.AssociatedSymbol is IPropertySymbol ap) key = ap;
-        var b = tr.Bind.Find(kind, key) ?? (kind == "op" ? tr.Bind.Find("call", key) : null);
         var containing = m.ContainingType;
+        // System.Object's members on any receiver (an object, an interface, or a value as its box answers).
+        if (containing.SpecialType is SpecialType.System_Object or SpecialType.System_ValueType or SpecialType.System_Enum)
+        {
+            string argText = string.Join(", ", args.Select(a => a.C));
+            if (m.Name is "ToString" or "Equals" or "GetHashCode" && !m.IsStatic && recv != null)
+                return $"::cs::ObjectCall_{m.Name}({ObjectOrValue(recv, recvType)}{(argText.Length > 0 ? ", " + argText : "")})";
+            if (m.Name == "GetType" && !m.IsStatic && recv != null)
+                return recvType != null && !Names.IsRef(recvType) && recvType.TypeKind != TypeKind.TypeParameter
+                    ? $"::cs::TypeOf<{N.Ref(recvType)}>()"
+                    : $"::cs::GetTypeOf({ObjectOrValue(recv, recvType)})";
+            if (m.Name == "ReferenceEquals") return $"::cs::RefEq({argText})";
+            if (m.Name == "Equals" && m.IsStatic) return $"::cs::ObjectEquals({argText})";
+            if (m.MethodKind == MethodKind.Constructor) return "::cs::New<::cs::Object>()";
+        }
+        var b = tr.Bind.Find(kind, key) ?? (kind == "op" ? tr.Bind.Find("call", key) : null);
         var typeArgs = Names.AllTypeArguments(containing);
         bool recvIsValue = recvType != null && !Names.IsRef(recvType) && recvType.TypeKind != TypeKind.TypeParameter;
         if (b != null)
@@ -1046,15 +1095,6 @@ public sealed class Body
             if (containing.TypeKind == TypeKind.Interface && recvType != null && recvType.TypeKind != TypeKind.Interface)
                 r = $"static_cast<{N.Ref(containing)}>({r})";
             return $"{r}{(recvIsValue ? "." : "->")}{name}{targs}({argText})";
-        }
-        // System.Object's members on any receiver.
-        if (containing.SpecialType is SpecialType.System_Object or SpecialType.System_ValueType or SpecialType.System_Enum)
-        {
-            string argText = string.Join(", ", args.Select(a => a.C));
-            if (m.Name is "ToString" or "Equals" or "GetHashCode" && !m.IsStatic && recv != null)
-                return $"::cs::ObjectCall_{m.Name}({ObjectOrValue(recv, recvType)}{(argText.Length > 0 ? ", " + argText : "")})";
-            if (m.Name == "ReferenceEquals") return $"::cs::RefEq({argText})";
-            if (m.Name == "Equals" && m.IsStatic) return $"::cs::ObjectEquals({argText})";
         }
         return tr.Gap(key, kind);
     }
@@ -1193,6 +1233,8 @@ public sealed class Body
             return new Ex(FillArgs(N.Substitute(b.Template, recv, es.ContainingType.TypeArguments, null), new List<Ex> { handler }, -1));
         }
         tr.UseEvent(es);
+        // (its accessor declared: a field-like event's is written in the class, whatever its type's units say)
+        if ((ea.Adds ? es.AddMethod : es.RemoveMethod) is IMethodSymbol accessor) tr.NeedMethod(accessor);
         string acc = (ea.Adds ? "add_" : "remove_") + Names.Ident(es.Name);
         if (es.IsStatic) return new Ex($"{N.Type(es.ContainingType)}::{acc}({handler.C})");
         var r = er.Instance is IInstanceReferenceOperation ? "this" : $"::cs::nc({Expr(er.Instance).C})";
@@ -1248,7 +1290,9 @@ public sealed class Body
         if (from == null) return operand;
         bool isExplicit = !cv.IsImplicit && !c.IsImplicit;
         if (cv.IsTryCast)
-            return new Ex($"::cs::As<{N.Type(to)}>({ObjectOrInterface(operand, from)})", operand.Pure);
+            return to.TypeKind == TypeKind.TypeParameter
+                ? new Ex($"::cs::AsT<{N.Ref(to)}>({ObjectOrInterface(operand, from)})", operand.Pure)
+                : new Ex($"::cs::As<{N.Type(to)}>({ObjectOrInterface(operand, from)})", operand.Pure);
         var res = ConvertCode(operand, from, to, isExplicit || c.IsExplicit);
         if (!ReferenceEquals(res, operand)) res.T = to;
         return res;

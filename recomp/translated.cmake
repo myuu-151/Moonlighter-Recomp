@@ -29,7 +29,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              ${ML_TRANSLATE_DIR}/units.txt ${ML_TRANSLATE_DIR}/bindings.tsv ${_ml_translate_sources})
 
 include(${ML_GEN_DIR}/sources.cmake)
-add_library(mlgen STATIC ${ML_GEN_SOURCES} src/bind/UnityEngine.cpp)
+add_library(mlgen STATIC ${ML_GEN_SOURCES}
+            src/bind/Core.cpp src/bind/Scene.cpp src/bind/Physics.cpp src/bind/Components.cpp src/bind/DOTween.cpp
+            src/bind/Engine.cpp src/bind/Plugins.cpp src/bind/Prefabs.cpp src/bind/Serial.cpp)
 target_include_directories(mlgen PUBLIC ${ML_GEN_DIR} src)
 target_link_libraries(mlgen PUBLIC mlcore)
 if(MSVC)
@@ -39,12 +41,55 @@ else()
     target_compile_options(mlgen PRIVATE -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable)
 endif()
 
+# ML_TRANSLATED_DEBUG: PDBs for the translated code and its tests, and ML_CS_STACK=1 printing the C++
+# stack at each C# exception thrown (finding where translated code dereferenced null).
+option(ML_TRANSLATED_DEBUG "PDBs for the translated code; ML_CS_STACK=1 prints the stack at each C# throw" OFF)
+if(ML_TRANSLATED_DEBUG AND MSVC)
+    set_source_files_properties(src/cs/Object.cpp PROPERTIES COMPILE_DEFINITIONS ML_CS_STACK_DUMP)
+    target_compile_options(mlgen PRIVATE /Zi)
+endif()
+function(ml_translated_debug target)
+    if(ML_TRANSLATED_DEBUG AND MSVC)
+        target_compile_options(${target} PRIVATE /Zi)
+        target_link_options(${target} PRIVATE /DEBUG)
+    endif()
+endfunction()
+
 # The oracle tests against the translated classes: tests/translated holds headers named like
 # the hand port's (game/Cave.h...) that name the translated classes instead, and the glue that
 # drives them as the game does.
 add_executable(cave_oracle_translated tests/cave_oracle_test.cpp tests/translated/Adapters.cpp)
 target_include_directories(cave_oracle_translated BEFORE PRIVATE tests/translated)
 target_link_libraries(cave_oracle_translated PRIVATE mlgen)
+ml_translated_debug(cave_oracle_translated)
 add_test(NAME cave_oracle_translated
          COMMAND cave_oracle_translated ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# The Golem enemies against the game with their own code translated (tests/translated/enemy_translated_test:
+# enemy_replay.h's replay and rows, slime_test's and enemy_test's recordings) in place of the hand
+# port: BabySlimeBehaviour, GolemSoldierBehaviour, EnemyBehaviour, Enemy, EnemyStats, PolyNav...,
+# on the scene facade (src/bind) and the stand-ins of tests/translated/scene.
+add_executable(enemy_translated_test tests/translated/enemy_translated_test.cpp tests/translated/scene/Standins.cpp)
+target_include_directories(enemy_translated_test PRIVATE tests/translated)
+target_link_libraries(enemy_translated_test PRIVATE mlgen)
+ml_translated_debug(enemy_translated_test)
+add_test(NAME slime_translated
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl BabySlime
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME slime_bis_translated
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime_bis.jsonl BabySlime
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME enemy_golem_soldier_translated
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+# The collector at every frame boundary on the translated scene (ML_GC_EVERY_FRAME), freed objects
+# poisoned (ML_GC_POISON): a live object the roots miss crashes the replay or makes it mismatch
+# (docs/translator_plan.md, "Memory").
+add_test(NAME slime_translated_gc
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/slime.jsonl BabySlime
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME enemy_golem_soldier_translated_gc
+         COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+set_tests_properties(slime_translated_gc enemy_golem_soldier_translated_gc PROPERTIES ENVIRONMENT "ML_GC_EVERY_FRAME=1;ML_GC_POISON=1")

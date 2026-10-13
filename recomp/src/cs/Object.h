@@ -45,6 +45,8 @@ public:
     static const char* cs_static_typename() { return "System.Object"; }
     // object.GetType(): the canonical Type of cs_typename().
     Type* GetType();
+    // new object()
+    void __ctor() {}
 
     // The reference fields, for the collector (generated per translated class).
     virtual void cs_trace(Tracer&) {}

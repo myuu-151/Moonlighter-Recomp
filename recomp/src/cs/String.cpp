@@ -17,9 +17,10 @@ namespace {
 struct U16Hash {
     size_t operator()(const std::u16string& s) const
     {
-        size_t h = 1469598103934665603ull;
+        // (64-bit FNV-1a, folded to size_t: the GameCube's is 32 bits)
+        uint64_t h = 1469598103934665603ull;
         for (char16_t c : s) h = (h ^ c) * 1099511628211ull;
-        return h;
+        return static_cast<size_t>(h ^ (h >> 32));
     }
 };
 
@@ -138,6 +139,13 @@ std::string String::ToUtf8() const
 
 String* String::Literal(const char16_t* s, size_t n) { return Permanent(std::u16string(s, n)); }
 
+String* String::LiteralChunks(std::initializer_list<const char16_t*> chunks)
+{
+    std::u16string all;
+    for (const char16_t* c : chunks) all += c;
+    return Permanent(all);
+}
+
 String* String::Intern(String* s) { return Permanent(nc(s)->s_); }
 
 String* String::get_Empty()
@@ -145,6 +153,42 @@ String* String::get_Empty()
     static String* e = Permanent(std::u16string());
     return e;
 }
+
+// ---- IEnumerable<char> ----
+
+namespace {
+class CharEnumerator : public Object, public virtual IEnumerator_1<char16_t> {
+public:
+    explicit CharEnumerator(String* s) : s_(s) {}
+    const char* cs_typename() const override { return "System.CharEnumerator"; }
+    bool cs_traced() const override { return true; }
+    void cs_trace(Tracer& t) override { t.Mark(s_); }
+    bool IEnumerator_MoveNext() override
+    {
+        if (i_ < s_->get_Length() - 1) {
+            i_++;
+            return true;
+        }
+        i_ = s_->get_Length();
+        return false;
+    }
+    char16_t IEnumerator_1_get_Current() override
+    {
+        if (i_ < 0 || i_ >= s_->get_Length()) ThrowInvalidOperation("Enumeration has not started or has already finished.");
+        return s_->get_Chars(i_);
+    }
+    Object* IEnumerator_get_Current() override { return BoxAny(IEnumerator_1_get_Current()); }
+    void IEnumerator_Reset() override { i_ = -1; }
+    void IDisposable_Dispose() override {}
+
+private:
+    String* s_;
+    int32_t i_ = -1;
+};
+} // namespace
+
+IEnumerator_1<char16_t>* String::IEnumerable_1_GetEnumerator() { return gcnew<CharEnumerator>(this); }
+IEnumerator* String::IEnumerable_GetEnumerator() { return gcnew<CharEnumerator>(this); }
 
 // ---- reading and comparing -------------------------------------------------------------------------
 
