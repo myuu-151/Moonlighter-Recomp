@@ -225,6 +225,15 @@ public:
     // transform.position (through the parents) and its setter.
     unity::Vector2 position() const { return navAgent.position(); }
     void setPosition(unity::Vector2 p) { navAgent.setPosition(p); }
+    // The AttackCollider child's transform.position: its local position through the root's and
+    // each parent's, from the child up (as Unity's transform hierarchy sums them; root position
+    // + child's local can round a last bit differently: enemy_KamikazeGolem.jsonl, frame 492).
+    unity::Vector2 attackChildPosition() const
+    {
+        unity::Vector2 p = attackPosition + navAgent.localPosition;
+        for (const unity::Vector2& parent : navAgent.parents) p = p + parent;
+        return p;
+    }
 
     // Instantiate under the spawn point (local position zero) and its parents (nearest first:
     // the "EnemySpawn" object's local position, the container's, the room's): Awake (the

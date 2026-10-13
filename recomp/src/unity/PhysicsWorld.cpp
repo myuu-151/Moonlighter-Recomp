@@ -312,6 +312,12 @@ void PhysicsWorld::SyncTransform(Rigidbody2D& body, Vector2 position)
     b2Body* b = body.body_;
     const b2Vec2 at = b->GetPosition();
     if (at.x == position.x && at.y == position.y) return; // not moved since the write-back
+    SyncWrittenTransform(body, position);
+}
+
+void PhysicsWorld::SyncWrittenTransform(Rigidbody2D& body, Vector2 position)
+{
+    b2Body* b = body.body_;
     b->SetTransform(B2(position), b->GetAngle());
     // Unity's sync starts the body's rest over (slime.jsonl: an enemy its PolyNavAgent moves by
     // transform never falls asleep).

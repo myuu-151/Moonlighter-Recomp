@@ -687,7 +687,7 @@ void EnemyPhysics::Add(Enemy& e)
         SetRootColliderEnabled(e, false);
     }
     // The AttackCollider's own Rigidbody2D (the KamikazeGolem's), at the child's world position.
-    if (e.attackHasRigidbody) e.attackBody = &world_.AddBody(e.attackRigidbody, e.position() + e.attackPosition, e.attackLayer);
+    if (e.attackHasRigidbody) e.attackBody = &world_.AddBody(e.attackRigidbody, e.attackChildPosition(), e.attackLayer);
     SyncAttackCollider(e);
     if (!e.active || e.destroyed) SetBodyActive(e, false);
     e.synced_ = e.position();
@@ -778,13 +778,19 @@ void EnemyPhysics::Sync()
         SyncAttackCollider(*e);
         SyncRootCollider(*e);
         const Vector2 p = e->position();
-        if (p.x != e->synced_.x || p.y != e->synced_.y || e->transformDirty_) {
+        const bool moved = p.x != e->synced_.x || p.y != e->synced_.y || e->transformDirty_;
+        if (moved) {
             world_.SyncTransform(*e->body, p);
             e->synced_ = p;
             e->transformDirty_ = false;
         }
-        // The AttackCollider's own body to the child's world position (the parent's moves carry it).
-        if (e->attackBody) world_.SyncTransform(*e->attackBody, p + e->attackPosition);
+        // The AttackCollider's own body to the child's world position: a root the scripts moved
+        // carries it (synced, its rest restarted, even where the child's position reads the
+        // same); else only a change of its own (its local position).
+        if (e->attackBody) {
+            if (moved) world_.SyncWrittenTransform(*e->attackBody, e->attackChildPosition());
+            else world_.SyncTransform(*e->attackBody, e->attackChildPosition());
+        }
     }
 }
 
@@ -796,6 +802,13 @@ void EnemyPhysics::WriteBack()
         if (!options_.writeBackUnmoved && b.x == e->synced_.x && b.y == e->synced_.y) continue;
         e->setPosition(b);
         e->synced_ = e->position();
+        // The write-back moves the AttackCollider's own body with it there and then, moved or
+        // not, its rest restarted (the child's transform changed through its parent's):
+        // enemy_KamikazeGolem.jsonl has it at the root's written position by the next
+        // FixedUpdate and at the frame's end (frame 492: a last bit the round trip through the
+        // centre of mass changed), and asleep half a second after the root (enemy 0: its body
+        // asleep in frame 224, the attack body in 254).
+        if (e->attackBody) world_.SyncWrittenTransform(*e->attackBody, e->attackChildPosition());
     }
 }
 

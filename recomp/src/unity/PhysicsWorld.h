@@ -154,6 +154,10 @@ public:
     void SyncColliders();
     // Physics2D.SyncTransforms for a body whose transform is at `position`.
     void SyncTransform(Rigidbody2D& body, Vector2 position);
+    // The same for a body whose transform was written since the last sync, moved or not (a
+    // child's whose parent's transform the physics wrote back: Unity's transform-change flags
+    // go down the hierarchy): synced, and its rest restarted, all the same.
+    void SyncWrittenTransform(Rigidbody2D& body, Vector2 position);
     // The body awake with its time at rest (towards sleeping) back to zero, even if it was
     // awake already (what Unity does when it syncs a moved transform, or remakes a collider of
     // the body's: enemy_GolemSoldier.jsonl), its velocities kept.

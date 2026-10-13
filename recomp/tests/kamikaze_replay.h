@@ -117,10 +117,13 @@ struct KamikazeReplay : ReplayHooks {
             startBodies[id] = {{Bits((*ab)[0]), Bits((*ab)[1])}, (*ab)[2].b};
         const Value* en = ka->Find("enter");
         if (en && en->IsArray()) {
+            // An Invoke counts from Time.fixedTime wherever it's made (unity/DelayedCalls.h): an
+            // EnemyRoom_OnRoomEnter run in a frame too (enemy_KamikazeGolem.jsonl: entered at
+            // Time.time 191.755310, fixedTime 191.75, MoveEnemy in the steps at 192.4, 193.05...).
             const bool fixed = en->size() > 2 && (*en)[2].b;
             const Value* lm = ka->Find("lastMove");
-            enters.push_back({id, static_cast<double>(Bits((*en)[fixed ? 1 : 0])), fixed, ka->Find("moves") ? static_cast<int>((*ka)["moves"].AsInt()) : 0,
-                              lm && lm->IsArray() ? Bits((*lm)[0]) : -1.0f});
+            enters.push_back({id, static_cast<double>(Bits((*en)[en->size() > 1 ? 1 : 0])), fixed,
+                              ka->Find("moves") ? static_cast<int>((*ka)["moves"].AsInt()) : 0, lm && lm->IsArray() ? Bits((*lm)[0]) : -1.0f});
         } else {
             std::printf("note: enemy %d never entered its room (no EnemyRoom_OnRoomEnter): no MoveEnemy\n", id);
         }
