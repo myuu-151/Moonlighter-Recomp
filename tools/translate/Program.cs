@@ -34,6 +34,7 @@ public static class Program
                 case "survey": return Survey.Run(opts);
                 case "translate": return TranslateCommand.Run(opts);
                 case "diag": return Diag(opts);
+                case "survey-assembly": return AssemblySurvey.Run(opts);
                 default: throw new UsageException($"unknown command {args[0]}");
             }
         }

@@ -108,6 +108,8 @@ add_library(mlcore STATIC
     src/game/EnemyJump.cpp
     # A PolygonCollider2D's convex pieces in the physics world (libtess2).
     src/unity/PolygonCollider2D.cpp
+    # RectTransform layout, the canvases' own RectTransforms, Transform's matrices (Unity's float math).
+    src/unity/RectTransform.cpp
 )
 target_include_directories(mlcore PUBLIC src third_party/box2d third_party/libtess2/Include)
 
@@ -255,6 +257,16 @@ add_executable(tangle_test tests/tangle_test.cpp)
 target_link_libraries(tangle_test PRIVATE mlcore)
 add_test(NAME tangle
          COMMAND tangle_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/tangle.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+# RectTransform layout against the game (data/oracle/ui_<script>.jsonl, `-oracle-ui=<script>`;
+# skipped if there's none; recorded as recq ui-title-3 and ui-dungeon-2): each recorded row's rect,
+# localPosition, world corners and position, the root canvases' RectTransforms and the CanvasScaler's
+# factor, then the hierarchy replayed through unity::RectTransform's setters, bit for bit.
+add_executable(ui_rect_test tests/ui_rect_test.cpp)
+target_link_libraries(ui_rect_test PRIVATE mlcore)
+add_test(NAME ui_rect
+         COMMAND ui_rect_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/ui_title.jsonl ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/ui_dungeon.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
