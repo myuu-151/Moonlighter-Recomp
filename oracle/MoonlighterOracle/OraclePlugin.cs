@@ -84,6 +84,13 @@ namespace MoonlighterOracle
                     StartCoroutine(EnemyOracle.Run(this, quit, room, enemy, false));
                 }
             }
+            // -oracle-ui=<script> (title, dungeon): the UI driven and recorded (UIOracle.cs): ui_<script>.jsonl.
+            string uiArg = Array.Find(args, a => a.StartsWith("-oracle-ui"));
+            if (uiArg != null)
+            {
+                Harvest.InstallSafety(harmony);
+                StartCoroutine(UIOracle.Run(this, quit, uiArg.Contains("=") ? uiArg.Substring(uiArg.IndexOf('=') + 1) : ""));
+            }
             // The Tangle lane (TangleOracle.cs; to join the generic enemy oracle).
             string tangleArg = Array.Find(args, a => a.StartsWith("-oracle-tangle"));
             if (tangleArg != null)
