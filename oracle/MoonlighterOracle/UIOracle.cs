@@ -127,7 +127,8 @@ namespace MoonlighterOracle
         // walking; the bag (the hero's Y, HeroMerchantController; the game pauses) opened, its
         // slots walked with the stick and the stick held (the repeat), closed with B; the pause
         // panel (GUI Start) opened, Options and back to BackToGame, closed with B; the minimap's
-        // detail panel (the hero's Select, GUIManager) opened and closed. Never A, X or the
+        // detail panel (the hero's Select, GUIManager) opened and closed. Buttons are named by
+        // the actions' names (PlayerAction.Name: "Start", "Select", "Action1"...). Never A, X or the
         // bumpers in the bag (they move, use or swap items), never the right trigger without a
         // panel (a potion), never MainMenu or ExitToDesktop in the pause panel.
         private static readonly Step[] DungeonScript =
@@ -140,11 +141,11 @@ namespace MoonlighterOracle
             new Step(40, 1f, 0f),
             Idle(20),
             Press("gui.Action2", 90),
-            Press("gui.ButtonStart", 90),
+            Press("gui.Start", 120),
             Tap(0f, -1f), Tap(0f, 1f),
             Press("gui.Action2", 90),
-            Press("hero.ButtonSelect", 90),
-            Press("hero.ButtonSelect", 90),
+            Press("hero.Select", 90),
+            Press("hero.Select", 90),
             Idle(30),
         };
 
@@ -213,6 +214,9 @@ namespace MoonlighterOracle
             return false;
         }
 
+        private static int pressedFrame = -1;
+        private static readonly List<string> pressed = new List<string>();
+
         private static int newsCheckedFrame = -1;
         private static bool newsUp;
 
@@ -279,6 +283,16 @@ namespace MoonlighterOracle
                 // is false while the set is disabled (the game disables GUIManager's input while a
                 // panel opens).
                 OwnerEnabled.SetValue(__instance, __instance.Owner.Enabled);
+                if (value > 0f && !__instance.Name.StartsWith("LeftStick"))
+                {
+                    if (pressedFrame != Time.frameCount)
+                    {
+                        pressedFrame = Time.frameCount;
+                        pressed.Clear();
+                    }
+                    string name = set + "." + __instance.Name;
+                    if (!pressed.Contains(name)) pressed.Add(name);
+                }
                 __instance.CommitWithValue(value, updateTick, deltaTime);
                 return false;
             }
@@ -472,8 +486,8 @@ namespace MoonlighterOracle
                 strayed = true;
             }
             j.Key("in").Arr().Bits(stick.x).Bits(stick.y);
-            if (inStep < step.hold && (step.expect == null || !strayed))
-                foreach (var b in step.buttons) j.Val(b);
+            if (pressedFrame == Time.frameCount)
+                foreach (var b in pressed.OrderBy(x => x, StringComparer.Ordinal)) j.Val(b);
             j.EndArr();
             if (selected != null) Node(snap, selected.transform);
             j.Prop("sel", selected != null ? selected.transform.GetInstanceID() : 0).Prop("selPath", selected != null ? PathOf(selected.transform) : null);
@@ -621,6 +635,18 @@ namespace MoonlighterOracle
                 yield break;
             }
             frames = ScriptFrames(script);
+            while (GUIManager.Instance == null || GUIManager.Instance.input == null || InputActionsManager.Instance == null) yield return null;
+            var names = new HashSet<string>();
+            foreach (var a in GUIManager.Instance.input.Actions) names.Add("gui." + a.Name);
+            foreach (var a in InputActionsManager.Instance.actions.Actions) names.Add("hero." + a.Name);
+            foreach (var st in script)
+                foreach (var b in st.buttons)
+                    if (!names.Contains(b))
+                    {
+                        log.LogError("-oracle-ui: the script names no action " + b);
+                        File.WriteAllText(Path.Combine(OraclePlugin.OutDir, "FAILED"), "the -oracle-ui script names no action " + b);
+                        yield break;
+                    }
             if (scriptName == "title") yield return WaitForMainMenu();
             else
             {
