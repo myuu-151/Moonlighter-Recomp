@@ -32,7 +32,8 @@ Needs UnityPy and TypeTreeGeneratorAPI.
                 "localPosition" [x, y, z], "localRotation" [x, y, z, w], "localScale" [x, y, z],
                 "components": [{"type": a native type's name or a script's class name,
                                 "assembly" (scripts: UnityEngine.UI, Assembly-CSharp...),
-                                "enabled" (Behaviours), fields...}, ...]}
+                                "enabled" (Behaviours), "fields": {its serialized fields}
+                                (a Canvas also "sortingLayerName")}, ...]}
          A reference is null (unset), {"path": p} (an object of the same tree; with
          "component": type for a component), {"root": name, "path": p} (another tree of the
          same file), or {"asset": type, "name": n, "file": f, "id": path id} (anything else:
@@ -444,9 +445,7 @@ def extract(files, source, tags, sorting_layers):
                 if isinstance(fields, dict):
                     if 'm_Enabled' in fields:
                         comp['enabled'] = bool(fields['m_Enabled'])
-                    for k, v in fields.items():
-                        if k not in SKIP_FIELDS:
-                            comp[k] = source.values(v, local)
+                    comp['fields'] = {k: source.values(v, local) for k, v in fields.items() if k not in SKIP_FIELDS}
                     if ctype == 'Canvas':
                         comp['sortingLayerName'] = sorting_layers.get(fields.get('m_SortingLayerID', 0) & 0xFFFFFFFF, 'Default')
                 counts[comp['type']] += 1
@@ -463,12 +462,14 @@ def extract(files, source, tags, sorting_layers):
         res = source.resources_paths.get(go_id)
         roots_out.append({'name': rname, 'id': go_id, 'resources': res, 'nodes': nodes})
         for node in nodes:
-            canvas = next((c for c in node['components'] if c['type'] == 'Canvas'), None)
-            if canvas is None:
+            canvas_comp = next((c for c in node['components'] if c['type'] == 'Canvas'), None)
+            if canvas_comp is None:
                 continue
-            scaler = next((c for c in node['components'] if c['type'] == 'UnityEngine.UI.CanvasScaler'), None)
+            canvas = canvas_comp.get('fields', {})
+            scaler_comp = next((c for c in node['components'] if c['type'] == 'UnityEngine.UI.CanvasScaler'), None)
+            scaler = scaler_comp.get('fields') if scaler_comp is not None else None
             entry = {'root': rname, 'path': node['path'], 'active': node['active'], 'renderMode': canvas.get('m_RenderMode'),
-                     'sortingLayer': canvas.get('sortingLayerName'), 'sortingOrder': canvas.get('m_SortingOrder'),
+                     'sortingLayer': canvas_comp.get('sortingLayerName'), 'sortingOrder': canvas.get('m_SortingOrder'),
                      'overrideSorting': canvas.get('m_OverrideSorting'), 'pixelPerfect': canvas.get('m_PixelPerfect'),
                      'camera': canvas.get('m_Camera') is not None, 'planeDistance': canvas.get('m_PlaneDistance'),
                      'nested': node['parent'] != -1}
