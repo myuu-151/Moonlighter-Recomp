@@ -109,6 +109,19 @@ foreach(_i RANGE 0 ${_ml_last} 3)
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
     list(APPEND _ml_gc_tests ${_name}_gc)
 endforeach()
+# The Tangle (tests/translated/tangle_translated_test: tangle_test's replay and rows, its weave's
+# LateUpdates in the game's order) on the game's own TangleBehaviour.
+add_executable(tangle_translated_test tests/translated/tangle_translated_test.cpp tests/translated/scene/Standins.cpp)
+target_include_directories(tangle_translated_test PRIVATE tests/translated)
+target_link_libraries(tangle_translated_test PRIVATE mlgen)
+ml_translated_debug(tangle_translated_test)
+add_test(NAME tangle_translated
+         COMMAND tangle_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/tangle.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+add_test(NAME tangle_translated_gc
+         COMMAND tangle_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/tangle.jsonl
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+list(APPEND _ml_gc_tests tangle_translated_gc)
 # The collector at every frame boundary on the translated scene (ML_GC_EVERY_FRAME), freed objects
 # poisoned (ML_GC_POISON): a live object the roots miss crashes the replay or makes it mismatch
 # (docs/translator_plan.md, "Memory").
