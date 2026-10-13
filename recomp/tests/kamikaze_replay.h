@@ -18,7 +18,12 @@
 //     inform without failing;
 //   - each frame's end ("kami" in "enemies"): MakeJump's end and time, the triggers (an active
 //     Animator's), the attack body (position, awake, the box on), its EnteredInCombat
-//     subscription.
+//     subscription;
+//   - the room's and the hero's parts the kamikaze's code reaches (the start line's "kroom" and
+//     "heroEffects", KamikazeOracle.WriteStart): when the last enemy leaves roomEnemies (its
+//     Die: SelfDestroy's too) the room's OnAllEnemiesDefeated runs (game/EnemyRoom.h:
+//     UnLockRoomChests' sounds draw); every hit raises Enemy.OnEnemyRecivesDamage, which the
+//     hero's Wanderer Amulet draws on (game/AmuletEffects.h). Recordings without them: neither.
 
 #include <cmath>
 #include <map>
@@ -28,6 +33,8 @@
 #include <Box2D/Box2D.h>
 
 #include "enemy_replay.h"
+#include "game/AmuletEffects.h"
+#include "game/EnemyRoom.h"
 #include "game/KamikazeGolem.h"
 
 namespace {
@@ -60,6 +67,31 @@ struct KamikazeReplay : ReplayHooks {
     };
     std::map<int, StartBody> startBodies;
     bool bodiesPlaced = false;
+    // The room ("kroom"): its chests' types, OnAllEnemiesDefeated's handlers, isLocked.
+    std::vector<int> chestTypes;
+    std::vector<std::string> allDefeated;
+    bool roomLocked = false;
+    game::MasterAudio* audio = nullptr;
+    // The hero's Wanderer Amulet ("heroEffects").
+    game::WandererAmuletEffect wanderer;
+
+    // DungeonRoom.EnemyDefeated's end, the recorded enemies being the room's roomEnemies (the
+    // oracle takes the others out before EnableEnemies).
+    void RoomEnemyDefeated()
+    {
+        std::vector<const game::Enemy*> list;
+        for (const auto& [id, e] : enemies) list.push_back(e);
+        if (!game::AreAllEnemiesDefeated(list, roomLocked)) return;
+        for (const std::string& h : allDefeated) {
+            if (h == "DungeonRoom.UnLockRoomChests") game::UnLockRoomChests(chestTypes, audio);
+            else if (h == "DungeonRoom.OpenAllDoors" || h == "DungeonRoom.ResetHeroMerchantIsInCombat") {
+                // (No draws: the doors' Animators, the hero's IsInCombat. recq kamifix-3's probe.)
+            } else if (tally) {
+                tally->Add("the room's OnAllEnemiesDefeated handlers (ported: UnLockRoomChests, OpenAllDoors, ResetHeroMerchantIsInCombat)",
+                           false, "frame " + std::to_string(frame) + ": " + h);
+            }
+        }
+    }
 
     static game::GolemKamikazeBehaviour* Kami(game::Enemy& e) { return dynamic_cast<game::GolemKamikazeBehaviour*>(e.enemyBehaviour.get()); }
 
@@ -90,6 +122,40 @@ struct KamikazeReplay : ReplayHooks {
         scene.queries = &roomColliders; // (Update's hole check: the holes are among them)
         if (const Value* tm = start.Find("time")) startTime = Bits(*tm);
         fixedDt = Bits(start["fixedDeltaTime"]);
+        audio = scene.audio;
+        if (const Value* kr = start.Find("kroom")) {
+            for (const Value& c : (*kr)["chests"].arr) chestTypes.push_back(static_cast<int>(c[0].AsInt()));
+            for (const Value& h : (*kr)["allDefeated"].arr) allDefeated.push_back(h.s);
+            if (const Value* locked = kr->Find("locked")) roomLocked = locked->b;
+            else std::printf("note: no \"locked\" in \"kroom\" (recorded before it): the room taken as not locked\n");
+            scene.onEnemyDefeated = [this](game::Enemy&) { RoomEnemyDefeated(); };
+        } else {
+            std::printf("note: no \"kroom\" (recorded before KamikazeOracle.WriteStart): the room's OnAllEnemiesDefeated isn't run\n");
+        }
+        if (const Value* he = start.Find("heroEffects")) {
+            bool wandererOn = false;
+            for (const Value& h : (*he)["damage"].arr) {
+                if (h.s != "WandererAmuletEffect.Enemy_OnEnemyRecivesDamage") {
+                    t.Add("the hero's Enemy.OnEnemyRecivesDamage handlers (ported: the Wanderer Amulet's)", false, h.s);
+                    continue;
+                }
+                for (const Value& eff : (*he)["effects"].arr)
+                    if (eff.size() >= 3 && eff[0].s == "WandererAmuletEffect") {
+                        wanderer.probToCallWanderer = Bits(eff[2]);
+                        wandererOn = true;
+                    }
+            }
+            wanderer.wandererActive = (*he)["wandererActive"].b;
+            wanderer.spawnWanderer = [this] {
+                if (tally) tally->Add("the Wanderer Amulet called the Wanderer (DungeonManager.SpawnWanderer: not ported)", false, "frame " + std::to_string(frame));
+            };
+            if (wandererOn)
+                scene.onEnemyReceivesDamage = [this](game::Enemy& e, float damage, game::EnemyDamageReceivedType type) {
+                    wanderer.Enemy_OnEnemyRecivesDamage(e, damage, type);
+                };
+        } else {
+            std::printf("note: no \"heroEffects\" (recorded before KamikazeOracle.WriteStart): the hero's amulets' handlers aren't run\n");
+        }
     }
 
     void OnEnemy(game::Enemy& e, int id, const Value& line, Tally& t) override

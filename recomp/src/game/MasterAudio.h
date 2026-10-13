@@ -17,9 +17,9 @@
 //   - a variation still playing under retriggerPercentage of its clip: not played (the next
 //     of the pool is tried); played: useRandomVolume Range(min, max); then
 //     SoundGroupVariation.Play: useRandomPitch Range(min, max); minCustomLoops != maxCustomLoops
-//     Range(min, max + 1) (most variations: 1 and 5, so nearly every play draws once); the
-//     updater's useIntroSilence and useRandomStartTime draws (made a frame later in the game:
-//     here at once); played, its pool entry is used up (refilled when empty);
+//     Range(min, max + 1) (most variations: 1 and 5, so nearly every play draws once);
+//     played, its pool entry is used up (refilled when empty); its updater's draws wait for
+//     MasterAudio's LateUpdate (LateUpdate below);
 //   - linked groups: All plays each, OneAtRandom draws Range(0, count) and plays it.
 // "Still playing" is the variation's clip length from its start on the caller's clock (the
 // game's AudioSource time, which a pitch would change: not modelled). Its AudioSource only
@@ -27,7 +27,12 @@
 // ManualUpdate calls PlaySoundAndWait: PlayScheduled), so in the frame it was played it isn't
 // playing yet: a second PlaySound of it in that frame plays it again, with its draws
 // (enemy_BrokenGolemTurret.jsonl: both turrets' PlayShootSound in one animation pass, one draw
-// each).
+// each). That ManualUpdate (SoundGroupVariationUpdater.PlaySoundAndWait, its WaitForSoundFinish
+// having set it to play) makes the variation's useIntroSilence Range(min, max), then its
+// useRandomStartTime Range(min, max) (ClipStartPosition): not in the PlaySound, so not in the
+// clip event that played it (enemy_KamikazeGolem.jsonl of recq kamifix-4, frame 829: the
+// KamikazeGolem's SelfDestroy draws once for the room's "dungeon_chest_unlock", whose 0.7 s intro
+// silence is drawn after).
 //
 // Checked against the game for golem_dungeon_soldier_sword_crash (enemy_GolemSoldier.jsonl:
 // one draw a play, the loops' Range(1, 6)); the pools, limits and retriggers aren't recorded yet.
@@ -93,6 +98,9 @@ public:
     double now = 0.0;
     int frameCount = 0;
     bool PlaySound(const std::string& sType) { return PlaySound(sType, now, frameCount); }
+    // MasterAudio.LateUpdate (variationFollowerType LateUpdate): the updaters of the variations
+    // played since start them, in the order they were played: their draws.
+    void LateUpdate();
 
     Group* Find(const std::string& sType);
 
@@ -104,6 +112,14 @@ private:
     static bool SourcePlaying(const Variation& v, double time, int frame);
     void Refill(Group& g);
     void Shuffle(std::vector<int>& list);
+    // The updaters waiting to start (PlaySoundAndWait): the draws they'll make.
+    struct UpdaterStart {
+        bool introSilence = false;
+        float introSilenceMin = 0.0f, introSilenceMax = 0.0f;
+        bool randomStartTime = false;
+        float randomStartMinPercent = 0.0f, randomStartMaxPercent = 0.0f;
+    };
+    std::vector<UpdaterStart> waiting_;
     std::vector<Group> groups_;
     std::map<std::string, size_t> byName_;
 };

@@ -99,6 +99,8 @@ add_library(mlcore STATIC
     src/game/EnemyRootMotion.cpp
     # DungeonRoom.DisableEnemies (ExitRoom: the hero leaving, or falling into a secret room).
     src/game/EnemyRoom.cpp
+    # The hero's amulet effects on the enemies' hits (the Wanderer Amulet's draw).
+    src/game/AmuletEffects.cpp
     # The KamikazeGolem, Physics2D.OverlapCircleAll over the physics world.
     src/game/KamikazeGolem.cpp
     src/unity/Physics2DOverlap.cpp

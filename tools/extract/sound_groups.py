@@ -1,5 +1,8 @@
 """MasterAudio's dynamic sound groups (DynamicSoundGroupCreator prefabs in resources.assets:
-"Sounds - GolemDungeon", "Sounds - Wanderer", ...): for each group, the settings that decide
+"Sounds - GolemDungeon", "Sounds - Wanderer", ...; and the creators in the first scene, level0,
+under its PermanentSoundsContainer: "Sounds - Will" (the general dungeon sounds, Chest's
+"dungeon_chest_unlock" among them) and "Sounds - interface", which make their groups at the
+game's start, before any dungeon's): for each group, the settings that decide
 how many UnityEngine.Random draws MasterAudio.PlaySound makes (MasterAudio.cs
 PlaySoundAtVolume / PlaySoundIfAvailable / RefillSoundGroupPool, SoundGroupVariation.Play,
 SoundGroupVariationUpdater), and its variations' with their clips' lengths.
@@ -117,7 +120,16 @@ def main():
     data = Path(args.game) / 'Moonlighter_Data'
     env = UnityPy.load(str(data / 'resources.assets'))
     objs = {o.path_id: o for o in env.objects}
+    out = {}
+    read_creators(env, objs, out, roots_only=True)
+    # The first scene's creators (not roots: under PermanentSoundsContainer).
+    scene = UnityPy.load(str(data / 'level0'))
+    read_creators(scene, {o.path_id: o for o in scene.objects}, out, roots_only=False)
+    Path(args.out).mkdir(parents=True, exist_ok=True)
+    (Path(args.out) / 'sound_groups.json').write_text(json.dumps(out, indent=1), encoding='utf-8')
 
+
+def read_creators(env, objs, out, roots_only):
     def components(go):
         return [objs.get(c.m_PathID if hasattr(c, 'm_PathID') else c.component.m_PathID) for c in go.m_Component]
 
@@ -134,7 +146,6 @@ def main():
                     return None
         return None
 
-    out = {}
     for o in env.objects:
         if o.type.name != 'GameObject':
             continue
@@ -142,8 +153,10 @@ def main():
         if not go.m_Name.startswith('Sounds - '):
             continue
         tr = transform_of(go)
-        if tr.m_Father.m_PathID:
+        if roots_only and tr.m_Father.m_PathID:
             continue  # only roots
+        if not tr.m_Children:
+            continue  # (an empty one: level0's MusicAndSounds/Sounds - Interface)
         creator = {}
         # The groups anywhere below the creator (some sit under organizing objects), in
         # hierarchy order.
@@ -175,8 +188,6 @@ def main():
             creator[ggo.m_Name] = g
         out[go.m_Name] = creator
         print(f'   {go.m_Name}: {len(creator)} groups', flush=True)
-    Path(args.out).mkdir(parents=True, exist_ok=True)
-    (Path(args.out) / 'sound_groups.json').write_text(json.dumps(out, indent=1), encoding='utf-8')
 
 
 if __name__ == '__main__':
