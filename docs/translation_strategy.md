@@ -150,6 +150,27 @@ structure. None of the five changes results, so they can come after the translat
 without losing anything. The order is correctness first, then these, guided by measuring a real
 GameCube build.
 
+### How much overhead is left
+
+Not zero, but small, and mostly in places that don't matter:
+
+- **Objects whose ownership can't be proven.** Objects passed around and stored in several places
+  keep reference counting: a few instructions per copy. Most objects aren't like that.
+- **Exactness costs, which a hand port pays too.** Copying .NET's exact `Dictionary` layout, UTF-16
+  strings (twice the memory of plain text) and C#'s rounding rules cost a little memory and speed,
+  but a hand port needs most of them anyway to match the game. That is the price of exactness, not
+  of translation.
+- **Conservatism.** When the game calls something by name (`Invoke("Explode")`, `SendMessage`), the
+  tool can't always tell what's reachable, so it keeps a bit more code than a person would. That
+  costs size, not speed.
+- **Safety checks.** C# checks array bounds and nulls. The tool drops the checks it can prove
+  unnecessary; the rest stay, and they're cheap.
+
+My guess, which a real GameCube build will settle: within roughly 10–30% of a hand port in size
+and speed overall, concentrated in a few spots. Those spots get the hand-written overrides, so they
+end up exactly as fast as a hand port. Most of the game (menus, shop logic, dialogue, item data)
+runs rarely enough that the difference will never show on screen.
+
 ## The hand-ported code
 
 The ~11,800 hand-ported lines aren't wasted:
