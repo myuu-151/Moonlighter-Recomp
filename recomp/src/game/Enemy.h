@@ -254,6 +254,11 @@ private:
     // defaults, applied after its pass.
     void BindRootBox();
     void ApplyRootBox();
+    // The root box's m_Enabled when a clip drives it (the Wood and Iron mimics' slams):
+    // game/EnemyRootEnabled.cpp.
+    void BindRootEnabled();
+    void ApplyRootEnabled();
+    int rootEnabledProp_ = -1;
     int rootProps_[4] = {-1, -1, -1, -1}; // the root's m_Offset.x/y, m_Size.x/y (-1: not animated)
     unity::Vector2 rootBuiltOffset_, rootBuiltSize_; // the root fixture as last built
     const unity::AnimatorController* controller_ = nullptr;
@@ -307,6 +312,11 @@ public:
     int deadForce = 100;
     bool subscribedToRoomEnter = false;
     bool hasConfusedEffect = false; // a ConfusedEffect below it (not ported: none)
+    // MakeJump's (game/EnemyJump.h; private in C#): its end, its time, its callback, read by
+    // ContinueJump and EndJump when the rise completes.
+    unity::Vector2 jumpEndPosition;
+    float jumpTime = 0.0f;
+    std::function<void()> jumpCallback;
 
     virtual void Init();
     // MonoBehaviour.Update.

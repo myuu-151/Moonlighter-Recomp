@@ -158,6 +158,7 @@ void Enemy::ResetAnimator()
     for (int i = 0; i < 8; i++)
         if (attackProps_[i] >= 0) a.SetDefault(kAttackPath, kAttackAttributes[i], now[i]);
     BindRootBox(); // (the root box's: game/EnemyColliders.cpp)
+    BindRootEnabled(); // (its enabled flag: game/EnemyRootEnabled.cpp)
     // Clip events: SendMessage to the object's scripts (the behaviour).
     a.onEvent = [this](const unity::AnimationEvent& e) {
         if (scene.onAnimationEvent) scene.onAnimationEvent(*this, e, false);
@@ -196,6 +197,7 @@ void Enemy::UpdateAnimator(float deltaTime)
         if (physics) physics->SyncAttackCollider(*this);
     }
     ApplyRootBox(); // (a root box the clips drive: game/EnemyColliders.cpp)
+    ApplyRootEnabled(); // (its enabled flag: game/EnemyRootEnabled.cpp)
     if (const std::string* s = enemyAnimator->Sprite()) sprite = *s;
 }
 

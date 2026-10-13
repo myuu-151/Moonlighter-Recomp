@@ -41,6 +41,10 @@ CONTAINER_ONLY = {'items': 'assets/prefabs/items/equipment/weapons/'}
 # that decide how many draws and what they pick; and the settings of what the port runs
 # (the hero, the enemies).
 ENEMY_BEHAVIOUR = ('canMove', 'fallInHoles', 'attackPushBackwardsForce', 'soundWhenHit')
+# Mimic (an EnemyBehaviour): its drop lists by culture, and EnemyBehaviour's settings it uses.
+MIMIC_DROPS = ('golemItemDrops', 'forestItemDrops', 'desertItemDrops', 'techItemDrops', 'unknownItemDrops')
+MIMIC = ENEMY_BEHAVIOUR + MIMIC_DROPS + ('effectOnAttack', 'stopCheckingHolesDelay', 'heroMerchantWidth', 'pauseAnimationsWhenDamaged',
+                                         'isRigidbodyStatic')
 FIELDS = {
     'BreakableDetail': ('destroyAtStartProb',),
     'GolemKingRockBehaviour': ('RandomRockSprites',),
@@ -82,6 +86,17 @@ FIELDS = {
     'EventSounds': ('m_Enabled', 'useEnableSound', 'enableSound'),
     # A weapon's attack colliders: which attack they hit with (0 main, 1 secondary).
     'WeaponCollisionDetection': ('weaponAttackType',),
+    # The chest mimics (Mimic: an EnemyBehaviour): the drop lists Mimic.Start picks by the room's
+    # culture, effectOnAttack (whether set), the Wood/Iron/Gold radii and rates; the Gold one's
+    # push box (its path), its coin (the prefab's name), where shots start
+    # (EnemyBehaviour.spawnProyectilePositions); and its coin's crash wait and art (its path).
+    'WoodMimic': MIMIC + ('slamEffect', 'beginAttackRadius', 'slamAttackRadius', 'longSlamAttackRadius', 'biteAttackRadius',
+                          'biteAttackRate', 'slamAttackRate'),
+    'IronMimic': MIMIC + ('slamEffect', 'beginAttackRadius', 'beginSlamAttackRadius', 'slamAttackRadius', 'biteAttackRadius',
+                          'biteAttackRate', 'slamAttackRate', 'slamDuration'),
+    'GoldMimic': MIMIC + ('pushCollider', 'goldMimicProjectile', 'beginAttackRadius', 'beginSlamAttackRadius', 'proyectileAttackRadius',
+                          'spinAttackRadius', 'biteAttackRate', 'projectileAttackRate', 'spawnProyectilePositions'),
+    'GoldMimicProjectile': ('timeToDestroyAfterCrash', 'projectileArt', 'particleSystem'),
 }
 
 
@@ -129,6 +144,11 @@ STRUCTURED = {
     ('BrokenGolemTurretProjectile', 'projectileArt'): object_path,
     ('FlyingKamikazeGolemBehaviour', 'Attack'): object_path,
     ('EventSounds', 'enableSound'): play_sound_types,
+    **{(cls, f): item_drops for cls in ('WoodMimic', 'IronMimic', 'GoldMimic') for f in MIMIC_DROPS},
+    ('GoldMimic', 'pushCollider'): object_path,
+    ('GoldMimic', 'goldMimicProjectile'): object_name,
+    ('GoldMimic', 'spawnProyectilePositions'): vector2_list,
+    ('GoldMimicProjectile', 'projectileArt'): object_path,
 }
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 

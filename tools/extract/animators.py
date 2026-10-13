@@ -30,6 +30,12 @@ the port uses (TARGETS):
       sprites/enemies/GolemTurretProjectile/ (the turrets' shot: its flight and its crash)
   enemies_golem / FlyingKamikazeGolem (controller), exact      -> animators/FlyingKamikazeGolem.json,
       sprites/enemies/FlyingKamikazeGolem/ (its hover and its charge)
+  enemies_golem / MimicWoodChest, MimicIronChest, MimicGoldChest (controllers), exact
+                                                               -> animators/GolemMimicWoodChest.json, ...IronChest,
+      sprites/enemies/GolemMimic*Chest/ (the Golem chest mimics, named after their prefabs: asleep,
+      waking, the bites and slams, the Gold one's shot and spin)
+  enemies_golem / MimicGoldChestProjectile (controller), exact -> animators/GolemGoldChestProjectile.json,
+      sprites/enemies/GolemGoldChestProjectile/ (the Gold mimic's coins: the flight and the crash)
 
   animators/<name>.json:
     controller, override (the override's name, null for a plain controller)
@@ -50,7 +56,9 @@ does (the targets before it keep the format above, unchanged):
     updateMode  the Animator's (0 normal, 1 animate physics, 2 unscaled time; null if no
                 prefab of the bundle plays it)
     states      each also has writeDefaults (m_WriteDefaultValues)
-    clips       each also has spritePath (the renderer its sprite curve drives, null if none)
+    clips       each also has spritePath (the renderer its sprite curve drives, null if none;
+                with several, the first in the clip's binding order, and the others as
+                extraSprites [{path, sprites}]: the Iron mimic's bite)
                 and its curves are, in the clip's curve order,
                 {path, type, attribute, component, source, ...}:
       path       the object's path below the Animator's (the bindings hold its CRC32; the
@@ -106,6 +114,12 @@ TARGETS = (
     ('enemies_golem', 'GolemTurretProjectile', 'controller', 'GolemTurretProjectile', 'enemies/GolemTurretProjectile', 'prefab', True),
     # The FlyingKamikazeGolem: its charge, its flight (its AttackCollider and root box are the script's).
     ('enemies_golem', 'FlyingKamikazeGolem', 'controller', 'FlyingKamikazeGolem', 'enemies/FlyingKamikazeGolem', 'prefab', True),
+    # The Golem chest mimics (named after their prefabs: GolemMimicWoodChest plays MimicWoodChest)
+    # and the Gold one's coin.
+    ('enemies_golem', 'MimicWoodChest', 'controller', 'GolemMimicWoodChest', 'enemies/GolemMimicWoodChest', 'prefab', True),
+    ('enemies_golem', 'MimicIronChest', 'controller', 'GolemMimicIronChest', 'enemies/GolemMimicIronChest', 'prefab', True),
+    ('enemies_golem', 'MimicGoldChest', 'controller', 'GolemMimicGoldChest', 'enemies/GolemMimicGoldChest', 'prefab', True),
+    ('enemies_golem', 'MimicGoldChestProjectile', 'controller', 'GolemGoldChestProjectile', 'enemies/GolemGoldChestProjectile', 'prefab', True),
 )
 KINDS = {'controller': 'AnimatorController', 'override': 'AnimatorOverrideController'}
 # Sprite fields of a prefab's MonoBehaviours the bank needs too (Enemy: what it leaves when it dies).
@@ -304,13 +318,17 @@ def extract(env, name, kind=None, exact=False):
                 n = curve_count(binding)
                 if binding['isPPtrCurve']:
                     if binding['typeID'] == 212 and binding['customType'] == 23:
-                        if entry['spritePath'] is not None:
-                            raise SystemExit(f"{label}: clip {t['m_Name']} has more than one sprite curve")
-                        entry['spritePath'] = path_name(binding['path'])
                         source = curves.get(first, {})
                         if source and source['source'] != 'streamed':
                             raise SystemExit(f"{label}: clip {t['m_Name']}'s sprite curve is {source['source']}")
-                        entry['sprites'] = [[k[0], mapping[int(k[4])]] for k in source.get('keys', [])]
+                        keys = [[k[0], mapping[int(k[4])]] for k in source.get('keys', [])]
+                        if entry['spritePath'] is not None:
+                            # A second renderer's sprite curve (the Iron mimic's bite on
+                            # "EnemyArt/Bite" beside its body's): extraSprites, in binding order.
+                            entry.setdefault('extraSprites', []).append({'path': path_name(binding['path']), 'sprites': keys})
+                        else:
+                            entry['spritePath'] = path_name(binding['path'])
+                            entry['sprites'] = keys
                 else:
                     attribute = (TRANSFORM_ATTRIBUTES.get(binding['attribute'], binding['attribute']) if binding['typeID'] == 4
                                  else ATTRIBUTES.get(binding['attribute'], binding['attribute']))
