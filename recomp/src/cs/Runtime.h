@@ -17,6 +17,7 @@
 #include "cs/List.h"
 #include "cs/Object.h"
 #include "cs/Prim.h"
+#include "cs/Queue.h"
 #include "cs/String.h"
 #include "cs/Text.h"
 #include "cs/Type.h"
@@ -115,6 +116,17 @@ inline bool ObjectEquals(Object* a, Object* b)
     if (a == b) return true;
     if (!a || !b) return false;
     return a->Equals(b);
+}
+
+// Array.Exists<T>(array, match): match called on each element in order until one is true.
+template <typename T>
+inline bool ArrayExists(Array<T>* a, Delegate<bool(T)>* match)
+{
+    if (!a) ThrowArgumentNull("array");
+    if (!match) ThrowArgumentNull("match");
+    for (int32_t i = 0; i < a->get_Length(); i++)
+        if (match->Invoke(a->at(i))) return true;
+    return false;
 }
 
 // Stand-ins for a C# type with no C++ mapping yet (tools/translate/bindings.tsv), so the

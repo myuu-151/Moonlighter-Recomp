@@ -118,6 +118,107 @@ new	UnityEngine.Vector3.new(float,float,float)	::UnityEngine::Vector3({0}, {1}, 
 field	UnityEngine.Vector3.x	{this}.x	pure
 field	UnityEngine.Vector3.y	{this}.y	pure
 field	UnityEngine.Vector3.z	{this}.z	pure
+op	UnityEngine.Vector2.op_Division(UnityEngine.Vector2,float)	::UnityEngine::V2Div({0}, {1})	pure
+op	UnityEngine.Vector2.op_Multiply(float,UnityEngine.Vector2)	::UnityEngine::V2Mul({0}, {1})	pure
+op	UnityEngine.Vector2.op_Multiply(UnityEngine.Vector2,UnityEngine.Vector2)	::UnityEngine::V2Scale({0}, {1})	pure
+get	UnityEngine.Vector2.magnitude	::UnityEngine::V2Magnitude({this})	pure
+get	UnityEngine.Vector2.sqrMagnitude	::UnityEngine::V2SqrMagnitude({this})	pure
+get	UnityEngine.Vector2.normalized	::UnityEngine::V2Normalized({this})	pure
+call	UnityEngine.Vector2.Normalize()	::UnityEngine::V2Normalize({this})
+call	UnityEngine.Vector2.Lerp(UnityEngine.Vector2,UnityEngine.Vector2,float)	::UnityEngine::V2Lerp({0}, {1}, {2})	pure
+call	UnityEngine.Vector2.LerpUnclamped(UnityEngine.Vector2,UnityEngine.Vector2,float)	::UnityEngine::V2LerpUnclamped({0}, {1}, {2})	pure
+call	UnityEngine.Vector2.MoveTowards(UnityEngine.Vector2,UnityEngine.Vector2,float)	::UnityEngine::V2MoveTowards({0}, {1}, {2})	pure
+call	UnityEngine.Vector2.Dot(UnityEngine.Vector2,UnityEngine.Vector2)	::UnityEngine::V2Dot({0}, {1})	pure
+call	UnityEngine.Vector2.Angle(UnityEngine.Vector2,UnityEngine.Vector2)	::UnityEngine::V2Angle({0}, {1})	pure
+call	UnityEngine.Vector2.ClampMagnitude(UnityEngine.Vector2,float)	::UnityEngine::V2ClampMagnitude({0}, {1})	pure
+call	UnityEngine.Vector2.Perpendicular(UnityEngine.Vector2)	::UnityEngine::V2Perpendicular({0})	pure
+call	UnityEngine.Vector2.Scale(UnityEngine.Vector2,UnityEngine.Vector2)	::UnityEngine::V2Scale({0}, {1})	pure
+op	UnityEngine.Vector3.op_Addition(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Add({0}, {1})	pure
+op	UnityEngine.Vector3.op_Subtraction(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Sub({0}, {1})	pure
+op	UnityEngine.Vector3.op_UnaryNegation(UnityEngine.Vector3)	::UnityEngine::V3Neg({0})	pure
+op	UnityEngine.Vector3.op_Multiply(UnityEngine.Vector3,float)	::UnityEngine::V3Mul({0}, {1})	pure
+op	UnityEngine.Vector3.op_Multiply(float,UnityEngine.Vector3)	::UnityEngine::V3MulF({0}, {1})	pure
+op	UnityEngine.Vector3.op_Division(UnityEngine.Vector3,float)	::UnityEngine::V3Div({0}, {1})	pure
+op	UnityEngine.Vector3.op_Equality(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Equal({0}, {1})	pure
+op	UnityEngine.Vector3.op_Inequality(UnityEngine.Vector3,UnityEngine.Vector3)	!::UnityEngine::V3Equal({0}, {1})	pure
+get	UnityEngine.Vector3.magnitude	::UnityEngine::V3Magnitude({this})	pure
+get	UnityEngine.Vector3.sqrMagnitude	::UnityEngine::V3SqrMagnitude({this})	pure
+get	UnityEngine.Vector3.normalized	::UnityEngine::V3Normalized({this})	pure
+call	UnityEngine.Vector3.Normalize()	::UnityEngine::V3Normalize({this})
+get	UnityEngine.Vector3.zero	::UnityEngine::V3Zero()	pure
+get	UnityEngine.Vector3.one	::UnityEngine::V3One()	pure
+get	UnityEngine.Vector3.up	::UnityEngine::V3Up()	pure
+get	UnityEngine.Vector3.down	::UnityEngine::V3Down()	pure
+get	UnityEngine.Vector3.left	::UnityEngine::V3Left()	pure
+get	UnityEngine.Vector3.right	::UnityEngine::V3Right()	pure
+get	UnityEngine.Vector3.forward	::UnityEngine::V3Forward()	pure
+get	UnityEngine.Vector3.back	::UnityEngine::V3Back()	pure
+call	UnityEngine.Vector3.Cross(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Cross({0}, {1})	pure
+call	UnityEngine.Vector3.Lerp(UnityEngine.Vector3,UnityEngine.Vector3,float)	::UnityEngine::V3Lerp({0}, {1}, {2})	pure
+call	UnityEngine.Vector3.Project(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Project({0}, {1})	pure
+call	UnityEngine.Vector3.Distance(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Distance({0}, {1})	pure
+call	UnityEngine.Vector3.Dot(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Dot({0}, {1})	pure
+call	UnityEngine.Vector3.MoveTowards(UnityEngine.Vector3,UnityEngine.Vector3,float)	::UnityEngine::V3MoveTowards({0}, {1}, {2})	pure
+call	UnityEngine.Vector3.Scale(UnityEngine.Vector3,UnityEngine.Vector3)	::UnityEngine::V3Scale({0}, {1})	pure
+type	UnityEngine.Quaternion	::UnityEngine::Quaternion	include=bind/UnityEngine.h
+get	UnityEngine.Quaternion.identity	::UnityEngine::QIdentity()	pure
+op	UnityEngine.Quaternion.op_Multiply(UnityEngine.Quaternion,UnityEngine.Vector3)	::UnityEngine::QRotate({0}, {1})	pure
+type	UnityEngine.LayerMask	::UnityEngine::LayerMask	conv	include=bind/UnityEngine.h
+op	UnityEngine.LayerMask.op_Implicit(int)	::UnityEngine::LayerMask::op_Implicit_LayerMask({0})	pure
+op	UnityEngine.LayerMask.op_Implicit(UnityEngine.LayerMask)	::UnityEngine::LayerMask::op_Implicit_int({0})	pure
+members	UnityEngine.LayerMask	NameToLayer LayerToName get_value set_value
+get	UnityEngine.Color.red	::UnityEngine::ColorOf(1.0f, 0.0f, 0.0f, 1.0f)	pure
+get	UnityEngine.Color.green	::UnityEngine::ColorOf(0.0f, 1.0f, 0.0f, 1.0f)	pure
+get	UnityEngine.Color.blue	::UnityEngine::ColorOf(0.0f, 0.0f, 1.0f, 1.0f)	pure
+get	UnityEngine.Color.white	::UnityEngine::ColorOf(1.0f, 1.0f, 1.0f, 1.0f)	pure
+get	UnityEngine.Color.black	::UnityEngine::ColorOf(0.0f, 0.0f, 0.0f, 1.0f)	pure
+get	UnityEngine.Color.yellow	::UnityEngine::ColorOf(1.0f, 0.921568632f, 0.0156862754f, 1.0f)	pure
+get	UnityEngine.Color.clear	::UnityEngine::ColorOf(0.0f, 0.0f, 0.0f, 0.0f)	pure
+get	UnityEngine.Color.grey	::UnityEngine::ColorOf(0.5f, 0.5f, 0.5f, 1.0f)	pure
+get	UnityEngine.Color.gray	::UnityEngine::ColorOf(0.5f, 0.5f, 0.5f, 1.0f)	pure
+get	UnityEngine.Color.cyan	::UnityEngine::ColorOf(0.0f, 1.0f, 1.0f, 1.0f)	pure
+get	UnityEngine.Color.magenta	::UnityEngine::ColorOf(1.0f, 0.0f, 1.0f, 1.0f)	pure
+get	UnityEngine.Random.insideUnitCircle	::UnityEngine::RandomInsideUnitCircle()
+get	UnityEngine.Random.insideUnitSphere	::UnityEngine::RandomInsideUnitSphere()
+type	UnityEngine.GameObject	::UnityEngine::GameObject	conv	include=bind/UnityEngine.h
+type	UnityEngine.Transform	::UnityEngine::Transform	conv	include=bind/UnityEngine.h
+type	UnityEngine.Coroutine	::UnityEngine::Coroutine	conv	include=bind/UnityEngine.h
+type	UnityEngine.YieldInstruction	::UnityEngine::YieldInstruction	conv	include=bind/UnityEngine.h
+type	UnityEngine.WaitForSeconds	::UnityEngine::WaitForSeconds	conv	include=bind/UnityEngine.h
+type	UnityEngine.WaitForFixedUpdate	::UnityEngine::WaitForFixedUpdate	conv	include=bind/UnityEngine.h
+type	UnityEngine.WaitForEndOfFrame	::UnityEngine::WaitForEndOfFrame	conv	include=bind/UnityEngine.h
+type	UnityEngine.Collider2D	::UnityEngine::Collider2D	conv	include=bind/UnityEngine.h
+type	UnityEngine.BoxCollider2D	::UnityEngine::BoxCollider2D	conv	include=bind/UnityEngine.h
+type	UnityEngine.CircleCollider2D	::UnityEngine::CircleCollider2D	conv	include=bind/UnityEngine.h
+type	UnityEngine.PolygonCollider2D	::UnityEngine::PolygonCollider2D	conv	include=bind/UnityEngine.h
+type	UnityEngine.Rigidbody2D	::UnityEngine::Rigidbody2D	conv	include=bind/UnityEngine.h
+type	UnityEngine.Collision2D	::UnityEngine::Collision2D	conv	include=bind/UnityEngine.h
+type	UnityEngine.Physics2D	::UnityEngine::Physics2D	conv	include=bind/UnityEngine.h
+type	UnityEngine.Animator	::UnityEngine::Animator	conv	include=bind/UnityEngine.h
+type	UnityEngine.RuntimeAnimatorController	::UnityEngine::RuntimeAnimatorController	conv	include=bind/UnityEngine.h
+type	UnityEngine.AnimatorStateInfo	::UnityEngine::AnimatorStateInfo	conv	include=bind/UnityEngine.h
+type	UnityEngine.Renderer	::UnityEngine::Renderer	conv	include=bind/UnityEngine.h
+type	UnityEngine.SpriteRenderer	::UnityEngine::SpriteRenderer	conv	include=bind/UnityEngine.h
+type	UnityEngine.MeshRenderer	::UnityEngine::MeshRenderer	conv	include=bind/UnityEngine.h
+type	UnityEngine.Material	::UnityEngine::Material	conv	include=bind/UnityEngine.h
+type	UnityEngine.Sprite	::UnityEngine::Sprite	conv	include=bind/UnityEngine.h
+type	UnityEngine.ParticleSystem	::UnityEngine::ParticleSystem	conv	include=bind/UnityEngine.h
+type	UnityEngine.Application	::UnityEngine::Application	conv	include=bind/UnityEngine.h
+type	UnityEngine.Gizmos	::UnityEngine::Gizmos	conv	include=bind/UnityEngine.h
+type	UnityEngine.ForceMode2D	::UnityEngine::ForceMode2D	include=bind/UnityEngine.h
+type	UnityEngine.RigidbodyType2D	::UnityEngine::RigidbodyType2D	include=bind/UnityEngine.h
+type	UnityEngine.SendMessageOptions	::UnityEngine::SendMessageOptions	include=bind/UnityEngine.h
+call	UnityEngine.Object.FindObjectOfType(System.Type)	::UnityEngine::FindObjectOfTypeByName({0})
+call	UnityEngine.Object.FindObjectOfType<T>()	::UnityEngine::FindObjectOfType<{M0}>()
+call	UnityEngine.Object.FindObjectsOfType<T>()	::UnityEngine::FindObjectsOfType<{M0}>()
+call	UnityEngine.Object.Instantiate(UnityEngine.Object)	::UnityEngine::Instantiate<::UnityEngine::Object*>({0})
+call	UnityEngine.Object.Instantiate<T>(T)	::UnityEngine::Instantiate<{M0}>({0})
+call	UnityEngine.Object.Instantiate<T>(T,UnityEngine.Transform)	::UnityEngine::Instantiate<{M0}>({0}, {1})
+call	UnityEngine.Object.Instantiate<T>(T,UnityEngine.Transform,bool)	::UnityEngine::Instantiate<{M0}>({0}, {1}, {2})
+call	UnityEngine.Object.Instantiate<T>(T,UnityEngine.Vector3,UnityEngine.Quaternion)	::UnityEngine::Instantiate<{M0}>({0}, {1}, {2})
+call	UnityEngine.Object.Instantiate<T>(T,UnityEngine.Vector3,UnityEngine.Quaternion,UnityEngine.Transform)	::UnityEngine::Instantiate<{M0}>({0}, {1}, {2}, {3})
+call	UnityEngine.Object.Instantiate(UnityEngine.Object,UnityEngine.Transform)	::UnityEngine::Instantiate<::UnityEngine::Object*>({0}, {1})
+call	UnityEngine.Object.Instantiate(UnityEngine.Object,UnityEngine.Vector3,UnityEngine.Quaternion)	::UnityEngine::Instantiate<::UnityEngine::Object*>({0}, {1}, {2})
 type	UnityEngine.Random	::unity::Random	include=unity/Random.h
 call	UnityEngine.Random.Range(float,float)	::unity::Random::Range({0}, {1})
 call	UnityEngine.Random.Range(int,int)	::unity::Random::Range({0}, {1})
@@ -137,16 +238,41 @@ type	UnityEngine.TextAsset	::UnityEngine::TextAsset	conv	include=bind/UnityEngin
 type	UnityEngine.Resources	::UnityEngine::Resources	conv	include=bind/UnityEngine.h
 type	UnityEngine.Color	::UnityEngine::Color	conv	include=bind/UnityEngine.h
 # what the facade's convention-mapped types have (recomp/src/bind/UnityEngine.h)
-members	UnityEngine.Object	op_Implicit op_Equality op_Inequality get_name set_name Destroy DestroyImmediate .ctor
+members	UnityEngine.GameObject	.ctor get_transform get_layer set_layer get_tag set_tag CompareTag get_activeSelf get_activeInHierarchy SetActive get_gameObject GetComponent GetComponentInChildren GetComponentsInChildren GetComponentInParent GetComponents AddComponent SendMessage Find
+members	UnityEngine.Transform	get_position set_position get_localPosition set_localPosition get_localScale set_localScale get_lossyScale get_localEulerAngles set_localEulerAngles get_eulerAngles set_eulerAngles get_localRotation set_localRotation get_rotation set_rotation get_up get_right TransformPoint InverseTransformPoint get_parent set_parent SetParent get_childCount GetChild Find get_root GetSiblingIndex
+members	UnityEngine.Coroutine	
+members	UnityEngine.YieldInstruction	
+members	UnityEngine.WaitForSeconds	.ctor
+members	UnityEngine.WaitForFixedUpdate	.ctor
+members	UnityEngine.WaitForEndOfFrame	.ctor
+members	UnityEngine.Collider2D	get_offset set_offset get_isTrigger set_isTrigger get_attachedRigidbody get_enabled set_enabled
+members	UnityEngine.BoxCollider2D	get_size set_size
+members	UnityEngine.CircleCollider2D	get_radius set_radius
+members	UnityEngine.PolygonCollider2D	get_pathCount GetPath SetPath
+members	UnityEngine.Rigidbody2D	get_velocity set_velocity AddForce get_mass set_mass get_isKinematic set_isKinematic get_bodyType set_bodyType get_position get_simulated set_simulated IsAwake IsSleeping WakeUp Sleep get_drag set_drag
+members	UnityEngine.Collision2D	get_gameObject get_collider get_otherCollider get_rigidbody get_transform
+members	UnityEngine.Physics2D	OverlapBox
+members	UnityEngine.Animator	SetFloat SetBool SetInteger SetTrigger ResetTrigger GetFloat GetBool GetInteger get_speed set_speed Play GetCurrentAnimatorStateInfo IsInTransition StringToHash get_runtimeAnimatorController set_runtimeAnimatorController
+members	UnityEngine.RuntimeAnimatorController	
+members	UnityEngine.AnimatorStateInfo	get_shortNameHash get_fullPathHash get_tagHash get_normalizedTime get_length get_loop IsName IsTag
+members	UnityEngine.Renderer	get_enabled set_enabled get_material set_material get_sharedMaterial get_sortingOrder set_sortingOrder get_sortingLayerName set_sortingLayerName get_isVisible
+members	UnityEngine.SpriteRenderer	get_sprite set_sprite get_color set_color get_flipX set_flipX get_flipY set_flipY
+members	UnityEngine.MeshRenderer	
+members	UnityEngine.Material	GetFloat SetFloat GetColor SetColor get_color set_color HasProperty
+members	UnityEngine.Sprite	
+members	UnityEngine.ParticleSystem	Play Stop Clear get_isPlaying
+members	UnityEngine.Application	get_isPlaying get_isEditor
+members	UnityEngine.Gizmos	DrawLine DrawWireSphere DrawSphere DrawWireCube DrawCube get_color set_color
+members	UnityEngine.Object	op_Implicit op_Equality op_Inequality get_name set_name Destroy DestroyImmediate .ctor Instantiate FindObjectOfType FindObjectsOfType
 members	UnityEngine.ScriptableObject	CreateInstance .ctor
-members	UnityEngine.MonoBehaviour	.ctor
-members	UnityEngine.Behaviour	get_enabled set_enabled .ctor
-members	UnityEngine.Component	.ctor
+members	UnityEngine.MonoBehaviour	.ctor Invoke InvokeRepeating CancelInvoke IsInvoking StartCoroutine StopCoroutine StopAllCoroutines print
+members	UnityEngine.Behaviour	get_enabled set_enabled .ctor get_isActiveAndEnabled
+members	UnityEngine.Component	.ctor get_gameObject get_transform get_tag set_tag CompareTag get_name set_name GetComponent GetComponentInChildren GetComponentsInChildren GetComponentInParent GetComponents SendMessage
 members	UnityEngine.TextAsset	get_text .ctor
 members	UnityEngine.Resources	Load FindObjectsOfTypeAll
-members	UnityEngine.Debug	Log LogWarning LogError LogFormat LogErrorFormat
+members	UnityEngine.Debug	Log LogWarning LogError LogFormat LogErrorFormat DrawLine DrawRay
 members	UnityEngine.Time	get_realtimeSinceStartup get_time get_deltaTime get_fixedDeltaTime get_frameCount
-members	UnityEngine.Mathf	Min Max Abs Sign Clamp Clamp01 Lerp Floor FloorToInt Ceil CeilToInt Round RoundToInt Sqrt Pow Atan2 Sin Cos Repeat DeltaAngle MoveTowards PI Infinity Epsilon
+members	UnityEngine.Mathf	Min Max Abs Sign Clamp Clamp01 Lerp Floor FloorToInt Ceil CeilToInt Round RoundToInt Sqrt Pow Atan2 Sin Cos Repeat DeltaAngle MoveTowards PI Infinity Epsilon MoveTowardsAngle
 members	UnityEngine.Color	.ctor r g b a
 type	System.Type	::cs::Type	conv
 members	System.Type	get_FullName get_Name ToString op_Equality op_Inequality Equals GetHashCode
@@ -162,7 +288,7 @@ members	System.Collections.Generic.Dictionary<TKey,TValue>.ValueCollection.Enume
 members	System.Collections.Generic.KeyValuePair<TKey,TValue>	.ctor get_Key get_Value
 members	System.Collections.Generic.HashSet<T>	.ctor Add Contains Remove Clear UnionWith TrimExcess GetEnumerator get_Count CopyTo
 members	System.Collections.Generic.HashSet<T>.Enumerator	MoveNext get_Current Dispose
-members	System.Text.StringBuilder	.ctor ToString get_Length set_Length get_Chars set_Chars Append AppendLine Insert Remove Clear
+members	System.Text.StringBuilder	.ctor ToString get_Length set_Length get_Chars set_Chars Append AppendLine Insert Remove Clear AppendFormat
 members	System.Globalization.CultureInfo	get_InvariantCulture get_CurrentCulture
 members	System.StringComparer	get_Ordinal get_OrdinalIgnoreCase Equals GetHashCode Compare
 members	System.Linq.Enumerable	Count Any ToList ToArray Contains First FirstOrDefault
@@ -181,3 +307,58 @@ members	System.IComparable	CompareTo
 members	System.IComparable<T>	CompareTo
 members	System.IEquatable<T>	Equals
 type	System.SystemException	::cs::SystemException	conv
+# ---- plugins (recomp/src/bind/DOTween.h, bind/Plugins.h) ----
+type	DG.Tweening.DOTween	::DG::Tweening::DOTween	conv	include=bind/UnityEngine.h
+members	DG.Tweening.DOTween	To Kill
+type	DG.Tweening.DOVirtual	::DG::Tweening::DOVirtual	conv	include=bind/UnityEngine.h
+members	DG.Tweening.DOVirtual	DelayedCall
+type	DG.Tweening.ShortcutExtensions	::DG::Tweening::ShortcutExtensions	conv	include=bind/UnityEngine.h
+members	DG.Tweening.ShortcutExtensions	DOMoveX DOMoveY DOMove DOLocalMoveX DOLocalMoveY DOScale DORotate DOColor DOFloat DOFade DOKill
+type	DG.Tweening.TweenSettingsExtensions	::DG::Tweening::TweenSettingsExtensions	conv	include=bind/UnityEngine.h
+members	DG.Tweening.TweenSettingsExtensions	SetEase SetUpdate OnComplete SetDelay
+type	DG.Tweening.TweenExtensions	::DG::Tweening::TweenExtensions	conv	include=bind/UnityEngine.h
+members	DG.Tweening.TweenExtensions	Kill Complete IsPlaying IsActive
+type	DG.Tweening.Tween	::DG::Tweening::Tween	conv	include=bind/UnityEngine.h
+members	DG.Tweening.Tween	
+type	DG.Tweening.Tweener	::DG::Tweening::Tweener	conv	include=bind/UnityEngine.h
+members	DG.Tweening.Tweener	
+type	DG.Tweening.Sequence	::DG::Tweening::Sequence	conv	include=bind/UnityEngine.h
+members	DG.Tweening.Sequence	
+type	DarkTonic.MasterAudio.MasterAudio	::DarkTonic::MasterAudio::MasterAudio	conv	include=bind/UnityEngine.h
+members	DarkTonic.MasterAudio.MasterAudio	PlaySound PlaySoundAndForget
+type	DarkTonic.MasterAudio.PlaySoundResult	::DarkTonic::MasterAudio::PlaySoundResult	conv	include=bind/UnityEngine.h
+members	DarkTonic.MasterAudio.PlaySoundResult	get_ActingVariation get_SoundPlayed get_SoundScheduled
+type	DarkTonic.MasterAudio.SoundGroupVariation	::DarkTonic::MasterAudio::SoundGroupVariation	conv	include=bind/UnityEngine.h
+members	DarkTonic.MasterAudio.SoundGroupVariation	get_IsPlaying Stop
+type	DG.Tweening.Core.TweenerCore<T1,T2,TPlugOptions>	::DG::Tweening::Tweener	conv	include=bind/UnityEngine.h
+members	DG.Tweening.Core.TweenerCore<T1,T2,TPlugOptions>	
+type	DG.Tweening.Ease	::DG::Tweening::Ease	include=bind/UnityEngine.h
+type	DG.Tweening.RotateMode	::DG::Tweening::RotateMode	include=bind/UnityEngine.h
+type	DG.Tweening.UpdateType	::DG::Tweening::UpdateType	include=bind/UnityEngine.h
+add	DarkTonic.MasterAudio.SoundGroupVariation.SoundFinished	{this}->add_SoundFinished({0})
+remove	DarkTonic.MasterAudio.SoundGroupVariation.SoundFinished	{this}->remove_SoundFinished({0})
+type	CodeStage.AntiCheat.ObscuredTypes.ObscuredBool	::CodeStage::AntiCheat::ObscuredTypes::ObscuredBool	conv	include=bind/UnityEngine.h
+members	CodeStage.AntiCheat.ObscuredTypes.ObscuredBool	op_Implicit GetDecrypted
+type	CodeStage.AntiCheat.ObscuredTypes.ObscuredInt	::CodeStage::AntiCheat::ObscuredTypes::ObscuredInt	conv	include=bind/UnityEngine.h
+members	CodeStage.AntiCheat.ObscuredTypes.ObscuredInt	op_Implicit GetDecrypted
+type	CodeStage.AntiCheat.ObscuredTypes.ObscuredFloat	::CodeStage::AntiCheat::ObscuredTypes::ObscuredFloat	conv	include=bind/UnityEngine.h
+members	CodeStage.AntiCheat.ObscuredTypes.ObscuredFloat	op_Implicit GetDecrypted
+# ---- more of mscorlib (recomp/src/cs) ----
+type	System.Collections.Generic.Queue<T>	::cs::Queue<{T0}>	conv
+members	System.Collections.Generic.Queue<T>	.ctor get_Count Enqueue Dequeue Peek Clear Contains ToArray TrimExcess
+type	System.Diagnostics.Stopwatch	::cs::Stopwatch	conv
+members	System.Diagnostics.Stopwatch	.ctor Start Stop Reset Restart get_IsRunning get_ElapsedMilliseconds get_ElapsedTicks StartNew
+type	System.Delegate	::cs::DelegateBase	conv
+members	System.Delegate	Combine Remove
+call	System.Array.Exists<T>(T[],System.Predicate<T>)	::cs::ArrayExists({0}, {1})
+op	UnityEngine.Vector2.op_Implicit(UnityEngine.Vector2)	::UnityEngine::Vector2_to_Vector3({0})	pure
+type	UnityEngine.Rect	::unity::Rect	include=unity/Rect.h
+new	UnityEngine.Rect.new(float,float,float,float)	::unity::Rect{{0}, {1}, {2}, {3}}	pure
+get	UnityEngine.Rect.x	{this}.x	pure
+get	UnityEngine.Rect.y	{this}.y	pure
+get	UnityEngine.Rect.width	{this}.width	pure
+get	UnityEngine.Rect.height	{this}.height	pure
+type	UnityEngine.Texture	::UnityEngine::Texture	conv	include=bind/UnityEngine.h
+members	UnityEngine.Texture	get_width get_height
+type	UnityEngine.Texture2D	::UnityEngine::Texture2D	conv	include=bind/UnityEngine.h
+members	UnityEngine.Texture2D	.ctor get_width get_height

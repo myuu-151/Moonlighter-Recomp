@@ -14,7 +14,7 @@
 
 namespace unity {
 
-enum class Ease { Linear, OutQuad, InCirc, InCubic, OutQuint };
+enum class Ease { Linear, OutQuad, InCirc, InCubic, OutQuint, OutCubic };
 
 // EaseManager.Evaluate: the eased fraction at `time` of `duration`.
 float EaseEvaluate(Ease ease, float time, float duration);
@@ -53,6 +53,10 @@ public:
            bool ignoreTimeScale);
     // Tween.OnComplete(callback) on a handle (one that's done or killed: ignored).
     void OnComplete(int id, std::function<void()> callback);
+    // SetEase / SetUpdate(isIndependentUpdate) on a handle before it starts (DOTween reads both
+    // when the tween starts, on its first update; one that's done or killed: ignored).
+    void SetEase(int id, Ease ease);
+    void SetUnscaled(int id, bool unscaled);
     // A tween we only need the end of (OnComplete after `delay` + `duration`).
     int Timer(float duration, float delay, std::function<void()> onComplete);
 

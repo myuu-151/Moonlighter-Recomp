@@ -1,9 +1,14 @@
 # What tools/translate translates (docs/translator_plan.md, "Units"): the seeds of the closure.
 #   file <path under the decompiled Assembly-CSharp>   every type declared in it, whole
 #   type <metadata name> [members...]                  the type; only those members if given
-# Everything the seeds call is translated too.
+#   hand <metadata name> <members...>                  declared, defined by hand (recomp/tests/translated/*/Standins.cpp):
+#                                                      a driver's stand-in for a service the translated code calls
+#   stub-others                                        what the seeds reach of a type no line names is declared,
+#                                                      not translated (reaching it at run time is an error)
+# Everything the seeds call is translated too, but for stub-others' types.
+stub-others
 
-# Dungeon generation: the cave layout (cave_oracle, ML_TRANSLATED=ON)
+# ---- Dungeon generation: the cave layout (cave_oracle_translated) ----
 file CaveGenerator.cs
 file CaveRoom.cs
 file SingleCaveRoom.cs
@@ -17,5 +22,56 @@ type DungeonGenerator+FloorGenerationSaveInfo
 type DungeonGenerator GenerateBossRoomCaveRoom GenerateNextLevelCaveRoom GenerateCaveOnsen GenerateHomeChestCaveRoom GenerateWavesCaveRoom GenerateAbandonedItemsCaveRoom GenerateWandererCaveRoom GenerateTimedChestCaveRooms GenerateCrazyPeteCaveRoom GenerateCorruptedCaveRoom GeneratChestRooms GetComplementaryDoorIndex
 # the fields GenerateDungeonCoroutine's layout part sets (recomp/tests/translated runs that part)
 type DungeonGenerator .ctor floorGenerationSaveInfo culture level lastDoorDirectionIndex cave bossCaveRoom initCaveRoom onsenCaveRoom homeChestCaveRoom wavesCaveRoom wandererNestCaveRoom abandonedItemsCaveRoom timedChestCaveRooms chestCaveRooms crazyPeteCaveRoom specialDungeonCaveRoom corruptedCaveRoom usedSpecialCaveRooms
-# The constants the generation reads (the game's own JSON reader, FullSerializer's)
+# The constants the game reads (its own JSON reader, FullSerializer's)
 type Constants ReadFile GetFloat GetInt GetString GetBool GetFloatArray GetIntArray GetStringArray GetString2DArray GetFloat2DArray GetInt2DArray
+type FsJSONManager RawDeserialize
+file FullSerializer/fsJsonParser.cs
+file FullSerializer/fsData.cs
+file FullSerializer/fsResult.cs
+file FullSerializer/fsGlobalConfig.cs
+file WeightedList.cs
+
+# ---- The BabySlime and what it runs on (slime_translated, slime_bis_translated) ----
+file BabySlimeBehaviour.cs
+file EnemyBehaviour.cs
+file Enemy.cs
+file EnemyStats.cs
+file EnemyAttackCollisionDetection.cs
+file EnemyStatManager.cs
+file EnemyStatModificator.cs
+file PolyNavAgent.cs
+file PolyNav2D.cs
+file AStar.cs
+file Heap.cs
+file IHeapItem.cs
+type Extensions DiamondDistance NormalizeOneDimensional GetAngleFromVector GetOrAddComponent ToList ToArray Any ForEachIndexed
+type MoonlighterEffectRegistry Instance GetEffects .ctor
+# the scene the enemies live in: the parts of its classes they reach, translated
+type HeroMerchant .ctor Instance
+type HeroMerchantController .ctor comboCounter
+type HeroMerchantStats .ctor
+type CameraManager .ctor Instance
+type DungeonManager .ctor Instance culture level
+type DungeonRoom .ctor EnemyDefeated AreAllEnemiesDefeated areAllEnemiesDefeated TranslatePositionToTile
+type DungeonRoomInfo .ctor
+type DungeonRoomDetailsGenerationInfo .ctor
+# ... and stood in for (the hero's own code, the camera, the HUD, the save's statistics and
+# analytics, the items: what the enemy replays don't compare, or take from the recording)
+hand HeroMerchant DealDamageToPlayer
+hand HeroMerchantController CheckIfPlayerIsShieldProtected CheckForHolesAfterPush AddForce
+hand HeroStatistics Instance RegisterGolemBabySlimeDeath RegisterForestBabySlimeDeath RegisterDesertBabySlimeDeath RegisterTechBabySlimeDeath
+hand MoonlighterAnalytics EnemySpawnLogEvent EnemyKilledLogEvent
+hand CameraManager Rumble
+hand GameManager Instance SetGameSpeedForTime
+hand OptionsManager Get
+hand TimeManagerV2 Instance CurrrentDayTime
+hand DungeonRoom SpawnEnemyDeadSprite AddDropItems
+hand HUDManager .ctor
+hand MinimapPanel .ctor UpdateRoom
+hand ItemDrop DropItem
+hand FamiliarsManager GetEggItem
+hand QuantitytIndicatorManager Instance InstantiateFloatingDamageIndicator
+hand EnemiesPrefabRegister GetPrefabByName
+hand EnemyHealthBar .ctor Init
+hand EnemyStatManager ReadFile
+hand DigitalSunGames.Platforms.Platform Achievements

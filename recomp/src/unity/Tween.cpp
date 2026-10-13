@@ -59,6 +59,12 @@ float EaseEvaluate(Ease ease, float time, float duration)
         const double t = static_cast<double>(static_cast<float>(q));
         return static_cast<float>(q * t * t * t * t + 1.0);
     }
+    // ((time = time / duration - 1) * time * time + 1): as OutQuint's.
+    case Ease::OutCubic: {
+        const double q = static_cast<double>(time) / static_cast<double>(duration) - 1.0;
+        const double t = static_cast<double>(static_cast<float>(q));
+        return static_cast<float>(q * t * t + 1.0);
+    }
     }
     return time / duration;
 }
@@ -134,6 +140,18 @@ void Tweens::OnComplete(int id, std::function<void()> callback)
             t.onComplete = std::move(callback);
             return;
         }
+}
+
+void Tweens::SetEase(int id, Ease ease)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id) t.ease = ease;
+}
+
+void Tweens::SetUnscaled(int id, bool unscaled)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id) t.unscaled = unscaled;
 }
 
 int Tweens::Timer(float duration, float delay, std::function<void()> onComplete)

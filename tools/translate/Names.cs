@@ -50,7 +50,24 @@ public sealed class Names
 
     // ---- types ---------------------------------------------------------------------------------
 
-    public bool IsGame(ISymbol s) => s != null && SymbolEqualityComparer.Default.Equals(s.ContainingAssembly, tr.Game);
+    // Game code that is translated: in the game's assembly, and not bound by bindings.tsv to
+    // hand-written C++ (a hand-ported service, a stand-in for a system a test controls).
+    public bool IsGame(ISymbol s)
+    {
+        if (s == null || !SymbolEqualityComparer.Default.Equals(s.ContainingAssembly, tr.Game)) return false;
+        var t = s as INamedTypeSymbol ?? s.ContainingType;
+        for (; t != null; t = t.ContainingType)
+            if (BoundGameType(t)) return false;
+        return true;
+    }
+
+    readonly Dictionary<INamedTypeSymbol, bool> bound = new(SymbolEqualityComparer.Default);
+    bool BoundGameType(INamedTypeSymbol t)
+    {
+        t = t.OriginalDefinition;
+        if (!bound.TryGetValue(t, out bool b)) bound[t] = b = tr.Bind.FindType(t) != null;
+        return b;
+    }
 
     // Is this a reference in C++ (a pointer)?
     public static bool IsRef(ITypeSymbol t) =>

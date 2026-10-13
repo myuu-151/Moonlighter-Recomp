@@ -87,9 +87,16 @@ public sealed class Body
     {
         if (locals.TryGetValue(l, out var n)) return n;
         n = Fresh("l_" + l.Name);
+        // A ref local is a pointer to its variable (hoisted declarations can't be references):
+        // reads and writes go through (*l_x), the declaration takes the address.
+        if (l.IsRef)
+        {
+            hoisted.Add((N.Ref(l.Type) + "*", n));
+            refLocals.Add(n);
+            n = "(*" + n + ")";
+        }
+        else hoisted.Add((N.Ref(l.Type), n));
         locals[l] = n;
-        if (l.IsRef) throw new TranslateException("ref local");
-        hoisted.Add((N.Ref(l.Type), n));
         return n;
     }
 
@@ -124,7 +131,8 @@ public sealed class Body
                     {
                         string name = Local(v.Symbol);
                         var init = v.Initializer?.Value ?? d.Initializer?.Value;
-                        if (init != null) Line($"{name} = {Coerce(Expr(init), v.Symbol.Type)};");
+                        if (init != null && v.Symbol.IsRef) Line($"{name.Substring(2, name.Length - 3)} = &{LValue(init).C};");
+                        else if (init != null) Line($"{name} = {Coerce(Expr(init), v.Symbol.Type)};");
                     }
                 break;
             case IExpressionStatementOperation es:
@@ -943,6 +951,7 @@ public sealed class Body
     }
 
     readonly HashSet<Ex> refArgs = new();
+    readonly HashSet<string> refLocals = new(StringComparer.Ordinal);
 
     static bool IsSimpleLocal(Ex e) => e.C.StartsWith("l_") || e.C.StartsWith("p_") || e.C == "this";
 
@@ -1217,6 +1226,8 @@ public sealed class Body
             return new Ex(FillArgs(N.Substitute(b.Template, recv, es.ContainingType.TypeArguments, null), new List<Ex> { handler }, -1));
         }
         tr.UseEvent(es);
+        // (its accessor declared: a field-like event's is written in the class, whatever its type's units say)
+        if ((ea.Adds ? es.AddMethod : es.RemoveMethod) is IMethodSymbol accessor) tr.NeedMethod(accessor);
         string acc = (ea.Adds ? "add_" : "remove_") + Names.Ident(es.Name);
         if (es.IsStatic) return new Ex($"{N.Type(es.ContainingType)}::{acc}({handler.C})");
         var r = er.Instance is IInstanceReferenceOperation ? "this" : $"::cs::nc({Expr(er.Instance).C})";

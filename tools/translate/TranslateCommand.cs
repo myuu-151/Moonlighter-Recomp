@@ -18,10 +18,12 @@ public static class TranslateCommand
         var em = new Emitter(tr, outDir);
         em.Write();
         int ok = tr.Methods.Values.Count(r => r.Translated);
-        int err = tr.Methods.Values.Count(r => r.Error != null);
-        int gaps = tr.Methods.Values.Count(r => r.Error == null && r.Gaps.Count > 0);
-        Console.WriteLine($"translated {tr.Types.Count} types, {tr.Methods.Count} methods: {ok} ok, {gaps} need bindings, {err} unsupported ({sw.Elapsed.TotalSeconds:F1} s) -> {outDir}");
-        foreach (var r in tr.Methods.Values.Where(r => !r.Translated).Take(40))
+        int stub = tr.Methods.Values.Count(r => r.Stub);
+        int hand = tr.Methods.Values.Count(r => r.Hand);
+        int err = tr.Methods.Values.Count(r => !r.Stub && !r.Hand && r.Error != null);
+        int gaps = tr.Methods.Values.Count(r => !r.Stub && !r.Hand && r.Error == null && r.Gaps.Count > 0);
+        Console.WriteLine($"translated {tr.Types.Count} types, {tr.Methods.Count} methods: {ok} ok, {gaps} need bindings, {err} unsupported, {hand} by hand, {stub} stubbed ({sw.Elapsed.TotalSeconds:F1} s) -> {outDir}");
+        foreach (var r in tr.Methods.Values.Where(r => !r.Stub && !r.Hand && (r.Error != null || r.Gaps.Count > 0)).Take(60))
             Console.WriteLine($"  {r.M.ContainingType.Name}.{r.M.Name}: {r.Error ?? string.Join("; ", r.Gaps)}");
         return 0;
     }

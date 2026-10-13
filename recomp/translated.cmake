@@ -29,7 +29,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              ${ML_TRANSLATE_DIR}/units.txt ${ML_TRANSLATE_DIR}/bindings.tsv ${_ml_translate_sources})
 
 include(${ML_GEN_DIR}/sources.cmake)
-add_library(mlgen STATIC ${ML_GEN_SOURCES} src/bind/UnityEngine.cpp)
+add_library(mlgen STATIC ${ML_GEN_SOURCES}
+            src/bind/Core.cpp src/bind/Scene.cpp src/bind/Physics.cpp src/bind/Components.cpp src/bind/DOTween.cpp
+            src/bind/Engine.cpp src/bind/Plugins.cpp)
 target_include_directories(mlgen PUBLIC ${ML_GEN_DIR} src)
 target_link_libraries(mlgen PUBLIC mlcore)
 if(MSVC)
