@@ -33,14 +33,22 @@ Needs UnityPy (with fmod_toolkit, which it installs) and TypeTreeGeneratorAPI.
                                           "songStartTimeMode", "customStartTime",
                                           "customStartTimeMax"}]}},
           "controllers": {name: {"startPlaylistName", "playlistVolume", "isShuffle",
-                                 "isAutoAdvance", "loopPlaylist", "syncGroupNum"}},
+                                 "isAutoAdvance", "loopPlaylist", "syncGroupNum",
+                                 "mixerGroup" (its mixerChannel)}},
+          "playlistManager": {its PlaylistController fields: the controller's object's name},
           "master": {"masterVolume", "playlistMasterVolume", "crossFadeTime", "buses",
-                     "enableMusicDucking", "musicDucking"}}
-       group: "creator" (the path of the DynamicSoundGroupCreator that makes it), the
+                     "enableMusicDucking", "musicDucking"},
+          "mixer": {"name", "file", "groups": [{"name", "parent" (index, -1 the master),
+                                                "volume" (dB, the start snapshot)}],
+                    "exposed": {CRC32 of a parameter's name: the group whose volume it sets}},
+          "options": GlobalAudioManager's ranges (min/maxMusicVolume, min/maxSoundsVolume,
+                     min/maxUIVolume, muteVolume: dB)}
+       group: "creator" (the path of the DynamicSoundGroupCreator that makes it), "mixerGroup"
+              (its bus's AudioMixerGroup: the mixer's group index, or null), the
               DynamicSoundGroup's settings (busName, groupMasterVolume, spatialBlendType,
               spatialBlend, the variation mode and sequence, retrigger, limits, polyphony, linked
               groups, chain loops, ...) and "variations": [{"name", "clip" (a key of "clips"),
-              "volume", "pitch", "loop" (the AudioSource's), the DynamicGroupVariation's
+              "volume", "pitch", "loop", "mixerGroup" (the AudioSource's), the DynamicGroupVariation's
               settings (weight, random pitch and volume, custom loops, intro silence, random
               start, fades, probability)}]
        use:   {"kind": "variation", "creator", "group", "variation"}
@@ -237,6 +245,73 @@ def scan_clips(files):
     return out
 
 
+# The AudioMixer's groups by their objects ((file, path id) -> index in the mixer's groups), and
+# the buses the creators make (name -> its mixer group index or None: the first to make it, as
+# MasterAudio.CreateBus refuses a second; scenes first, as the game loads them).
+MIXER_GROUPS = {}
+BUSES = {}
+CREATOR_HARD_CODED_BUSES = 3  # DynamicSoundGroupCreator.HardCodedBusOptions
+
+
+def mixer_group(scan, ref):
+    """The mixer group index a PPtr to an AudioMixerGroup names, or None."""
+    if not ref or ref['m_PathID'] == 0:
+        return None
+    return MIXER_GROUPS.get((scan.files.external(scan.name, ref['m_FileID']), ref['m_PathID']))
+
+
+def creator_buses(scan, go):
+    """A DynamicSoundGroupCreator's buses: [(name, mixer group index or None, isExisting)]."""
+    b = scan.behaviour(go, 'DynamicSoundGroupCreator')
+    if b is None:
+        return []
+    return [(bus['busName'], mixer_group(scan, bus.get('mixerChannel')), bool(bus.get('isExisting')))
+            for bus in scan.tree(b.path_id).get('groupBuses', [])]
+
+
+def scan_mixer(files):
+    """The AudioMixer (the game has one, MIXER): its groups (name, parent, volume in dB in its
+    start snapshot) and exposed parameters (by the CRC32 of their names: the group whose volume
+    each sets)."""
+    for name in files.names():
+        sf = files.serialized(name)
+        guid_name = {}
+        for obj in sf.objects.values():
+            if obj.type.name == 'AudioMixerGroupController':
+                t = obj.read_typetree()
+                g = t['m_GroupID']
+                guid_name[(g['data[0]'], g['data[1]'], g['data[2]'], g['data[3]'])] = (t['m_Name'], obj.path_id)
+        for obj in sf.objects.values():
+            if obj.type.name != 'AudioMixerController':
+                continue
+            t = obj.read_typetree()
+            c = t['m_MixerConstant']
+            start = [s['m_PathID'] for s in t['m_Snapshots']].index(t['m_StartSnapshot']['m_PathID'])
+            values = c['snapshots'][start]['values']
+            groups = []
+            for i, (g, guid) in enumerate(zip(c['groups'], c['groupGUIDs'])):
+                key = (guid['data[0]'], guid['data[1]'], guid['data[2]'], guid['data[3]'])
+                gname, path_id = guid_name.get(key, (None, 0))
+                groups.append({'name': gname, 'parent': g['parentConstantIndex'], 'volume': values[g['volumeIndex']]})
+                MIXER_GROUPS[(name, path_id)] = i
+            volume_of = {g['volumeIndex']: i for i, g in enumerate(c['groups'])}
+            exposed = {str(h): volume_of.get(index) for h, index in zip(c['exposedParameterNames'], c['exposedParameterIndices'])}
+            return {'name': t['m_Name'], 'file': name, 'groups': groups, 'exposed': exposed}
+    return None
+
+
+def scan_buses(files):
+    """The buses the creators make (not those they name as existing), the first of a name."""
+    for name in files.names():
+        scan = Scan(files, name)
+        for obj in scan.objects.values():
+            if obj.type.name == 'MonoBehaviour' and scan.script(obj) == 'DynamicSoundGroupCreator':
+                go = scan.tree(obj.path_id)['m_GameObject']['m_PathID']
+                for bus, group, existing in creator_buses(scan, go):
+                    if not existing:
+                        BUSES.setdefault(bus, group)
+
+
 def scan_sound_groups(files, scan, keys, resources_paths, scene_names, clips, creators):
     """The file's sound group creators, as sound_groups.json names them: a "Sounds - ..." object
     (the prefab DungeonGenerator.GenerateSounds loads, a scene's container) with the
@@ -280,6 +355,14 @@ def scan_sound_groups(files, scan, keys, resources_paths, scene_names, clips, cr
             gt = scan.tree(gb.path_id)
             group = {'creator': makers[at]}
             group.update({k: plain(gt[k]) for k in GROUP_KEEP if k in gt})
+            # Its bus (DynamicSoundGroupCreator.CreateGroups: its creator's groupBuses[busIndex -
+            # HardCodedBusOptions]) and the bus's AudioMixerGroup, which MasterAudio routes the
+            # variations' AudioSources to: the first creator to make a bus of that name sets it.
+            buses = creator_buses(scan, at) if at is not None else []
+            index = gt.get('busIndex', -1) - CREATOR_HARD_CODED_BUSES
+            bus = buses[index] if 0 <= index < len(buses) else None
+            group['busName'] = bus[0] if bus else ''
+            group['mixerGroup'] = (BUSES[bus[0]] if bus[0] in BUSES else bus[1]) if bus else None
             group['variations'] = []
             for vgo in scan.children(go):
                 vb = scan.behaviour(vgo, 'DynamicGroupVariation')
@@ -295,6 +378,7 @@ def scan_sound_groups(files, scan, keys, resources_paths, scene_names, clips, cr
                     v['volume'] = st['m_Volume']
                     v['pitch'] = st['m_Pitch']
                     v['loop'] = bool(st['Loop'])
+                    v['mixerGroup'] = mixer_group(scan, st.get('OutputAudioMixerGroup'))
                 v.update({k: plain(vt[k]) for k in VARIATION_KEEP if k in vt})
                 group['variations'].append(v)
                 if v['clip'] is not None:
@@ -336,7 +420,22 @@ def scan_master_audio(scan, keys, clips, out):
         elif cls == 'PlaylistController':
             t = scan.tree(obj.path_id)
             name = scan.tree(t['m_GameObject']['m_PathID'])['m_Name']
-            out['controllers'][name] = dict({k: plain(t[k]) for k in CONTROLLER_KEEP}, playlistVolume=t['_playlistVolume'])
+            out['controllers'][name] = dict({k: plain(t[k]) for k in CONTROLLER_KEEP}, playlistVolume=t['_playlistVolume'],
+                                            mixerGroup=mixer_group(scan, t.get('mixerChannel')))
+        elif cls == 'PlaylistManager':
+            # Its controllers (golemDungeonPlaylistController...): their objects' names.
+            t = scan.tree(obj.path_id)
+            for field, ref in t.items():
+                if field.endswith('PlaylistController') and isinstance(ref, dict) and ref.get('m_PathID'):
+                    target = scan.objects.get(ref['m_PathID']) if ref['m_FileID'] == 0 else None
+                    if target is not None:
+                        go = scan.tree(target.path_id)['m_GameObject']['m_PathID']
+                        out['playlistManager'][field] = scan.tree(go)['m_Name']
+        elif cls == 'GlobalAudioManager':
+            # The options' volumes: an exposed mixer parameter goes from min to max (dB) as the
+            # option goes from 0 to 1 (GlobalAudioManager.SetVolume).
+            t = scan.tree(obj.path_id)
+            out['options'] = {k: t[k] for k in t if k.endswith('Volume') and isinstance(t[k], float)}
 
 
 def scan_sources(scan, keys, clips, variation_sources):
@@ -412,7 +511,10 @@ def main():
                     name = externals[ref['m_FileID'] - 1].path.replace('\\', '/').split('/')[-1]
                     resources_paths[(name, ref['m_PathID'])] = path
 
-    result = {'clips': clips, 'creators': {}, 'playlists': {}, 'controllers': {}, 'master': None}
+    mixer = scan_mixer(files)
+    scan_buses(files)
+    result = {'clips': clips, 'creators': {}, 'playlists': {}, 'controllers': {}, 'playlistManager': {}, 'options': {},
+              'master': None, 'mixer': mixer}
     variation_sources = set()
     for name in files.names():
         scan = Scan(files, name)
