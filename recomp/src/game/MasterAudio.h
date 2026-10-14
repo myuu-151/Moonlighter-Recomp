@@ -37,6 +37,7 @@
 // Checked against the game for golem_dungeon_soldier_sword_crash (enemy_GolemSoldier.jsonl:
 // one draw a play, the loops' Range(1, 6)); the pools, limits and retriggers aren't recorded yet.
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -49,6 +50,7 @@ class MasterAudio {
 public:
     struct Variation {
         std::string name;
+        int index = 0; // in the group's variations (sound_groups.json's order; weight copies share it)
         int probabilityToPlay = 100;
         bool useRandomPitch = false, useRandomVolume = false;
         float randomPitchMin = 0.0f, randomPitchMax = 0.0f, randomVolumeMin = 0.0f, randomVolumeMax = 0.0f;
@@ -104,6 +106,23 @@ public:
 
     Group* Find(const std::string& sType);
 
+    // What a play chose, for a backend that makes the sound (the GameCube's; the PC has none).
+    // It only reports: the draws above are made the same with or without it.
+    struct Played {
+        std::string group;
+        int variation = 0;          // Variation::index
+        bool randomVolume = false;  // useRandomVolume: `volume` is its draw
+        float volume = 0.0f;
+        bool randomPitch = false;   // useRandomPitch: `pitch` is its draw
+        float pitch = 0.0f;
+        int loops = 1;              // _maxLoops (useCustomLooping's)
+        float introSilence = 0.0f;  // drawn at LateUpdate (useIntroSilence), seconds
+        float startPercent = 0.0f;  // useRandomStartTime's ClipStartPosition, percent of the clip
+    };
+    // Called at LateUpdate, when the game's AudioSource would start, for each variation played
+    // since the last, in order. Unset (the PC): nothing is kept.
+    std::function<void(const Played&)> onPlay;
+
 private:
     bool PlayAtVolume(Group& g, double time, int frame, bool triggeredAsChildGroup);
     bool PlayIfAvailable(Group& g, Variation& v, double time, int frame);
@@ -118,8 +137,10 @@ private:
         float introSilenceMin = 0.0f, introSilenceMax = 0.0f;
         bool randomStartTime = false;
         float randomStartMinPercent = 0.0f, randomStartMaxPercent = 0.0f;
+        int played = -1; // its entry in played_ (onPlay set), else -1
     };
     std::vector<UpdaterStart> waiting_;
+    std::vector<Played> played_; // (onPlay set) the plays since the last LateUpdate
     std::vector<Group> groups_;
     std::map<std::string, size_t> byName_;
 };

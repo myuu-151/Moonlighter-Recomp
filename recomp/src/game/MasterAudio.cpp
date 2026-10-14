@@ -54,6 +54,7 @@ bool MasterAudio::Load(const json::Value& soundGroups, const std::vector<std::st
             for (const json::Value& vv : gv["variations"].arr) {
                 Variation v;
                 v.name = vv["name"].s;
+                v.index = static_cast<int>(&vv - gv["variations"].arr.data());
                 v.probabilityToPlay = Int(vv, "probabilityToPlay", 100);
                 v.useRandomPitch = Bool(vv, "useRandomPitch", false);
                 v.randomPitchMin = Float(vv, "randomPitchMin", 0.0f);
@@ -152,10 +153,18 @@ void MasterAudio::LateUpdate()
 {
     // PlaySoundAndWait: the intro silence, then ClipStartPosition.
     for (const UpdaterStart& u : waiting_) {
-        if (u.introSilence) unity::Random::Range(u.introSilenceMin, u.introSilenceMax);
-        if (u.randomStartTime) unity::Random::Range(u.randomStartMinPercent, u.randomStartMaxPercent);
+        float silence = 0.0f, start = 0.0f;
+        if (u.introSilence) silence = unity::Random::Range(u.introSilenceMin, u.introSilenceMax);
+        if (u.randomStartTime) start = unity::Random::Range(u.randomStartMinPercent, u.randomStartMaxPercent);
+        if (u.played >= 0) {
+            played_[static_cast<size_t>(u.played)].introSilence = silence;
+            played_[static_cast<size_t>(u.played)].startPercent = start;
+        }
     }
     waiting_.clear();
+    if (onPlay)
+        for (const Played& p : played_) onPlay(p);
+    played_.clear();
 }
 
 bool MasterAudio::SourcePlaying(const Variation& v, double time, int frame)
@@ -170,17 +179,24 @@ bool MasterAudio::PlayIfAvailable(Group& g, Variation& v, double time, int frame
         const double played = (time - v.startedAt) / static_cast<double>(v.clipLength) * 100.0;
         if (played < static_cast<double>(g.retriggerPercentage)) return false;
     }
+    Played p;
+    p.group = g.name;
+    p.variation = v.index;
     if (v.useRandomVolume) {
-        unity::Random::Range(v.randomVolumeMin, v.randomVolumeMax);
+        p.randomVolume = true;
+        p.volume = unity::Random::Range(v.randomVolumeMin, v.randomVolumeMax);
     }
     // SoundGroupVariation.Play (no pitch given).
     if (v.useRandomPitch) {
-        unity::Random::Range(v.randomPitchMin, v.randomPitchMax);
+        p.randomPitch = true;
+        p.pitch = unity::Random::Range(v.randomPitchMin, v.randomPitchMax);
     }
+    p.loops = v.minCustomLoops;
     if (v.maxCustomLoops != v.minCustomLoops) {
         // _maxLoops = Range(min, max + 1).
-        unity::Random::Range(v.minCustomLoops, v.maxCustomLoops + 1);
+        p.loops = unity::Random::Range(v.minCustomLoops, v.maxCustomLoops + 1);
     }
+    if (onPlay) played_.push_back(p);
     // Its updater's start: at MasterAudio's LateUpdate.
     if ((v.useIntroSilence && v.introSilenceMax > 0.0f) || v.useRandomStartTime) {
         UpdaterStart u;
@@ -190,6 +206,7 @@ bool MasterAudio::PlayIfAvailable(Group& g, Variation& v, double time, int frame
         u.randomStartTime = v.useRandomStartTime;
         u.randomStartMinPercent = v.randomStartMinPercent;
         u.randomStartMaxPercent = v.randomStartMaxPercent;
+        u.played = onPlay ? static_cast<int>(played_.size()) - 1 : -1;
         waiting_.push_back(u);
     }
     v.startedAt = time;

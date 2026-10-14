@@ -44,8 +44,10 @@ ENEMY_BEHAVIOUR = ('canMove', 'fallInHoles', 'attackPushBackwardsForce', 'soundW
 FIELDS = {
     'BreakableDetail': ('destroyAtStartProb',),
     'GolemKingRockBehaviour': ('RandomRockSprites',),
-    'BreakableObjectBehaviour': ('skins', 'currentSkin'),
-    'BreakableBoxBehaviour': ('skins', 'currentSkin'),  # a BreakableObjectBehaviour (inherits its Start)
+    'BreakableObjectBehaviour': ('skins', 'currentSkin', 'soundWhenHit'),
+    'BreakableBoxBehaviour': ('skins', 'currentSkin', 'soundWhenHit'),  # a BreakableObjectBehaviour (inherits its Start)
+    # An Enemy: the sound its BreakableObjectBehaviour.BreakableDeath plays (the GameCube's).
+    'BreakableObject': ('enemyDeathSound',),
     'CarnivorousMutaeBossRoots': (),
     # Not a draw: sets its renderer's sortingOrder from the world y in Start (what the scene draws in front).
     'SpriteDepthOrderRender': ('offset', 'forceOrderValue', 'forcedOrderValue', 'over', 'overOffset'),
@@ -53,7 +55,7 @@ FIELDS = {
     'HeroMerchantController': ('collisionDetectionLayers', 'slideCollisionDetectionLayers', 'godModeCollisionDetectionLayers',
                                'holesMask', 'items', 'speedFactor', 'itemAttrackRadius'),
     # The enemies: what they drop (and where), how they move (PolyNav), what their attacks hit.
-    'Enemy': ('itemDrops', 'dropRadius', 'dropOffset'),
+    'Enemy': ('itemDrops', 'dropRadius', 'dropOffset', 'enemyDeathSound'),
     'EnemyBehaviour': ENEMY_BEHAVIOUR,
     'BabySlimeBehaviour': ENEMY_BEHAVIOUR,  # an EnemyBehaviour
     'GolemSoldierBehaviour': ENEMY_BEHAVIOUR + ('iDirectionLocked',),  # an EnemyBehaviour
