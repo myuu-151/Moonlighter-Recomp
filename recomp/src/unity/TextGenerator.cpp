@@ -31,7 +31,6 @@ int FloorfToInt(float f)
 }
 
 float MaxF(float a, float b) { return (a > b) ? a : b; } // comiss a,b; ja: a if greater, else b
-float MinF(float a, float b) { return (a > b) ? b : a; }
 
 struct TextVertex {
     Vector3f pos;

@@ -208,6 +208,168 @@ with every live object compared after every frame. Not modelled yet: `SetParent`
 position (InverseTransformPosition with its rcpps reciprocal: the replay takes a reparented
 object's next values as recorded), nested non-root canvases' alignment with a camera.
 
+## Text: done
+
+`recomp/src/unity/TextGenerator.{h,cpp}` and `Font.{h,cpp}`: UGUI's Text layout as Unity 2019.2's
+native text generator does it, read from UnityPlayer.dll (public symbols, `tools/unity_dll`):
+`ScriptingTextGenerator::GetStringRenderInfo` (best fit, the scale factor, the output), the
+`NativeTextGenerator` (Setup, GenerateVertices, ProcessFormatForPosition, SetCharacterPosition,
+InsertCharacter, WordWrap, RegisterNewLine, FixLineHorizontalOffset, GetBounds,
+ReorderAndTrimVertices), `GetTextOffset`, the rich-text parser (GetFormatString, GetTag,
+GetParameter, ParseImageParameters, the HTML colours) and FontImpl's lookups (GetCharacterAdvance,
+GetCharacterRenderInfo). The managed side (TextGenerator's cache of the last string and settings,
+Text.GetGenerationSettings and OnPopulateMesh's 1/pixelsPerUnit and pixel snap, FontUpdateTracker,
+I2's LocalizeTarget_UnityUI_Text, FontSizeManager) is C#: translated. The rules, in short (the
+headers have them in full):
+
+- **Sizes.** fontSize (the font's own for 0), the best fit's min and max are scaled by the scale
+  factor and floored, at most 500; the extents become `scale * extents + 0.0001f`, an Overflow axis
+  lays out against FLT_MAX. Nothing is divided back: the outputs are in scaled pixels.
+- **Best fit** (on, and not both axes Overflow): the size clamped to [min, max], then a binary
+  search (`lo = cur` when it fits, `hi = cur - 1` when not, next `(lo + 1 + hi) / 2`), stopping
+  after the generation where `lo >= hi`: that last one is kept, even when it doesn't fit.
+  "Fits": no word broken mid-word, no line below the box.
+- **The pen** moves by the glyph's advance (cached, rounded at caching, times the tracking) rounded
+  to a pixel; only `' '` and `'\t'` are white space (NBSP, U+3000, ZWSP are glyphs), only `'\n'`
+  breaks; a tab goes to the next multiple of `(int)(4 * space advance)`; kerning only for a font
+  with a table (the built-in Arial).
+- **Wrap** before the word that crosses the width (its spaces stay behind), or before the
+  character when the line has no word start (CJK, one long word): that doesn't fit.
+- **Lines**: the largest character size on the line scales the font's ascent, descent and line
+  height (each rounded); the first baseline is at the ascent, each next one
+  `R(((ascent - previous descent) + leading) * lineSpacing)` lower; a line below the box (Truncate)
+  is dropped with everything after it.
+- **Alignment**: each line shifted by its own left, centre or right (trailing spaces count after
+  a `'\n'`, not after a wrap), then the block placed by anchor and pivot, rounded, y flipped up.
+- **Rich text**: `b i color size material quad a`, case-insensitive on the low byte of each
+  UTF-16 unit (`<ł>` is `<b>`); the tags must nest exactly or the whole string is plain text
+  (`<x>` outside a quad breaks it too); a tag's characters stay as zero-width slots; `<color>`
+  takes `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA` or 23 names ("gray" isn't one), alpha included;
+  `<size=N>` is `(int)(N * scale * ratio)` (`<size=0>` scales the size twice).
+- **Quads**: the glyph's cached quad rect, each edge rounded, at the pen; uv from the cached uv rect
+  (top-left corner, negative height; a glyph stored transposed swaps its top-left and bottom-right
+  uv); the colour of the format; no shear: italic and bold are FreeType's glyphs. A generation that
+  doesn't fit isn't trimmed: it keeps a quad for every slot (spaces, tags, the closing `'\n'`), and
+  those empty quads' colour and uv are uninitialised memory in Unity (zero in the port; they're
+  degenerate, so never drawn).
+
+**Glyphs.** The port renders nothing: a `unity::Font` is the font asset's metrics
+(`data/extracted/ui/fonts.json`: m_FontSize, read truncated, m_LineSpacing, m_Ascent, m_Descent,
+m_Tracking (1 for every game font), m_CharacterPadding (1), the kerning table) and a glyph table
+looked up as FontImpl does, by (character, size, style, scale) all equal. The glyphs are the game's,
+from the font probe. Unity never lacks one: a character missing from a font comes from its
+fallbacks and then the OS's Arial face (every one of the probe's requests was found).
+
+**The probes** (`oracle/MoonlighterOracle/TextOracle.cs`, both run at the main menu, nothing
+pressed, the language never switched: each language's strings are read from I2's source, and a
+run where `LocalizationManager.CurrentLanguage` changed fails; saving blocked; a screen change
+fails the run):
+
+- `-oracle-fonts` writes `fonts.jsonl`: for every font loaded (the nine, plus the PixelMplus10
+  faces the fallbacks load) the glyphs `Font.RequestCharactersInTexture` makes, group by group
+  (font, size, style): their raw CharacterInfo (uv and quad rects, advance, size, style, flipped)
+  and their texels (the alpha of the glyph's rect, padding included, first row the glyph's top),
+  read right after the request. The font texture isn't readable from a script: it's drawn into a
+  render texture and read back. The grid: the Latin set (ASCII and every non-CJK character of the
+  13 languages) at 7, 8, 9, 10, 12, 14, 15, 16, 20, 24 and 32 in the four styles for every font;
+  each CJK font's languages' characters (Chinese for DroidSansFallback and Zpix, Japanese for
+  JF-Dot-Shinonome16B, Korean for JejuGothic) at 7, 8, 9, 10, 12, 16 and 20, regular, bold and
+  italic; and every glyph the game's own texts used in the layout probe that the grid hasn't got
+  (the Options' language names in their own scripts in m5x7, the best-fit sizes of the town's
+  buttons).
+- `-oracle-text` writes `text.jsonl`: `TextGenerator.Populate` with each input's settings, the
+  string, the result (verts, characters, lines, extents, the best fit's size) and the font
+  atlas's glyphs of the string's characters as the generator had them (their uv rects belong to
+  Unity's atlas of the moment). The inputs: every Text of the loaded scenes and of the UI prefabs
+  (Canvas - Will, - Dungeon, - PopUps, - Shop, - Town, the options popups, the shop levels' world
+  canvases), each with its own settings (`GetGenerationSettings(rect.size)`, what OnPopulateMesh
+  does) and Text.preferredWidth's and preferredHeight's variants; every localized Text in every
+  language (I2's translation, the font its secondary term gives the language, the size and line
+  spacing FontSizeLocalize or FontSizeManager give it); 30 items' names and descriptions in every
+  language in the bag's Texts; a synthetic grid (9 anchors x wrap and truncate x 2 boxes over 21
+  strings in Fairfax and m5x7, the other fonts, line spacing 0.75 to 2 and 0 and -1, scales
+  0.5 to 3, pivots, odd extents, colours, styles, alignByGeometry, out of bounds, sizes 0 to 32,
+  best fit) and the quirks (quad, material, a, `<size=0>` under a scale, low-byte tag names, the
+  colour forms, sizes changing between lines, other spaces, broken nesting).
+
+`ui_text` (`recomp/tests/ui_text_test.cpp`) redoes every generation with unity::TextGenerator,
+the font asset's metrics and the row's glyphs (the font probe's for any the row hasn't got), and
+compares bit for bit: the result, the best fit's size, the counts, the extents, every line (start,
+height, top, leading), every character (position, width), every vertex (position, colour, uv0,
+uv1, normal, tangent, uv2, uv3; the empty quads of an untrimmed output by position only). It also
+checks every glyph the layouts used against the font probe's (quad rect, advance, flipped).
+
+Recorded through the queue (main menu, 640x360; copies in a worktree's `data/oracle`, never in git):
+
+| Request | File | Size | What | ui_text |
+|---|---|---|---|---|
+| uitext-3 | text.jsonl | 103 MB | 11,742 generations: 738 scene Texts, 1,043 prefab Texts (with the preferred-size variants), 3,398 localized, 816 items, 5,747 synthetic; 893,192 vertices, 311,718 characters, 19,026 lines | ALL MATCH, every language |
+| uitext-3 | fonts.jsonl | 91 MB | 589 groups, 282,502 glyphs (all found) of 11 fonts, 21 groups of them the layouts' own glyphs | the layouts' 5,900 glyphs the grid has: all match; every glyph of the game's own rows is in it |
+
+Earlier runs: uitext-1 (every game row matched; 192 synthetic ones didn't, for want of glyphs in
+their rows: the space Setup caches for the tab width, and the sizes a `<size>` tag takes in each
+best-fit try: the oracle now records both), uitext-2 (ALL MATCH, 10,209 generations, before the
+town, shop and popup canvases and the font probe's "used" groups).
+
+**Languages.** I2's source (`tools/extract/localization.py`, `data/extracted/localization.json`:
+3,423 terms) has 13 languages (and two disabled helper columns). The font each language's texts
+get is its `FONT_BIG` (or `FONT_SMALL`) translation; FontSizeManager gives every localized Text
+without a FontSizeLocalize its size and line spacing:
+
+| Language | Code | FONT_BIG | FONT_SMALL | Size, line spacing | Characters | ui_text rows |
+|---|---|---|---|---|---|---|
+| English (United States) | en-US | Fairfax | m3x6 | 10, 0.85 | 113 | 339 match |
+| Chinese (Simplified) | zh-CN | DroidSansFallback | DroidSansFallback | 9, 1.25 | 2,008 | 338 match |
+| Spanish | es | Fairfax | m3x6 | 10, 0.85 | 119 | 314 match |
+| French | fr | Fairfax | m3x6 | 10, 0.85 | 134 | 332 match |
+| German | de | Fairfax | m3x6 | 10, 0.85 | 119 | 329 match |
+| Polish | pl | Fairfax | m3x6 | 10, 0.85 | 121 | 331 match |
+| Russian | ru | Fairfax | m3x6 | 10, 1 | 172 | 338 match |
+| Japanese | ja | JF-Dot-Shinonome16B | JF-Dot-Shinonome16B | 9, 1.25 | 1,469 | 338 match |
+| Portuguese (Brazil) | pt-BR | Fairfax | m3x6 | 10, 0.85 | 126 | 304 match |
+| Korean | ko | JejuGothic | JejuGothic | 10, 1.25 | 1,065 | 338 match |
+| Turkish | tr | Fairfax | DroidSansFallback | 10, 0.85 | 123 | 331 match |
+| Italian | it | Fairfax | m3x6 | 10, 0.85 | 118 | 306 match |
+| Chinese (Traditional) | zh-TW | DroidSansFallback | DroidSansFallback | 9, 1.25 | 2,042 | 276 match |
+
+(The characters: the language's text terms after I2's unescaping, ASCII aside. The rows: its
+localized Texts and items; the 7,528 others, scene, prefab and synthetic, match too.
+`MOBILE/FONT_PRICES` names a FairfaxSmooth the PC game hasn't got.)
+
+**The GameCube's glyph pages** (MLGC; the font data pipeline). From `fonts.jsonl` (recorded through
+the queue, game data: never in git), `localization.json` and `fonts.json`:
+
+1. Per language, the glyph set: its FONT_BIG and FONT_SMALL fonts at the sizes FontSizeManager and
+   the FontSizeLocalize components give it, regular and italic (`<i>` is in 5,462 of the
+   translations), bold where a Text or tag asks; m5x7 and APPLE ][ (the unlocalized texts:
+   numbers, keys, at their own sizes) over ASCII; plus the probe's "used" groups. The
+   characters: the language's (its terms' translations) and ASCII.
+2. Each glyph's bitmap is its texel rect from the probe without Unity's one-texel padding (empty),
+   quantized to 4 bits. The hinted-raster fonts (Fairfax, m5x7, Zpix) are all 0 or 255, exact in
+   I4; the smooth ones (m3x6, APPLE ][, Arial, the CJK fonts: a fifth to two fifths of their
+   texels partial) lose their lowest four bits of coverage, which is drawing, not layout.
+3. Shelf-packed into I4 pages (256x256, 32 KB) per language, upright (a glyph Unity stored
+   transposed is turned back, its `flipped` cleared); each glyph's page and rect become its
+   CharacterInfo.uv in the port's Font (top-left, negative height, as Unity's), so the generator
+   is the same code and its positions the recorded ones; only the uv differ from Unity's atlas.
+4. Sizes, from the probe's rects (regular and italic at the FontSizeManager size): about 3 KB of I4
+   for a Latin language in Fairfax 10 (Russian 4 KB), Korean 92 KB (JejuGothic 10), Japanese
+   132 KB (JF-Dot-Shinonome16B 9), Chinese 160 KB (DroidSansFallback 9); with the other sizes
+   (FontSizeLocalize's 16, 12, 7) and the unlocalized fonts, well under the 1 MB of resident UI
+   fonts planned below. Only the current language's pages stay loaded.
+5. Drawing: the glyph quads (UGUI's mesh) with the page texture; TEV: alpha = texture intensity
+   times the vertex alpha, colour = the vertex colour (the format's `<color>` or the Text's).
+
+**What's exact, what's left.** Exact: every recorded generation in every language, glyph metrics
+consistent between the two probes. Left: the translated UnityEngine.UI Text bound to
+unity::TextGenerator through the facade (the ui-translate lane), with I2's font switch and
+FontSizeManager translated; the GameCube page builder (lane 8, from the steps above, in
+make_data or the MLGC builder); texts the probes never saw (world canvases of the dungeon rooms,
+dialogs made at run time) rely on the grid: a glyph outside it has no metrics (the port should
+log it, and the probe's grid grow); Unity's own atlas packing isn't reproduced (not needed: the
+port has its pages); the TextMesh/IMGUI path (ProcessString, hyperlink rects) is unused by the
+game.
+
 ## The oracle
 
 `-oracle-ui=<script>` (UIOracle.cs) records, after each frame's canvas update (the frame's last
@@ -238,9 +400,9 @@ arrows took the old parent's rect), ui-title-2 (the Graphics tab set the screen 
 submit checked on its second frame), ui-dungeon-1 (Start and Select named by their fields, so
 never pressed; its layout ALL MATCH all the same).
 
-Next probes the later lanes need: Graphic meshes (the VertexHelper output of a set of Images:
-sliced, filled, tiled), the TextGenerator's output (verts and lines of every visible Text) and a
-font probe (CharacterInfo and the font textures), the layout groups' inputs (preferred sizes).
+The text probes, `-oracle-fonts` and `-oracle-text`, are in "Text: done". Next probes the later
+lanes need: Graphic meshes (the VertexHelper output of a set of Images: sliced, filled, tiled), the
+layout groups' inputs (preferred sizes).
 
 ## The GameCube
 
@@ -265,7 +427,8 @@ Octave widget; one TEV stage MODULATE, alpha blend, no batching). The UI adds a 
    clips per fragment at pixel centres, which at scale 1 and on the pixel grid is the scissor box);
    Mask (stencil) → the same scissor when its graphic is a plain rectangle (the options lists'
    masks are), else destination alpha or Z as a one-bit stencil;
-4. text: glyph quads from the TextGenerator with an I4/IA4 glyph page texture.
+4. text: glyph quads from the TextGenerator with the language's I4 glyph pages ("Text: done", the
+   GameCube's glyph pages).
 
 **Textures and memory.** UI sprites as the world's are: CI8 with an RGB5A3 palette when 256
 colours do, else RGB5A3 (`tools/extract/sprites.py`'s formats), one texture per sprite or per
@@ -294,8 +457,9 @@ textures (Octave's `Texture::StashFrom`), which MLGC doesn't use yet.
 4. **HUD**: HUDManager, WillHealthBar (DOFillAmount), gold (DOText), equipment, minimap panel;
    against `ui_dungeon.jsonl` and a recording with damage and gold pickups.
 5. **bag**: HeroInventoryPanel, InventoryPanel, slots, item icons; against `ui_dungeon.jsonl`.
-6. **text**: the font probe oracle, the TextGenerator (layout, rich text, best fit), I2's font
-   choice; against recorded generator output.
+6. **text** (done: "Text: done"): the font and text probes, unity::Font and unity::TextGenerator
+   (layout, rich text, best fit), ALL MATCH in every language; left: binding it under the
+   translated Text, I2's font choice translated, the GameCube's glyph pages.
 7. **shop**: Canvas - Shop, the shop's world canvases (Shop_Lvl*), haggling panels; a recorded shop day.
 8. **GameCube drawing**: MLGC's canvas batcher, scissor masks, UI textures and glyph pages in
    `make_data.py`, memory measured on hardware (USB Gecko).
