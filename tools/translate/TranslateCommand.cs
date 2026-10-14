@@ -13,6 +13,9 @@ public static class TranslateCommand
         var bind = Bindings.Load(o.Bindings);
         var tr = new Translator(gc, bind, gc.BeforeFieldInit);
         tr.AddUnits(o.Units);
+        if (o.Broken != null)
+            foreach (var line in File.ReadLines(o.Broken))
+                if (line.Trim().Length > 0 && !line.StartsWith('#')) tr.Broken.Add(line.Trim());
         tr.Run();
         string outDir = o.Out ?? Path.Combine(o.Repo, "recomp", "gen", "cpp");
         var em = new Emitter(tr, outDir);

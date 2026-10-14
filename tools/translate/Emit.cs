@@ -82,7 +82,8 @@ public sealed class Emitter
 
         // AddComponent by the script's name (a prefab's MonoBehaviours, bind's prefab builder).
         var scripts = ordered.Select(o => o.T).Where(t => t.TypeKind == TypeKind.Class && !t.IsAbstract && !t.IsGenericType &&
-                                                          !t.Name.StartsWith("_003C", StringComparison.Ordinal) && DerivesFrom(t, "UnityEngine.MonoBehaviour")).ToList();
+                                                          !t.Name.StartsWith("_003C", StringComparison.Ordinal) && DerivesFrom(t, "UnityEngine.MonoBehaviour") &&
+                                                          EngineBaseMapped(t) && HasDefaultCtor(t)).ToList();
         if (scripts.Count > 0)
         {
             h.Append("\nnamespace gen {\n// The translated MonoBehaviour named `name` (its class name, or its full name) added to `go`; nullptr if none.\n");
@@ -258,6 +259,15 @@ public sealed class Emitter
         if (bases.Count > 0) sb.Append(" : ").Append(string.Join(", ", bases));
         sb.Append(" {\npublic:\n");
         if (isInterface) sb.Append($"    virtual ~{N.FlatName(t)}() = default;\n");
+        // Instantiate's copy (cs_Clone) runs the copy constructor: defined once, with the methods,
+        // each class's copying its own fields and calling its base's, rather than the whole chain
+        // inlined into every class's cs_Clone.
+        if (OutOfLineCopy(t))
+        {
+            sb.Append($"    {N.FlatName(t)}() = default;\n");
+            sb.Append($"    {N.FlatName(t)}(const {N.FlatName(t)}& o);\n");
+            OutOfLine(t).Append($"{Template(t)}{N.QualifiedGameName(t)[2..]}{TemplateArgsOf(t)}::{N.FlatName(t)}(const {N.FlatName(t)}& o) = default;\n");
+        }
 
         // fields
         foreach (var f in o.Fields)
@@ -338,6 +348,17 @@ public sealed class Emitter
             foreach (var m in b.OriginalDefinition.GetMembers().OfType<IMethodSymbol>())
                 if (tr.Methods.ContainsKey(m) && N.Method(m) == name) return true;
         return false;
+    }
+
+    // A reference whose C++ type is a pointer to a cs::Object subclass (at the object's start): a
+    // class (the game's, the runtime's, a bound engine class, an unmapped placeholder), an array, a
+    // string, object, a delegate. Not an interface (a pointer into the object), not a type parameter.
+    bool IsObjectRef(ITypeSymbol t)
+    {
+        if (!Names.IsRef(t) || t.TypeKind is TypeKind.Interface or TypeKind.TypeParameter or TypeKind.Pointer or TypeKind.Dynamic) return false;
+        if (t.TypeKind is TypeKind.Array or TypeKind.Delegate) return true;
+        if (t.SpecialType is SpecialType.System_String or SpecialType.System_Object) return true;
+        return t.TypeKind == TypeKind.Class;
     }
 
     internal static bool NeedsTrace(ITypeSymbol t) => Names.IsRef(t) || t.TypeKind == TypeKind.TypeParameter || t.IsValueType && t.SpecialType == SpecialType.None && t.TypeKind != TypeKind.Enum;
@@ -449,16 +470,18 @@ public sealed class Emitter
             var sf = t.GetMembers().OfType<IFieldSymbol>().Where(f => !f.IsStatic && !f.IsConst && tr.IsFieldUsedOrFull(f) && SerialKind(f.Type) != null).ToList();
             bool baseHas = t.BaseType != null && N.IsGame(t.BaseType) && IsSerializable(t.BaseType);
             // (emitted even without fields: SerialObject reads any [Serializable] class through it)
-            sb.Append("    bool cs_SetField(const char* name, const ::UnityEngine::SerialValue& v) {\n");
-            foreach (var f in sf)
-                sb.Append($"        if (!::std::strcmp(name, \"{f.Name}\")) {{ this->{N.Field(f)} = {SerialKind(f.Type)}; return true; }}\n");
-            sb.Append(baseHas ? $"        return {N.Type(t.BaseType)}::cs_SetField(name, v);\n    }}\n" : "        (void)v;\n        return false;\n    }\n");
+            var sd = Defined(sb, t, "bool", "cs_SetField(const char* name, const ::UnityEngine::SerialValue& v)", "");
+            NameSwitch(sd, "name", sf.Select(f => f.Name), false, sf.Select(f => $"this->{N.Field(f)} = {SerialKind(f.Type)}; return true;").ToList());
+            sd.Append(baseHas ? $"    return {N.Type(t.BaseType)}::cs_SetField(name, v);\n}}\n" : "    (void)v;\n    return false;\n}\n");
             return sb.ToString();
         }
+        // (A class whose engine base has no binding yet (StateMachineBehaviour, Selectable...) is no
+        // UnityEngine::Object in C++: none of Unity's hooks to override.)
+        if (!EngineBaseMapped(t)) return "";
         bool mono = DerivesFrom(t, "UnityEngine.MonoBehaviour");
         // Instantiate's copy (bind/Engine.cpp): the whole object.
         if (!t.IsAbstract && !t.IsGenericType && Names.AllTypeParameters(t).Count == 0)
-            sb.Append($"    ::UnityEngine::Object* cs_Clone() override {{ return ::cs::gcnew<{N.FlatName(t)}>(*this); }}\n");
+            Defined(sb, t, "::UnityEngine::Object*", "cs_Clone()", " override").Append($"    return ::cs::gcnew<{N.FlatName(t)}>(*this);\n}}\n");
         // Instantiate's remap (bind/Engine.cpp; defined with cs_trace).
         if (RemapFields(t).Count > 0) sb.Append("    void cs_Remap(const ::UnityEngine::Remap& r) override;\n");
         // (A stubbed class's messages aren't hooked: what they do is the driver's to stand in for.)
@@ -490,31 +513,37 @@ public sealed class Emitter
             if (named.Count > 0)
             {
                 string bt = N.Type(t.BaseType);
-                sb.Append("    bool cs_Message(::cs::String* name, const ::UnityEngine::MessageArgs& a) override {\n");
-                foreach (var g in named.GroupBy(m => m.Name))
+                var ob = Defined(sb, t, "bool", "cs_Message(::cs::String* name, const ::UnityEngine::MessageArgs& a)", " override");
+                var groups = named.GroupBy(m => m.Name).ToList();
+                var cases = new List<string>();
+                foreach (var g in groups)
                 {
-                    sb.Append($"        if (::UnityEngine::MessageIs(name, {Names.StringLiteral(g.Key)})) {{\n");
+                    // the overload without parameters first, else the first whose argument converts;
+                    // none: the base class's (as when no name matched)
+                    string code = "break;";
                     foreach (var m in g.OrderBy(m => m.Parameters.Length))
                     {
-                        if (m.Parameters.Length == 0) { sb.Append($"            this->{N.Method(m)}(); return true;\n"); break; }
+                        if (m.Parameters.Length == 0) { code = $"this->{N.Method(m)}(); return true;"; break; }
                         string arg = MessageArg(m.Parameters[0].Type);
                         if (arg == null) continue;
-                        sb.Append($"            this->{N.Method(m)}({arg}); return true;\n");
+                        code = $"this->{N.Method(m)}({arg}); return true;";
                         break;
                     }
-                    sb.Append("        }\n");
+                    cases.Add(code);
                 }
-                sb.Append($"        return {bt}::cs_Message(name, a);\n    }}\n");
+                NameSwitch(ob, "name", groups.Select(g => g.Key), true, cases);
+                ob.Append($"    return {bt}::cs_Message(name, a);\n}}\n");
             }
             // StartCoroutine(string): an IEnumerator method without parameters, by name.
             var routines = mine.Where(m => m.Parameters.Length == 0 && m.ReturnType.ToDisplayString() == "System.Collections.IEnumerator").ToList();
             if (routines.Count > 0)
             {
                 string bt = N.Type(t.BaseType);
-                sb.Append("    ::cs::IEnumerator* cs_Coroutine(::cs::String* name) override {\n");
-                foreach (var m in routines)
-                    sb.Append($"        if (::UnityEngine::MessageIs(name, {Names.StringLiteral(m.Name)})) return this->{N.Method(m)}();\n");
-                sb.Append($"        return {bt}::cs_Coroutine(name);\n    }}\n");
+                var cd = Defined(sb, t, "::cs::IEnumerator*", "cs_Coroutine(::cs::String* name)", " override");
+                // (the first of a name, as the comparisons in order did)
+                var byName = routines.GroupBy(m => m.Name).Select(g => g.First()).ToList();
+                NameSwitch(cd, "name", byName.Select(m => m.Name), true, byName.Select(m => $"return this->{N.Method(m)}();").ToList());
+                cd.Append($"    return {bt}::cs_Coroutine(name);\n}}\n");
             }
         }
         // The serialized fields a prefab or asset sets (the simple kinds; others the caller does).
@@ -522,21 +551,83 @@ public sealed class Emitter
         if (fields.Count > 0)
         {
             string bt = N.Type(t.BaseType);
-            sb.Append("    bool cs_SetField(const char* name, const ::UnityEngine::SerialValue& v) override {\n");
-            foreach (var f in fields)
-                sb.Append($"        if (!::std::strcmp(name, \"{f.Name}\")) {{ this->{N.Field(f)} = {SerialKind(f.Type)}; return true; }}\n");
-            sb.Append($"        return {bt}::cs_SetField(name, v);\n    }}\n");
+            var fd = Defined(sb, t, "bool", "cs_SetField(const char* name, const ::UnityEngine::SerialValue& v)", " override");
+            NameSwitch(fd, "name", fields.Select(f => f.Name), false, fields.Select(f => $"this->{N.Field(f)} = {SerialKind(f.Type)}; return true;").ToList());
+            fd.Append($"    return {bt}::cs_SetField(name, v);\n}}\n");
         }
         var empties = t.GetMembers().OfType<IFieldSymbol>().Where(f => IsSerializedField(f) && tr.IsFieldUsedOrFull(f) && SerialEmpty(f.Type) != null).ToList();
         if (empties.Count > 0)
         {
             string bt = N.Type(t.BaseType);
-            sb.Append("    void cs_SerialInit() override {\n");
-            sb.Append($"        {bt}::cs_SerialInit();\n");
-            foreach (var f in empties) sb.Append($"        if (!this->{N.Field(f)}) this->{N.Field(f)} = {SerialEmpty(f.Type)};\n");
-            sb.Append("    }\n");
+            var ed = Defined(sb, t, "void", "cs_SerialInit()", " override");
+            ed.Append($"    {bt}::cs_SerialInit();\n");
+            foreach (var f in empties) ed.Append($"    if (!this->{N.Field(f)}) this->{N.Field(f)} = {SerialEmpty(f.Type)};\n");
+            ed.Append("}\n");
         }
         return sb.ToString();
+    }
+
+    // A dispatch by name: a table of the names (constant data) searched by the runtime's one loop
+    // (cs::NameIndex), then a switch to the case's code. Names are unique; the first equal one wins,
+    // as the chain of comparisons it replaces. utf16: the name is a cs::String* (messages), else a
+    // const char* (serialized fields).
+    static void NameSwitch(StringBuilder ob, string key, IEnumerable<string> names, bool utf16, List<string> cases)
+    {
+        var list = names.ToList();
+        if (list.Count == 0) return;
+        // (identifiers in ASCII: one byte a character in the table, compared with the UTF-16 name)
+        bool wide = utf16 && list.Any(n => n.Any(c => c >= 128 || c == '"' || c == '\\'));
+        string lit(string n) => wide ? Names.U16Literal(n) : "\"" + n + "\"";
+        ob.Append($"    static const {(wide ? "char16_t" : "char")}* const names_[] = {{ {string.Join(", ", list.Select(lit))} }};\n");
+        ob.Append($"    switch (::cs::NameIndex({key}, names_, {list.Count})) {{\n");
+        for (int i = 0; i < list.Count; i++) ob.Append($"    case {i}: {cases[i]}\n");
+        ob.Append("    default: break;\n    }\n");
+    }
+
+    // A class Instantiate copies (a UnityEngine.Object's, with a C++ engine base): its copy
+    // constructor out of line.
+    bool OutOfLineCopy(INamedTypeSymbol t) =>
+        t.TypeKind == TypeKind.Class && DerivesFrom(t, "UnityEngine.Object") && EngineBaseMapped(t);
+
+    // Members of a class defined with its methods (in its .cpp, or with the templates), not in the
+    // class: a body there would be compiled by every file that includes game.h (and instantiate the
+    // templates it names, List<T> and the rest, in each), and may call a method returning a struct
+    // not complete yet.
+    readonly Dictionary<INamedTypeSymbol, StringBuilder> outOfLine = new(SymbolEqualityComparer.Default);
+    StringBuilder OutOfLine(INamedTypeSymbol t)
+    {
+        if (!outOfLine.TryGetValue(t, out var sb)) outOfLine[t] = sb = new StringBuilder();
+        return sb;
+    }
+
+    // Declares `ret sig` in the class (decl) and opens its definition out of line; the caller
+    // appends the body and the closing brace.
+    StringBuilder Defined(StringBuilder decl, INamedTypeSymbol t, string ret, string sig, string tail)
+    {
+        decl.Append($"    {ret} {sig}{tail};\n");
+        var ob = OutOfLine(t);
+        ob.Append($"{Template(t)}{ret} {N.QualifiedGameName(t)[2..]}{TemplateArgsOf(t)}::{sig} {{\n");
+        return ob;
+    }
+
+    // A constructor without parameters (AddComponent's cs::New<T>() runs it). (A
+    // MonoBehaviour with only constructors that take arguments: Unity makes it without running one;
+    // not done yet, so not in cs_AddComponent.)
+    bool HasDefaultCtor(INamedTypeSymbol t) =>
+        t.InstanceConstructors.Any(c => c.Parameters.Length == 0);
+
+    // Every engine class between t and UnityEngine.Object has a C++ type (a binding), so t's C++
+    // bases reach UnityEngine::Object.
+    bool EngineBaseMapped(INamedTypeSymbol t)
+    {
+        for (var b = t.BaseType; b != null && b.SpecialType != SpecialType.System_Object; b = b.BaseType)
+        {
+            if (N.IsGame(b)) continue;
+            string bt = TryType(b);
+            if (bt == null || bt.Contains("::cs::Unmapped")) return false;
+            if (b.ToDisplayString() == "UnityEngine.Object") return true;
+        }
+        return true;
     }
 
     // An Animator event's or SendMessage's argument as the method's parameter type.
@@ -561,7 +652,7 @@ public sealed class Emitter
             case SpecialType.System_Double: return "static_cast<double>(v.AsFloat())";
             case SpecialType.System_String: return "v.AsString()";
         }
-        if (t.TypeKind == TypeKind.Enum) return $"static_cast<{N.Type(t)}>(v.AsInt())";
+        if (t.TypeKind == TypeKind.Enum) return TryType(t) is string et && !et.Contains("::cs::Unmapped") ? $"static_cast<{et}>(v.AsInt())" : null;
         string n = t.ToDisplayString();
         if (n == "UnityEngine.Vector2") return "v.AsVector2()";
         if (n == "UnityEngine.Vector3") return "v.AsVector3()";
@@ -593,7 +684,7 @@ public sealed class Emitter
     bool SerialElement(ITypeSymbol t)
     {
         if (t.SpecialType is SpecialType.System_Boolean or SpecialType.System_Int32 or SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_String) return true;
-        if (t.TypeKind == TypeKind.Enum) return true;
+        if (t.TypeKind == TypeKind.Enum) return TryType(t) is string et && !et.Contains("::cs::Unmapped");
         string n = t.ToDisplayString();
         if (n is "UnityEngine.Vector2" or "UnityEngine.Vector3" or "UnityEngine.Color" or "UnityEngine.GameObject") return true;
         if (t is INamedTypeSymbol nt && t.TypeKind == TypeKind.Class && DerivesFrom(nt, "UnityEngine.Object") && (N.IsGame(nt) || tr.Bind.FindType(nt) != null)) return true;
@@ -727,12 +818,22 @@ public sealed class Emitter
             sb.Append($"{tmpl}void {cls}::cs_trace(::cs::Tracer& t) {{\n");
             var bt = t.BaseType;
             if (bt != null && bt.SpecialType != SpecialType.System_Object) sb.Append($"    {N.Type(bt)}::cs_trace(t);\n");
-            foreach (var f in o.Fields.Where(f => NeedsTrace(f.Type))) sb.Append($"    ::cs::TraceField(t, this->{N.Field(f)});\n");
-            foreach (var e in o.Events.Where(e => !e.IsStatic)) sb.Append($"    ::cs::TraceField(t, this->{Names.Ident(e.Name)});\n");
+            // References to objects (classes, arrays, strings, delegates: cs::Object at the start of
+            // each) by their offsets, marked by the runtime's one loop; the rest (interfaces, structs,
+            // type parameters) one by one. (The order objects are marked in isn't observable.)
+            var refs = o.Fields.Where(f => IsObjectRef(f.Type)).Select(f => N.Field(f))
+                .Concat(o.Events.Where(e => !e.IsStatic && IsObjectRef(e.Type)).Select(e => Names.Ident(e.Name))).ToList();
+            if (refs.Count > 0)
+            {
+                sb.Append($"    static const uint16_t refs_[] = {{ {string.Join(", ", refs.Select(f => $"offsetof({cls}, {f})"))} }};\n");
+                sb.Append($"    t.MarkRefs(this, refs_, {refs.Count});\n");
+            }
+            foreach (var f in o.Fields.Where(f => NeedsTrace(f.Type) && !IsObjectRef(f.Type))) sb.Append($"    ::cs::TraceField(t, this->{N.Field(f)});\n");
+            foreach (var e in o.Events.Where(e => !e.IsStatic && !IsObjectRef(e.Type))) sb.Append($"    ::cs::TraceField(t, this->{Names.Ident(e.Name)});\n");
             sb.Append("    (void)t;\n}\n");
         }
         // cs_Remap (Instantiate's: RemapFields)
-        if (t.TypeKind == TypeKind.Class && RemapFields(t) is var remap && remap.Count > 0)
+        if (t.TypeKind == TypeKind.Class && EngineBaseMapped(t) && RemapFields(t) is var remap && remap.Count > 0)
         {
             sb.Append($"{tmpl}void {cls}::cs_Remap(const ::UnityEngine::Remap& r) {{\n");
             sb.Append($"    {N.Type(t.BaseType)}::cs_Remap(r);\n");
@@ -741,6 +842,7 @@ public sealed class Emitter
         }
         foreach (var e in o.Events.Where(e => e.IsStatic))
             sb.Append($"{tmpl}{N.Ref(e.Type)} {cls}::{Names.Ident(e.Name)}{{}};\n");
+        if (outOfLine.TryGetValue(t, out var ool)) sb.Append(ool);
 
         foreach (var m in o.Methods)
         {
