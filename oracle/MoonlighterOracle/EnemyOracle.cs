@@ -90,6 +90,7 @@ namespace MoonlighterOracle
             public string other, caller;
             public Vector2 hero, pos;
             public uint[] rng0, rng1;
+            public float[] heroAfter; // dmgToPlayer: his health, absorption and shield after the hit (before the refill)
         }
 
         private class Upd
@@ -421,7 +422,12 @@ namespace MoonlighterOracle
             // God mode the plain way: his health back after the hit (the hit itself as in play).
             private static void Postfix(HeroMerchant __instance, Ev __state)
             {
-                if (__state != null) __state.rng1 = Rng.Get();
+                if (__state != null)
+                {
+                    __state.rng1 = Rng.Get();
+                    var st = __instance.heroMerchantStats;
+                    __state.heroAfter = new[] { (float)st.currentHealth.Value, (float)st.absorption.Value, (float)st.shield.Value };
+                }
                 if (Active || recording) __instance.heroMerchantStats.RecoverAllHealth();
             }
         }
@@ -779,6 +785,12 @@ namespace MoonlighterOracle
             j.Prop("layer", hero.gameObject.layer).Prop("tag", hero.tag);
             j.Key("colliderOffset"); V2(j, ctrl.characterCollider.offset);
             j.Key("colliderSize"); V2(j, ctrl.characterCollider.size);
+            // His stats (DealDamageToPlayer's: the shield, the absorption and the health a hit takes).
+            var hs = hero.heroMerchantStats;
+            j.Key("stats").Obj().Key("maxHealth").Bits(hs.currentHealth.maxValue).Key("health").Bits(hs.currentHealth.Value)
+                .Key("defense").Bits(hs.defense.Value).Key("strength").Bits(hs.strength.Value)
+                .Key("absorption").Bits(hs.absorption.Value).Key("absorptionMax").Bits(hs.absorption.maxValue)
+                .Key("shield").Bits(hs.shield.Value).Prop("variable", (bool)hs.currentHealth.variableStat).EndObj();
             j.EndObj();
             var all = Traverse.Create(typeof(PolyNavAgent)).Field("allAgents").GetValue<List<PolyNavAgent>>();
             j.Key("agents").Arr();
@@ -898,6 +910,7 @@ namespace MoonlighterOracle
                             Rng.WriteState(j.Key("rng0"), e.rng0);
                             Rng.WriteState(j.Key("rng1"), e.rng1 ?? e.rng0);
                         }
+                        if (e.heroAfter != null) j.Key("heroAfter").Arr().Bits(e.heroAfter[0]).Bits(e.heroAfter[1]).Bits(e.heroAfter[2]).EndArr();
                         break;
                     case "dmgToEnemy":
                         j.Key("str").Bits(e.a).Prop("type", e.type).Key("hp0").Bits(e.hp0).Key("hp1").Bits(e.hp1).Prop("recv", e.other);

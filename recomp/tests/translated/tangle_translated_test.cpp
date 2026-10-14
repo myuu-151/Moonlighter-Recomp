@@ -50,6 +50,7 @@
 #include "../enable_clock.h"
 #include "../fixture_probe.h"
 #include "../polygon_probe.h"
+#include "hero_replay.h"
 
 namespace {
 
@@ -208,34 +209,27 @@ int Replay(const std::string& file, const Data& data)
             if (const unity::Collider2D* c = world.ColliderOf(f)) physics.Register(f, standIn(*c));
     for (const unity::Collider2D& c : queries.Colliders()) physics.RegisterQuery(&c, standIn(c));
 
-    // The hero: HeroMerchant, his controller (GetColliderOffsset: the recording's) and stats, his body's collider.
-    GameObject* heroGo = GameObject::Create("HeroMerchant");
-    heroGo->tag_ = S("Player");
-    heroGo->layer_ = static_cast<int>(h["layer"].AsInt());
-    auto* heroMerchant = cs::New<gen::HeroMerchant>();
-    auto* heroController = cs::New<gen::HeroMerchantController>();
-    auto* heroStats = cs::New<gen::HeroMerchantStats>();
-    heroGo->Attach(heroMerchant);
-    // (his controller's messages are his doings, the recording's here: off, no Start or Update)
-    heroController->enabled_ = false;
-    heroGo->Attach(heroController);
-    heroGo->Attach(heroStats);
-    heroMerchant->heroMerchantController = heroController;
-    heroMerchant->heroMerchantStats = heroStats;
-    heroStats->isDead = CodeStage::AntiCheat::ObscuredTypes::ObscuredBool::op_Implicit(false);
-    auto* heroCollider = cs::gcnew<UnityEngine::BoxCollider2D>();
-    heroGo->Attach(heroCollider);
+    // The hero (hero_replay.h): HeroMerchant, his controller, stats and inventory, his art, his body's
+    // collider; his own code the game's (GetColliderOffsset: his collider's offset, the recording's
+    // "getColliderOffset" as the game's own answered), his body and doings the recording's.
+    hero_replay::Hero hero;
+    if (!hero_replay::Make(hero, h, file)) return 1;
+    std::printf("the hero's stats: %s\n", hero.statsFrom.c_str());
+    GameObject* heroGo = hero.go;
+    UnityEngine::BoxCollider2D* heroCollider = hero.collider;
     physics.Register(heroBody.Body()->GetFixtureList(), heroCollider);
     // His controller's Rigidbody2D (AddForce's: the enemies' pushes): outside the world, his body
     // being the recording's; the pushes are reported (bind::PhysicsScene::onAddForce).
-    auto* heroRigidbody = cs::gcnew<UnityEngine::Rigidbody2D>();
-    heroController->characterRigidbody = heroRigidbody;
+    UnityEngine::Rigidbody2D* heroRigidbody = hero.rigidbody;
     physics.onAddForce = [&](UnityEngine::Rigidbody2D* body, Vector2 force, UnityEngine::ForceMode2D) {
         if (body == heroRigidbody && standins::S().heroAddForce) standins::S().heroAddForce(force);
     };
     auto setHeroPosition = [&](Vector2 p) { heroGo->transform_->set_position(UnityEngine::Vector3{p.x, p.y, 0.0f}); };
     setHeroPosition(V2(h["pos"]));
-    standins::S().heroColliderOffset = V2(h["getColliderOffset"]);
+    {
+        const unity::Vector2 game = V2(h["getColliderOffset"]), port = hero.controller->GetColliderOffsset();
+        if (game.x != port.x || game.y != port.y) std::printf("note: GetColliderOffsset (%g, %g), the recording's (%g, %g)\n", port.x, port.y, game.x, game.y);
+    }
 
     // ---- the game's services the Tangles reach ----
     const Value& sc = start["stats"];
@@ -246,15 +240,13 @@ int Replay(const std::string& file, const Data& data)
     standins::S().difficulty = static_cast<int>(sc["difficulty"].AsInt());
     standins::S().afternoon = sc["afternoon"].b;
     standins::S().timeManager = cs::gcnew<gen::TimeManagerV2>();
-    standins::S().gameManager = nullptr;
     gen::CameraManager::_instance = cs::gcnew<gen::CameraManager>();
     // Its camera (CameraManager.Rumble shakes its transform: presentation, the shake's draws aren't).
     GameObject* cameraGo = GameObject::Create("Main Camera");
     auto* camera = cs::gcnew<UnityEngine::Camera>();
     cameraGo->Attach(camera);
     gen::CameraManager::_instance->_camera = camera;
-    gen::HUDManager::Instance = cs::gcnew<gen::HUDManager>();
-    gen::HUDManager::Instance->minimap = cs::gcnew<gen::MinimapPanel>();
+    gen::HUDManager::Instance->minimap = cs::gcnew<gen::MinimapPanel>(); // (the hero's HUD: hero_replay.h)
     // (tangle_test's replay has no MasterAudio: the Tangles' sounds' draws are resynced.)
 
     // The room: Dungeon / <room> (DungeonRoom) / DungeonLevelEnemies / EnemySpawn / the Tangle.

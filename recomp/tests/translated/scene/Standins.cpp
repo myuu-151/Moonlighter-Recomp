@@ -37,11 +37,20 @@ namespace gen {
 
 void HeroMerchant::DealDamageToPlayer(float p_attackStrength, cs::String* p_damageSource, HeroMerchant_DamageType p_type, Enemy* p_enemySource)
 {
-    if (!S().heroStandIns) {
-        DealDamageToPlayer__game(p_attackStrength, p_damageSource, p_type, p_enemySource);
-        return;
-    }
     if (S().dealDamageToPlayer) S().dealDamageToPlayer(p_attackStrength, p_damageSource, static_cast<int>(p_type), p_enemySource);
+    if (S().heroStandIns) return;
+    DealDamageToPlayer__game(p_attackStrength, p_damageSource, p_type, p_enemySource);
+    if (S().afterDealDamageToPlayer) S().afterDealDamageToPlayer();
+}
+
+// The shield's loss on his art (SpriteAnimationData's frames on two SpriteRenderers): presentation.
+void HeroMerchant::PlayShieldAnimation() {}
+
+// An ItemDrain's drops: the bag is the driver's (the recording's).
+void HeroMerchantInventory::DropRandomItems(int32_t p_number, bool p_mustDropCursedItems)
+{
+    if (!S().dropRandomItems) cs::NotTranslated("HeroMerchantInventory.DropRandomItems (the bag: not stood in for)");
+    S().dropRandomItems(p_number, p_mustDropCursedItems);
 }
 
 // The hero's hole check after a push (EnemyBehaviour.PushPlayerBackwards' WaitAndCheckForHoles): stood

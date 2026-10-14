@@ -22,8 +22,13 @@ struct Services {
     // CheckForHolesAfterPush and GetColliderOffsset: units.txt's `wrap`) stood in for by the hooks
     // below (the enemy replays: his doings are the recording's); false: the game's own runs.
     bool heroStandIns = true;
-    // HeroMerchant.DealDamageToPlayer(attackStrength, damageSource, type, enemySource).
+    // HeroMerchant.DealDamageToPlayer(attackStrength, damageSource, type, enemySource): each call (the
+    // replays' rows), before the game's runs; and after it (the oracle's refill of his health).
     std::function<void(float strength, cs::String* source, int type, gen::Enemy* enemy)> dealDamageToPlayer;
+    std::function<void()> afterDealDamageToPlayer;
+    // HeroMerchantInventory.DropRandomItems(number, mustDropCursedItems) (an ItemDrain's): the bag is
+    // the recording's (its draws: game/HeroDamage.h's model).
+    std::function<void(int number, bool mustDropCursedItems)> dropRandomItems;
     // HeroMerchantController.AddForce(force): an impulse on the hero's body.
     std::function<void(unity::Vector2 force)> heroAddForce;
     // DungeonRoom.SpawnEnemyDeadSprite(sprite, position).
