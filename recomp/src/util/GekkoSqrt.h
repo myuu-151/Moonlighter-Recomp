@@ -14,9 +14,10 @@
 //   y, its predecessor or its successor     whichever the signs of two exact residuals pick
 //
 // GekkoSqrt.cpp makes them the GameCube's sqrt and sqrtf (with the hardware frsqrte); the PC test
-// recomp/tests/gekko_sqrt_test.cpp runs the same code with Dolphin's emulation of frsqrte against
-// the PC's sqrt. The estimate is a parameter: anything callable as double(double), giving
-// 1/sqrt(x) within 1/1000 for every x in [2^-900, 2^900] (see the margin below).
+// recomp/tests/gekko_sqrt_test.cpp runs the same code with model estimates at the ends of the
+// bound below (and at 1/1000) against the PC's sqrt. The estimate is a parameter: anything
+// callable as double(double), giving 1/sqrt(x) within 1/1000 for every x in [2^-900, 2^900]
+// (see the margin below).
 //
 // Why the result is exact, for every double. Notation: s = sqrt(x), u = 2^-53, RN = rounding to
 // nearest even; in Core, x is in [2^-900, 2^900] (Sqrt scales the rest in by even powers of two),
@@ -24,11 +25,11 @@
 // that neither overflows nor underflows (each nonzero intermediate is at least 2^-1008: no
 // subnormals, so the Gekko's non-IEEE mode, which libogc switches on, never applies).
 //
-// 1. The estimate. frsqrte depends only on the parity of x's exponent and the top 15 bits of its
-//    mantissa (and frsqrte(4x) = frsqrte(x)/2): 2^16 classes, within which r sqrt(x) is monotonic,
-//    so the ends of the classes bound the error. Over all of them r = (1 + E) / s with
-//    |E| < kEstimateError = 1.8451e-4 (the test computes it from Dolphin's emulation of the
-//    instruction).
+// 1. The estimate. r = (1 + E) / s with |E| < kEstimateError = 1.8451e-4: the measured accuracy
+//    of the Gekko's frsqrte, 1.84505e-4 at worst over every input, as Dolphin, which emulates the
+//    hardware's table bit for bit, computes it (the estimate depends only on the parity of x's
+//    exponent and the top 15 bits of its mantissa, so the ends of those 2^16 classes give the
+//    maximum). The rest uses nothing else about frsqrte.
 // 2. One cubic step. t = RN(x r) = x r (1 + a1). Let e = 1 - t r (exact; |e| < 2E + E^2 + 2u <
 //    3.6906e-4). Since t r = 1 - e, t (1 - e)^(-1/2) = sqrt(t / r) = s sqrt(1 + a1), and
 //    (1 - e)^(-1/2) = 1 + e/2 + 3e^2/8 + R with |R| <= (5/16) |e|^3 / (1 - |e|) < 1.572e-11 (the
@@ -56,11 +57,12 @@
 //    s is never a midpoint (x - y n = v^2/4 isn't a multiple of v^2), and the fma's single
 //    rounding keeps the sign of the residual and its zero (it is 0 or at least v^2 >= 2^-1008).
 //    So the result is RN(s) for every x in [2^-900, 2^900], hence (by the exact scalings) for
-//    every positive double. The test runs every float input, and doubles next to midpoints.
+//    every positive double. The test runs every float input, and doubles next to midpoints, with
+//    estimates at both ends of the bound.
 //
 // The margin is large: any estimate within 1/1000 gives |eg|, |eh| < 2.6e-9 and
-// |z - s| < s 1.1e-17 < s 2^-55, which is all step 4 needs (the test checks it with a perturbed
-// estimate).
+// |z - s| < s 1.1e-17 < s 2^-55, which is all step 4 needs (the test runs estimates off by
+// +-1/1000 too).
 //
 // Sqrt and Sqrtf return exactly what newlib's sqrt and sqrtf return on the Gekko for every input,
 // including NaNs, infinities, zeros, negatives (with errno = EDOM) and subnormals.
@@ -83,7 +85,7 @@
 
 namespace gekko_sqrt {
 
-// The bound of step 1 above on frsqrte's error (Dolphin's table: 1.84505e-4).
+// The bound of step 1 above on frsqrte's error (measured: 1.84505e-4).
 constexpr double kEstimateError = 1.8451e-4;
 // Core's domain: everything inside is exact without subnormal or overflowing intermediates.
 constexpr double kLo = 0x1p-900;
@@ -138,7 +140,7 @@ inline double FromBits(uint64_t b)
 }
 
 #if defined(GEKKO)
-// The Gekko's reciprocal square root estimate (Dolphin: ApproximateReciprocalSquareRoot).
+// The Gekko's reciprocal square root estimate.
 struct Frsqrte {
     double operator()(double x) const
     {

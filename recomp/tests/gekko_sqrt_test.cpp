@@ -1,18 +1,27 @@
-// util/GekkoSqrt.h, the GameCube's sqrt and sqrtf, run on the PC with Dolphin's emulation of the
-// Gekko's frsqrte, against the PC's correctly rounded sqrt and sqrtf (SSE2), bit for bit.
+// util/GekkoSqrt.h, the GameCube's sqrt and sqrtf, run on the PC against the PC's correctly
+// rounded sqrt and sqrtf (SSE2), bit for bit, with model estimates in place of the Gekko's frsqrte.
 //
-// By default (a few seconds): the bound on frsqrte's error that GekkoSqrt.h's proof uses, over
-// all of the estimate's 2^16 classes; every float in [1, 4) (both exponent parities, every
-// mantissa: every path frsqrte has for a normal input) through sqrtf and through sqrt of the
-// double, with the errors of the refined estimates against the proof's bounds; every float and
-// double exponent at a sample of mantissas; the special values (NaNs, infinities, zeros,
-// negatives with errno, the ends of Core's domain); subnormals; millions of random doubles;
-// doubles whose roots lie within 2^-89 of a midpoint (where the last step has to choose); and
-// the same with an estimate made worse, up to 1/1000, the margin GekkoSqrt.h claims.
+// GekkoSqrt.h's proof needs only a bound on the estimate's error: |r sqrt(x) - 1| < 1.8451e-4,
+// the measured accuracy of the Gekko's frsqrte (1.84505e-4 at worst over every input, as Dolphin,
+// which emulates the hardware's table bit for bit, computes it). So the models are estimates that
+// meet the bound, and estimates at its very ends:
+//   truncated   1/sqrt(x) cut to 13 bits after the point: always low, by up to 2^-13 = 1.22e-4
+//   +bound      1/sqrt(x) (1 + 1.8451e-4)
+//   -bound      1/sqrt(x) (1 - 1.8451e-4)
+//   +1/1000     1/sqrt(x) (1 + 1e-3): GekkoSqrt.h's margin
+//   -1/1000     1/sqrt(x) (1 - 1e-3)
+// where 1/sqrt(x) is the PC's 1/sqrt(x), within 2^-52 of the exact value.
+//
+// For each model, by default (a few seconds in all): every float in [1, 4) through sqrtf and
+// through sqrt of the double, with the estimate's error and the errors of the refined estimates
+// against the proof's bounds; every float and double exponent at a sample of mantissas; the
+// special values (NaNs, infinities, zeros, negatives with errno, the ends of Core's domain, the
+// neighbours step 5 makes); subnormals; millions of random doubles; and doubles whose roots lie
+// within 2^-88 of a midpoint (where the last step has to choose).
 //
 // Usage: gekko_sqrt_test [--all]
 //   --all  also every one of the 2^32 float bit patterns, through sqrtf and through sqrt of the
-//          double, on every core.
+//          double, with each model, on every core.
 
 #include <algorithm>
 #include <atomic>
@@ -34,75 +43,18 @@ using gekko_sqrt::FromBits;
 
 namespace {
 
-// Dolphin's frsqrte, what Dolphin runs for the Gekko's instruction: frsqrte_expected and
-// ApproximateReciprocalSquareRoot from Dolphin's Source/Core/Common/FloatUtils.cpp
-// (https://github.com/dolphin-emu/dolphin, master of 2026-10; GPL-2.0-or-later), copied with
-// std::bit_cast spelled with memcpy (C++17) and MakeQuiet written out.
-struct BaseAndDec {
-    int m_base;
-    int m_dec;
+// 1/sqrt(x) within 2^-52 (two roundings). Core only asks for normal x.
+double InvSqrt(double x) { return 1.0 / std::sqrt(x); }
+
+// Cut to 13 bits after the point (the other 39 of the mantissa cleared).
+struct Truncated {
+    double operator()(double x) const { return FromBits(Bits(InvSqrt(x)) & ~((1ull << 39) - 1)); }
 };
 
-const BaseAndDec frsqrte_expected[32] = {
-    {0x1a7e800, -0x568}, {0x17cb800, -0x4f3}, {0x1552800, -0x48d}, {0x130c000, -0x435},
-    {0x10f2000, -0x3e7}, {0x0eff000, -0x3a2}, {0x0d2e000, -0x365}, {0x0b7c000, -0x32e},
-    {0x09e5000, -0x2fc}, {0x0867000, -0x2d0}, {0x06ff000, -0x2a8}, {0x05ab800, -0x283},
-    {0x046a000, -0x261}, {0x0339800, -0x243}, {0x0218800, -0x226}, {0x0105800, -0x20b},
-    {0x3ffa000, -0x7a4}, {0x3c29000, -0x700}, {0x38aa000, -0x670}, {0x3572000, -0x5f2},
-    {0x3279000, -0x584}, {0x2fb7000, -0x524}, {0x2d26000, -0x4cc}, {0x2ac0000, -0x47e},
-    {0x2881000, -0x43a}, {0x2665000, -0x3fa}, {0x2468000, -0x3c2}, {0x2287000, -0x38e},
-    {0x20c1000, -0x35e}, {0x1f12000, -0x332}, {0x1d79000, -0x30a}, {0x1bf4000, -0x2e6},
-};
-
-double ApproximateReciprocalSquareRoot(double val)
-{
-    int64_t integral = static_cast<int64_t>(Bits(val));
-    int64_t mantissa = integral & ((1LL << 52) - 1);
-    const int64_t sign = integral & static_cast<int64_t>(1ULL << 63);
-    int64_t exponent = integral & (0x7FFLL << 52);
-
-    // Special case 0
-    if (mantissa == 0 && exponent == 0)
-        return sign ? -std::numeric_limits<double>::infinity()
-                    : std::numeric_limits<double>::infinity();
-
-    // Special case NaN-ish numbers
-    if (exponent == (0x7FFLL << 52)) {
-        if (mantissa == 0) {
-            if (sign)
-                return std::numeric_limits<double>::quiet_NaN();
-            return 0.0;
-        }
-        return FromBits(Bits(val) | 0x0008000000000000ull); // MakeQuiet
-    }
-
-    // Negative numbers return NaN
-    if (sign)
-        return std::numeric_limits<double>::quiet_NaN();
-
-    if (!exponent) {
-        // "Normalize" denormal values
-        do {
-            exponent -= 1LL << 52;
-            mantissa <<= 1;
-        } while (!(mantissa & (1LL << 52)));
-        mantissa &= (1LL << 52) - 1;
-        exponent += 1LL << 52;
-    }
-
-    const int64_t exponent_lsb = exponent & (1LL << 52);
-    exponent = ((0x3FFLL << 52) - ((exponent - (0x3FELL << 52)) / 2)) & (0x7FFLL << 52);
-    integral = sign | exponent;
-
-    const int i = static_cast<int>((exponent_lsb | mantissa) >> 37);
-    const auto& entry = frsqrte_expected[i / 2048];
-    integral |= static_cast<int64_t>(entry.m_base + entry.m_dec * (i % 2048)) << 26;
-
-    return FromBits(static_cast<uint64_t>(integral));
-}
-
-struct DolphinFrsqrte {
-    double operator()(double x) const { return ApproximateReciprocalSquareRoot(x); }
+// Off by a constant factor 1 + k.
+struct Scaled {
+    double k;
+    double operator()(double x) const { return InvSqrt(x) * (1.0 + k); }
 };
 
 uint64_t Mix(uint64_t z)
@@ -112,17 +64,6 @@ uint64_t Mix(uint64_t z)
     z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
     return z ^ (z >> 31);
 }
-
-// Dolphin's estimate made worse by a factor in [1 - 8e-4, 1 + 8e-4], mostly at the ends, chosen
-// by the input's bits: within (1 + 1.8451e-4)(1 + 8e-4) - 1 < 1/1000 of 1/sqrt(x).
-struct PerturbedFrsqrte {
-    double operator()(double x) const
-    {
-        const uint64_t h = Mix(Bits(x));
-        const double f = (h & 3) == 0 ? static_cast<double>(h >> 11) * 0x1p-52 - 1.0 : ((h & 4) ? 1.0 : -1.0);
-        return ApproximateReciprocalSquareRoot(x) * (1.0 + 8e-4 * f);
-    }
-};
 
 struct Rng {
     uint64_t s;
@@ -234,54 +175,25 @@ void AtomicMax(std::atomic<double>& m, double v)
 
 // ---- The checks ----
 
-// GekkoSqrt.h step 1: frsqrte is constant on each of its 2^16 classes (exponent parity, top 15
-// mantissa bits), r sqrt(x) is monotonic there, so the classes' ends bound |r sqrt(x) - 1|.
-// Also that the estimate of 4^k x is the estimate of x over 2^k (so [1, 4) is every class).
-double EstimateBound()
-{
-    double worst = 0.0;
-    for (int e = 0; e < 2; e++)
-        for (int j = 0; j < 32768; j++) {
-            const double lo = std::ldexp(1.0 + j * 0x1p-15, e);
-            const double hi = std::ldexp(1.0 + (j + 1) * 0x1p-15, e);
-            const double r = ApproximateReciprocalSquareRoot(lo);
-            g_checks++;
-            if (ApproximateReciprocalSquareRoot(std::nextafter(hi, 0.0)) != r)
-                Report("frsqrte class", Bits(lo), Bits(r), 0, false);
-            worst = std::max({worst, std::fabs(r * std::sqrt(lo) - 1.0),
-                              std::fabs(r * std::sqrt(hi) - 1.0)});
-        }
-    Rng rng{1};
-    for (int i = 0; i < 100000; i++) {
-        const double x = 1.0 + 3.0 * rng.Unit();
-        const int k = static_cast<int>(rng.Next() % 1020) - 510;
-        const double y = std::ldexp(x, 2 * k);
-        if (y < 0x1p-1022 || std::isinf(y))
-            continue;
-        g_checks++;
-        if (ApproximateReciprocalSquareRoot(y) != std::ldexp(ApproximateReciprocalSquareRoot(x), -k))
-            Report("frsqrte scaling", Bits(y), Bits(ApproximateReciprocalSquareRoot(y)), 0, false);
-    }
-    return worst;
-}
-
 // Every float in [1, 4) through sqrtf and through sqrt of its double, and for the double the
-// errors of Refine's g and h (GekkoSqrt.h step 2) and how often the last step moves y.
+// estimate's error, the errors of Refine's g and h (GekkoSqrt.h step 2) and how often the last
+// step moves y.
 struct SweepStats {
-    std::atomic<double> eg{0.0}, eh{0.0};
+    std::atomic<double> est{0.0}, eg{0.0}, eh{0.0};
     std::atomic<uint64_t> up{0}, down{0};
 };
 
 template <class R>
-void Sweep14(R rsqrte, SweepStats& st, uint32_t stride, const char* what)
+void Sweep14(R rsqrte, SweepStats& st, const char* what)
 {
     const uint32_t first = 0x3F800000u, last = 0x40800000u; // [1, 4)
-    const uint64_t count = (last - first + stride - 1) / stride;
+    const uint64_t count = last - first;
     Parallel(0, count, [&](uint64_t i) {
-        const float f = FFromBits(first + static_cast<uint32_t>(i) * stride);
+        const float f = FFromBits(first + static_cast<uint32_t>(i));
         const double x = f;
         CheckF(f, rsqrte, what);
         CheckD(x, rsqrte, what);
+        AtomicMax(st.est, std::fabs(rsqrte(x) * std::sqrt(x) - 1.0));
         const gekko_sqrt::Estimate e = gekko_sqrt::Refine(x, rsqrte);
         // g = sqrt(x)(1 + eg): g^2 - x = x (2 eg + eg^2).
         const double eg = std::fma(e.g, e.g, -x) / (2.0 * x);
@@ -454,7 +366,7 @@ void Mul128(uint64_t a, uint64_t b, uint64_t& hi, uint64_t& lo)
     hi = p11 + (p01 >> 32) + (p10 >> 32) + (mid >> 32);
 }
 
-// Doubles whose roots are within |c| 2^-109 (relative) of a midpoint between two doubles: for
+// Doubles whose roots are within |c| 2^-107 (relative) of a midpoint between two doubles: for
 // c = 1 mod 8, A^2 = c mod 2^55 has odd solutions A, and with A in (2^53, 2^54) the double
 // x = (A^2 - c) 2^-106 sits just off the square of the midpoint A 2^-53. Scaled by powers of 4
 // across the range (Core's domain and both scaled paths). Returns how many there were.
@@ -463,7 +375,7 @@ uint64_t HardCases(R rsqrte, const char* what, std::atomic<uint64_t>* moved)
 {
     const int scales[] = {-511, -460, -451, -450, -449, -300, -1, 0, 1, 300, 449, 450, 451, 460, 511};
     std::atomic<uint64_t> cases{0};
-    const int64_t range = 1 << 18;
+    const int64_t range = 1 << 16;
     Parallel(0, 2 * range, [&](uint64_t i) {
         const int64_t c = 1 + 8 * (static_cast<int64_t>(i) - range); // ..., -15, -7, 1, 9, ...
         const uint64_t mod = (1ull << 55) - 1;
@@ -506,21 +418,52 @@ uint64_t HardCases(R rsqrte, const char* what, std::atomic<uint64_t>* moved)
     return cases.load();
 }
 
-void All()
+
+// The default checks with one model: estimateBound is what the model promises, refinedBound what
+// GekkoSqrt.h derives from it for g and h.
+template <class R>
+void Default(R rsqrte, const char* name, double estimateBound, double refinedBound)
 {
     const auto start = std::chrono::steady_clock::now();
     const uint64_t before = g_failures.load();
-    DolphinFrsqrte rsqrte;
+    SweepStats st;
+    Sweep14(rsqrte, st, name);
+    Exponents(rsqrte);
+    Specials(rsqrte);
+    Subnormals(rsqrte);
+    RandomDoubles(rsqrte, 500000, 1);
+    std::atomic<uint64_t> moved{0};
+    const uint64_t hard = HardCases(rsqrte, name, &moved);
+    g_checks++;
+    if (!(st.est.load() <= estimateBound + 1e-15))
+        Report("estimate outside its model's bound", 0, Bits(st.est.load()), Bits(estimateBound), false);
+    g_checks++;
+    if (!(st.eg.load() < refinedBound && st.eh.load() < refinedBound))
+        Report("refined estimate outside the proof's bound", 0, Bits(st.eg.load()), Bits(st.eh.load()), false);
+    const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    std::printf("%-9s estimate within %.5e; g within %.3e, h within %.3e (proof: %.1e); last step moved "
+                "y %llu+%llu times in [1, 4), %llu of %llu next to midpoints; %llu mismatches, %.1f s\n",
+                name, st.est.load(), st.eg.load(), st.eh.load(), refinedBound,
+                (unsigned long long)st.up.load(), (unsigned long long)st.down.load(),
+                (unsigned long long)moved.load(), (unsigned long long)hard,
+                (unsigned long long)(g_failures.load() - before), secs);
+}
+
+template <class R>
+void All(R rsqrte, const char* name)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const uint64_t before = g_failures.load();
     Parallel(0, 1ull << 32, [&](uint64_t i) {
         const float f = FFromBits(static_cast<uint32_t>(i));
-        CheckF(f, rsqrte, "all floats");
-        CheckD(f, rsqrte, "all floats (double)");
+        CheckF(f, rsqrte, name);
+        CheckD(f, rsqrte, name);
     });
     g_checks += 2ull << 32;
     const double secs =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    std::printf("all 2^32 floats, sqrtf and sqrt of the double: %llu mismatches, %.1f s on %u threads\n",
-                (unsigned long long)(g_failures.load() - before), secs,
+    std::printf("%-9s all 2^32 floats, sqrtf and sqrt of the double: %llu mismatches, %.1f s on %u threads\n",
+                name, (unsigned long long)(g_failures.load() - before), secs,
                 std::max(1u, std::thread::hardware_concurrency()));
 }
 
@@ -530,51 +473,29 @@ int main(int argc, char** argv)
 {
     const bool all = argc > 1 && std::strcmp(argv[1], "--all") == 0;
     const auto start = std::chrono::steady_clock::now();
-    DolphinFrsqrte dolphin;
-    PerturbedFrsqrte worse;
+    const double e = gekko_sqrt::kEstimateError;
+    const Truncated truncated;
+    const Scaled plus{e}, minus{-e}, plus1k{1e-3}, minus1k{-1e-3};
 
-    const double bound = EstimateBound();
-    g_checks++;
-    if (!(bound < gekko_sqrt::kEstimateError))
-        Report("frsqrte bound above kEstimateError", 0, Bits(bound), Bits(gekko_sqrt::kEstimateError), false);
-    std::printf("frsqrte: |r sqrt(x) - 1| <= %.6e over its 2^16 classes (GekkoSqrt.h uses %.4e)\n", bound,
-                gekko_sqrt::kEstimateError);
-
-    SweepStats st;
-    Sweep14(dolphin, st, 1, "[1, 4)");
-    std::printf("[1, 4): every float; refined g within %.3e, h within %.3e (proof: 1.6e-11); the last "
-                "step moved y up %llu, down %llu times\n",
-                st.eg.load(), st.eh.load(), (unsigned long long)st.up.load(), (unsigned long long)st.down.load());
-    g_checks++;
-    if (!(st.eg.load() < 1.6e-11 && st.eh.load() < 1.6e-11))
-        Report("refined estimate above the proof's bound", 0, Bits(st.eg.load()), Bits(st.eh.load()), false);
-
-    Exponents(dolphin);
-    Specials(dolphin);
-    Subnormals(dolphin);
-    RandomDoubles(dolphin, 2000000, 1);
-    std::atomic<uint64_t> moved{0};
-    const uint64_t hard = HardCases(dolphin, "next to midpoints", &moved);
-    std::printf("next to midpoints: %llu doubles, the last step moved y in %llu of the unscaled ones\n",
-                (unsigned long long)hard, (unsigned long long)moved.load());
-
-    // The margin: an estimate within 1/1000 instead of 1.85e-4.
-    SweepStats worseStats;
-    Sweep14(worse, worseStats, 3, "[1, 4), worse estimate");
-    RandomDoubles(worse, 500000, 2);
-    HardCases(worse, "next to midpoints, worse estimate", nullptr);
-    std::printf("estimate within 1/1000: refined g within %.3e, h within %.3e (claim: 2.6e-9)\n",
-                worseStats.eg.load(), worseStats.eh.load());
-    g_checks++;
-    if (!(worseStats.eg.load() < 2.6e-9 && worseStats.eh.load() < 2.6e-9))
-        Report("worse estimate above the claimed bound", 0, Bits(worseStats.eg.load()), Bits(worseStats.eh.load()), false);
-
+    // The proof's bounds on g and h: 1.6e-11 for an estimate within kEstimateError, 2.6e-9 within
+    // 1/1000.
+    Default(truncated, "truncated", 0x1p-13 + 0x1p-51, 1.6e-11);
+    Default(plus, "+bound", e + 0x1p-51, 1.6e-11);
+    Default(minus, "-bound", e + 0x1p-51, 1.6e-11);
+    Default(plus1k, "+1/1000", 1e-3 + 0x1p-51, 2.6e-9);
+    Default(minus1k, "-1/1000", 1e-3 + 0x1p-51, 2.6e-9);
     const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     std::printf("default checks: %.1f s\n", secs);
-    if (all)
-        All();
+
+    if (all) {
+        All(truncated, "truncated");
+        All(plus, "+bound");
+        All(minus, "-bound");
+        All(plus1k, "+1/1000");
+        All(minus1k, "-1/1000");
+    }
 
     std::printf("gekko_sqrt: %llu checks, %llu mismatches%s\n", (unsigned long long)g_checks.load(),
-                (unsigned long long)g_failures.load(), all ? " (with all 2^32 floats)" : "");
+                (unsigned long long)g_failures.load(), all ? " (with all 2^32 floats, each model)" : "");
     return g_failures.load() == 0 ? 0 : 1;
 }

@@ -269,8 +269,8 @@ add_test(NAME ui_rect
          COMMAND ui_rect_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/ui_title.jsonl ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/ui_dungeon.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-# The GameCube's exact sqrt and sqrtf (src/util/GekkoSqrt.h) with Dolphin's frsqrte against the
-# PC's, bit for bit; no data. `gekko_sqrt_test --all` adds every one of the 2^32 floats.
+# The GameCube's exact sqrt and sqrtf (src/util/GekkoSqrt.h) with model estimates at the ends of
+# frsqrte's bound against the PC's, bit for bit; no data. `--all` adds every one of the 2^32 floats.
 find_package(Threads REQUIRED)
 add_executable(gekko_sqrt_test tests/gekko_sqrt_test.cpp)
 target_include_directories(gekko_sqrt_test PRIVATE src)
