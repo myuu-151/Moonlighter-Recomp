@@ -181,6 +181,21 @@ inline Vector3 V3Cross(Vector3 a, Vector3 b)
     using detail::F;
     return {F(D(a.y) * b.z - D(a.z) * b.y), F(D(a.z) * b.x - D(a.x) * b.z), F(D(a.x) * b.y - D(a.y) * b.x)};
 }
+// ClampMagnitude (2019.2): float sqrMagnitude = vector.sqrMagnitude; if (sqrMagnitude > maxLength *
+// maxLength) { float num = (float)Math.Sqrt(sqrMagnitude); float num2 = vector.x / num; ... return new
+// Vector3(num2 * maxLength, num3 * maxLength, num4 * maxLength); } return vector;
+inline Vector3 V3ClampMagnitude(Vector3 v, float maxLength)
+{
+    using detail::D;
+    using detail::F;
+    const float sq = V3SqrMagnitude(v);
+    if (D(sq) > D(maxLength) * maxLength) {
+        const float n = F(std::sqrt(D(sq)));
+        const float nx = v.x / n, ny = v.y / n, nz = v.z / n;
+        return {nx * maxLength, ny * maxLength, nz * maxLength};
+    }
+    return v;
+}
 inline Vector3 V3Zero() { return {}; }
 inline Vector3 V3One() { return {1.0f, 1.0f, 1.0f}; }
 inline Vector3 V3Up() { return {0.0f, 1.0f, 0.0f}; }
@@ -226,6 +241,14 @@ inline Vector3 QRotate(Quaternion r, Vector3 p)
     res.y = F((D(num7) + num12) * p.x + (1.0 - (D(num4) + num6)) * p.y + (D(num9) - num10) * p.z);
     res.z = F((D(num8) - num11) * p.x + (D(num9) + num10) * p.y + (1.0 - (D(num4) + num5)) * p.z);
     return res;
+}
+// Quaternion.Euler(x, y, z) for a turn about z only (the 2D game's): (0, 0, sin(z/2), cos(z/2)),
+// the engine's float math (degrees to radians, halved). Others: not modelled.
+inline Quaternion QEuler(Vector3 e)
+{
+    if (e.x != 0.0f || e.y != 0.0f) cs::NotTranslated("Quaternion.Euler about x or y");
+    const float h = e.z * 0.0174532924f * 0.5f;
+    return {0.0f, 0.0f, std::sin(h), std::cos(h)};
 }
 inline bool QIsIdentity(Quaternion q) { return q.x == 0.0f && q.y == 0.0f && q.z == 0.0f && q.w == 1.0f; }
 inline void cs_trace_value(cs::Tracer&, const Quaternion&) {}

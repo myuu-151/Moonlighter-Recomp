@@ -55,6 +55,14 @@ void Tween::cs_trace(cs::Tracer& t)
 {
     for (cs::Object* o : keep) t.Mark(o);
     t.Mark(onComplete);
+    t.Mark(onKill);
+    t.Mark(id);
+}
+
+void Tween::Restart(bool includeDelay, float changeDelayTo)
+{
+    (void)includeDelay, (void)changeDelayTo;
+    cs::NotTranslated("DOTween: Tween.Restart");
 }
 
 bool Tween::IsPlaying()
@@ -135,11 +143,81 @@ Tweener* DOTween::To(cs::Delegate<Vector2()>* getter, cs::Delegate<void(Vector2)
     return t;
 }
 
+Tweener* DOTween::To(cs::Delegate<UnityEngine::Color()>* getter, cs::Delegate<void(UnityEngine::Color)>* setter, UnityEngine::Color endValue, float duration)
+{
+    auto* t = Make<Tweener>();
+    t->keep = {getter, setter};
+    (void)cs::nc(getter);
+    (void)cs::nc(setter);
+    t->ids.push_back(Tw()->To([getter] { const auto c = getter->Invoke(); return Vector2{c.r, c.g}; },
+                              [getter, setter](Vector2 v) {
+                                  auto c = getter->Invoke();
+                                  c.r = v.x;
+                                  c.g = v.y;
+                                  setter->Invoke(c);
+                              },
+                              Vector2{endValue.r, endValue.g}, duration, kEase, 0.0f, kIndependent));
+    t->ids.push_back(Tw()->To([getter] { const auto c = getter->Invoke(); return Vector2{c.b, c.a}; },
+                              [getter, setter](Vector2 v) {
+                                  auto c = getter->Invoke();
+                                  c.b = v.x;
+                                  c.a = v.y;
+                                  setter->Invoke(c);
+                              },
+                              Vector2{endValue.b, endValue.a}, duration, kEase, 0.0f, kIndependent));
+    return t;
+}
+
+Tweener* DOTween::ToAlpha(cs::Delegate<UnityEngine::Color()>* getter, cs::Delegate<void(UnityEngine::Color)>* setter, float endValue, float duration)
+{
+    auto* t = Make<Tweener>();
+    t->keep = {getter, setter};
+    (void)cs::nc(getter);
+    (void)cs::nc(setter);
+    t->ids.push_back(Tw()->To([getter] { return Vector2{getter->Invoke().a, 0.0f}; },
+                              [getter, setter](Vector2 v) {
+                                  auto c = getter->Invoke();
+                                  c.a = v.x;
+                                  setter->Invoke(c);
+                              },
+                              Vector2{endValue, 0.0f}, duration, kEase, 0.0f, kIndependent));
+    return t;
+}
+
 int32_t DOTween::Kill(cs::Object* targetOrId, bool complete)
 {
     if (complete) cs::NotTranslated("DOTween.Kill(target, complete: true)");
     if (!targetOrId) return 0;
-    return Tw()->KillTarget(targetOrId);
+    int32_t killed = 0;
+    // A string id: the tweens SetId gave it (by value).
+    if (auto* s = dynamic_cast<cs::String*>(targetOrId)) {
+        std::vector<Tween*> hit;
+        for (Tween* tw : Running::List())
+            if (auto* ids = dynamic_cast<cs::String*>(tw->id); ids && ids->str() == s->str() && tw->Alive()) hit.push_back(tw);
+        for (Tween* tw : hit) {
+            tw->Kill(false);
+            killed++;
+        }
+        return killed;
+    }
+    for (Tween* tw : Running::List())
+        if (tw->id == targetOrId && tw->Alive()) {
+            tw->Kill(false);
+            killed++;
+        }
+    return killed + Tw()->KillTarget(targetOrId);
+}
+
+Tweener* DOVirtual::Float(float from, float to, float duration, cs::Delegate<void(float)>* onVirtualUpdate)
+{
+    auto* t = Make<Tweener>();
+    t->keep = {onVirtualUpdate};
+    t->ids.push_back(Tw()->To([from] { return Vector2{from, 0.0f}; },
+                              [onVirtualUpdate](Vector2 v) {
+                                  if (onVirtualUpdate) onVirtualUpdate->Invoke(v.x);
+                              },
+                              Vector2{to, 0.0f}, duration, kEase, 0.0f, kIndependent));
+    return t;
 }
 
 Tween* DOVirtual::DelayedCall(float delay, TweenCallback* callback, bool ignoreTimeScale)
@@ -262,10 +340,34 @@ Tweener* ShortcutExtensions::DOScale(UnityEngine::Transform* target, Vector3 end
     return t;
 }
 
+// DORotate about z (the 2D game's; x or y: not modelled). FastBeyond360 turns from the start's euler
+// z to the end's the whole way (no wrap); Fast takes the shorter way. The turn is presentation (the
+// fall's spin): its timing (delay, duration, OnComplete) is what the game's state sees.
 Tweener* ShortcutExtensions::DORotate(UnityEngine::Transform* target, Vector3 endValue, float duration, RotateMode mode)
 {
-    (void)target, (void)endValue, (void)duration, (void)mode;
-    cs::NotTranslated("DOTween DORotate (QuaternionPlugin, RotateMode)");
+    (void)cs::nc(target);
+    if (endValue.x != 0.0f || endValue.y != 0.0f) cs::NotTranslated("DOTween DORotate about x or y");
+    if (mode != RotateMode::Fast && mode != RotateMode::FastBeyond360) cs::NotTranslated("DOTween DORotate with RotateMode WorldAxisAdd / LocalAxisAdd");
+    auto* t = Make<Tweener>();
+    t->keep = {target};
+    const bool beyond = mode == RotateMode::FastBeyond360;
+    const float end = endValue.z;
+    t->ids.push_back(Tw()->To(
+        [target, beyond, end] {
+            float z = target->get_eulerAngles().z;
+            if (!beyond) { // the shorter way to the end
+                while (end - z > 180.0f) z += 360.0f;
+                while (z - end > 180.0f) z -= 360.0f;
+            }
+            return Vector2{z, 0.0f};
+        },
+        [target](Vector2 v) {
+            if (!Alive(target)) return;
+            target->set_eulerAngles(Vector3{0.0f, 0.0f, v.x});
+        },
+        Vector2{end, 0.0f}, duration, kEase, 0.0f, kIndependent));
+    Targets(t, target);
+    return t;
 }
 
 Tweener* ShortcutExtensions::DOColor(UnityEngine::Material* target, UnityEngine::Color endValue, float duration)
@@ -353,6 +455,26 @@ void TweenSettingsExtensions::Ease_(Tween* t, Ease ease)
 void TweenSettingsExtensions::Update_(Tween* t, bool independent)
 {
     for (int id : t->ids) Tw()->SetUnscaled(id, independent);
+}
+
+void TweenSettingsExtensions::Delay_(Tween* t, float delay)
+{
+    for (int id : t->ids) Tw()->SetDelay(id, delay);
+}
+
+void TweenSettingsExtensions::OnKill_(Tween* t, TweenCallback* action)
+{
+    // On the last of the layer's tweens it stands for (they go together).
+    t->onKill = action;
+    if (t->ids.empty()) return;
+    Tw()->OnKill(t->ids.back(), [action] {
+        if (action) action->Invoke();
+    });
+}
+
+void TweenSettingsExtensions::Target_(Tween* t, cs::Object* target)
+{
+    for (int id : t->ids) Tw()->SetTarget(id, target);
 }
 
 void TweenSettingsExtensions::OnComplete_(Tween* t, TweenCallback* action)

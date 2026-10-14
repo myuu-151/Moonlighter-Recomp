@@ -380,3 +380,36 @@ members	UnityEngine.Texture2D	.ctor get_width get_height GetPixel SetPixel Apply
 type	UnityEngine.FilterMode	::UnityEngine::FilterMode	include=bind/UnityEngine.h
 type	UnityEngine.Camera	::UnityEngine::Camera	conv	include=bind/UnityEngine.h
 members	UnityEngine.Camera	get_orthographic set_orthographic get_orthographicSize set_orthographicSize
+# ---- the hero (player_translated): his moves' queries, the Animator's parameters and state machine
+# behaviours, DOTween's OnKill / SetId / SetDelay / DORotate / colours, the keyboard (none down) ----
+members	UnityEngine.Physics2D	BoxCast IgnoreLayerCollision GetIgnoreLayerCollision
+get	UnityEngine.RaycastHit2D.transform	{this}.get_transform()	pure
+members	UnityEngine.Collider2D	IsTouching
+members	UnityEngine.Transform	Translate GetEnumerator
+type	UnityEngine.Space	::UnityEngine::Space	include=bind/UnityEngine.h
+call	UnityEngine.Vector3.ClampMagnitude(UnityEngine.Vector3,float)	::UnityEngine::V3ClampMagnitude({0}, {1})	pure
+call	UnityEngine.Quaternion.Euler(UnityEngine.Vector3)	::UnityEngine::QEuler({0})	pure
+members	UnityEngine.Mathf	Approximately
+type	UnityEngine.KeyCode	::UnityEngine::KeyCode	include=bind/UnityEngine.h
+type	UnityEngine.Input	::UnityEngine::Input	conv	include=bind/UnityEngine.h
+members	UnityEngine.Input	GetKey GetKeyDown GetKeyUp
+members	UnityEngine.Time	get_unscaledDeltaTime get_timeScale set_timeScale
+type	UnityEngine.HideFlags	::UnityEngine::HideFlags	include=bind/UnityEngine.h
+members	UnityEngine.Object	get_hideFlags set_hideFlags
+members	UnityEngine.Animator	get_parameters GetBehaviours get_applyRootMotion set_applyRootMotion CrossFade
+type	UnityEngine.AnimatorControllerParameter	::UnityEngine::AnimatorControllerParameter	conv	include=bind/UnityEngine.h
+members	UnityEngine.AnimatorControllerParameter	get_name get_nameHash get_type get_defaultFloat get_defaultInt get_defaultBool
+type	UnityEngine.AnimatorControllerParameterType	::UnityEngine::AnimatorControllerParameterType	include=bind/UnityEngine.h
+type	UnityEngine.StateMachineBehaviour	::UnityEngine::StateMachineBehaviour	conv	include=bind/UnityEngine.h
+members	UnityEngine.StateMachineBehaviour	.ctor
+call	UnityEngine.StateMachineBehaviour.OnStateEnter(UnityEngine.Animator,UnityEngine.AnimatorStateInfo,int)	::UnityEngine::StateMachineBehaviour::BaseMessage({this}, {0}, {1}, {2})
+call	UnityEngine.StateMachineBehaviour.OnStateExit(UnityEngine.Animator,UnityEngine.AnimatorStateInfo,int)	::UnityEngine::StateMachineBehaviour::BaseMessage({this}, {0}, {1}, {2})
+call	UnityEngine.StateMachineBehaviour.OnStateUpdate(UnityEngine.Animator,UnityEngine.AnimatorStateInfo,int)	::UnityEngine::StateMachineBehaviour::BaseMessage({this}, {0}, {1}, {2})
+members	DG.Tweening.DOTween	ToAlpha
+members	DG.Tweening.DOVirtual	Float
+members	DG.Tweening.TweenSettingsExtensions	OnKill SetId SetTarget
+members	DG.Tweening.TweenExtensions	Restart
+members	DarkTonic.MasterAudio.MasterAudio	StopAllOfSound
+members	DarkTonic.MasterAudio.SoundGroupVariation	FadeOutNow
+members	CodeStage.AntiCheat.ObscuredTypes.ObscuredFloat	op_Increment op_Decrement
+members	CodeStage.AntiCheat.ObscuredTypes.ObscuredInt	op_Increment op_Decrement

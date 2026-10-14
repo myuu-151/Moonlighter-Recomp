@@ -463,6 +463,17 @@ public sealed class Emitter
         if (RemapFields(t).Count > 0) sb.Append("    void cs_Remap(const ::UnityEngine::Remap& r) override;\n");
         // (A stubbed class's messages aren't hooked: what they do is the driver's to stand in for.)
         var mine = t.GetMembers().OfType<IMethodSymbol>().Where(m => tr.Methods.TryGetValue(m, out var mr) && !mr.Stub && !m.IsStatic && m.MethodKind == MethodKind.Ordinary && !m.IsGenericMethod).ToList();
+        // A StateMachineBehaviour's messages (the Animator's, by its states): its overrides through
+        // the facade's hooks (recomp/src/bind/Components.h).
+        if (DerivesFrom(t, "UnityEngine.StateMachineBehaviour"))
+            foreach (var name in new[] { "OnStateEnter", "OnStateExit", "OnStateUpdate" })
+            {
+                var m = mine.FirstOrDefault(x => x.Name == name && x.Parameters.Length == 3);
+                if (m == null) continue;
+                string args = string.Join(", ", m.Parameters.Select(Body.ParamName));
+                string ps = string.Join(", ", m.Parameters.Select(p => TypeOrGap(p.Type) + " " + Body.ParamName(p)));
+                sb.Append($"    void cs_{name}({ps}) override {{ this->{N.Method(m)}({args}); }}\n");
+            }
         if (mono)
         {
             foreach (var name in Messages)
@@ -555,6 +566,7 @@ public sealed class Emitter
         if (n == "UnityEngine.Vector2") return "v.AsVector2()";
         if (n == "UnityEngine.Vector3") return "v.AsVector3()";
         if (n == "UnityEngine.Color") return "v.AsColor()";
+        if (n == "UnityEngine.LayerMask") return "::UnityEngine::LayerMask::op_Implicit_LayerMask(v.AsInt())"; // (its bits)
         // A reference to an object of the prefab (its path below the prefab's root): the object, or
         // its component of the field's type.
         if (n == "UnityEngine.GameObject") return "v.AsGameObject()";

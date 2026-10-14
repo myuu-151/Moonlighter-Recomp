@@ -47,11 +47,7 @@ file AStar.cs
 file Heap.cs
 file IHeapItem.cs
 type Extensions DiamondDistance NormalizeOneDimensional GetAngleFromVector GetOrAddComponent ToList ToArray Any ForEachIndexed
-type MoonlighterEffectRegistry Instance GetEffects GetEffect .ctor
-# the scene the enemies live in: the parts of its classes they reach, translated
-type HeroMerchant .ctor Instance
-type HeroMerchantController .ctor comboCounter CheckIfPlayerIsShieldProtected AddForce
-type HeroMerchantStats .ctor
+# the scene the enemies live in: the parts of its classes they reach, translated (the hero: below)
 type CameraManager .ctor Instance Rumble
 type DungeonManager .ctor Instance culture level
 type DungeonRoom .ctor EnemyDefeated AreAllEnemiesDefeated areAllEnemiesDefeated TranslatePositionToTile DisableEnemies AddDropItems
@@ -73,15 +69,14 @@ file TangleBehaviour.cs
 # the hero's Wanderer Amulet on the enemies' hits (the KamikazeGolem's recording has it on)
 type WandererAmuletEffect .ctor Enemy_OnEnemyRecivesDamage probToCallWanderer
 type AmuletMoonlighterEffect .ctor
-type MoonlighterEffect .ctor
-# the hero's weapon push (the replays drive it where the recording has it)
-type Weapon PushEnemyBackwards
 # the prefab's drops (Enemy.itemDrops, [Serializable]: made by the prefab's loader; DropItem stood in for)
 type ItemDrop .ctor DropItem
 # ... and stood in for (the hero's own code, the camera, the HUD, the save's statistics and
 # analytics, the items: what the enemy replays don't compare, or take from the recording)
-hand HeroMerchant DealDamageToPlayer
-hand HeroMerchantController CheckForHolesAfterPush VibrateForTime GetColliderOffsset
+# the hero's own code, the enemy replays' stand-ins around it (the walk replays run the game's)
+wrap HeroMerchant DealDamageToPlayer
+wrap HeroMerchantController CheckForHolesAfterPush GetColliderOffsset
+hand HeroMerchantController VibrateForTime
 hand HeroStatistics Instance RegisterGolemBabySlimeDeath RegisterForestBabySlimeDeath RegisterDesertBabySlimeDeath RegisterTechBabySlimeDeath RegisterGolemSoldierDeath RegisterGolemHermitDeath RegisterGolemKamikazeDeath RegisterFlyingKamikazeDeath RegisterGolemTurretDeath RegisterGolemTangleDeath RegisterForestTangleDeath
 hand MoonlighterAnalytics EnemySpawnLogEvent EnemyKilledLogEvent
 hand GameManager Instance SetGameSpeedForTime
@@ -98,3 +93,64 @@ hand EnemiesPrefabRegister GetPrefabByName
 hand EnemyHealthBar .ctor Init
 hand EnemyStatManager ReadFile
 hand DigitalSunGames.Platforms.Platform Achievements
+
+# ---- The hero, Will (player_translated: the walk recordings) ----
+# HeroMerchant, his controller (walk, roll, the main attacks and their combos, the hole checks and
+# the fall, the damaged effect, the blink), his stats, the SMAnimatorHandler his Animator's states
+# advise, the Dash ability and its SpeedEffect, the weapon (Weapon, Equipment), the action areas,
+# the roll's ghost trail, and InControl's controls the pad's input goes through.
+file HeroMerchant.cs
+file HeroMerchantController.cs
+file HeroMerchantStats.cs
+file Stat.cs
+file SMAnimatorHandler.cs
+file SMStateAdvisor.cs
+file ISMStateAdvisor.cs
+file Ability.cs
+file Dash.cs
+file SpeedEffect.cs
+file MoonlighterEffect.cs
+file MoonlighterEffectRegistry.cs
+file Weapon.cs
+file Equipment.cs
+file GhostEffect.cs
+file DestroyAfterTime.cs
+file ActionArea.cs
+file InControl/OneAxisInputControl.cs
+file InControl/TwoAxisInputControl.cs
+file InControl/InputControlState.cs
+file InControl/PlayerTwoAxisAction.cs
+type InControl.Utility Abs AbsoluteIsOverThreshold ApplyDeadZone Approximately IsNotZero IsZero ValueFromSides VectorToAngle
+type InControl.DeadZone Circular
+# DOTween's sprite module (compiled into the game): the fall's fade, the ghosts' colour
+type DG.Tweening.DOTweenModuleSprite DOColor DOFade
+# the tutorial's switch (on since: Dash.AbilityUseEnd reads it)
+type TutorialScene1 .cctor isWeaponActive
+# the GUI's panels as his moves read them (none open), the pendant shortcut (not charging)
+type GUIManager CheckAbility AllowPanelChange PreventPanelChange CurrentInventory DisableCurrentPanel
+type PendantShortcutHUD IsChargingPendant IsMirrorPrepared
+# his inventory as far as his controller's Init and moves read it: the equipped items, the armour
+# shown or hidden; the pad's actions (InputActionsManager's, made by the driver)
+type HeroMerchantInventory GetWeaponSetWeapon GetEquippedWeaponSet GetEquippedItemByType ShowArmor HideArmor equippedItems weaponParent
+type InputActionsManager Instance actions
+type ItemStack Weapon
+type PickOnWalk CanPick
+# the item database's masters (items.json's "$type": the weapons' classes)
+type GlovesWeaponMaster .ctor
+type SpearWeaponMaster .ctor
+type ShortSwordWeaponMaster .ctor
+type BigSwordWeaponMaster .ctor
+type BowWeaponMaster .ctor
+type WeaponEquipmentMaster .ctor
+type AbilityItemMaster .ctor
+type EquipmentItemMaster .ctor
+type ItemMaster .ctor
+# ... and the scene's services he calls, stood in for (recomp/tests/translated/scene/Standins.cpp): the
+# game's state (paused, the town loaded), the pad's settings, the HUD, the GUI's flash, the item
+# database and the items' objects (their UI)
+hand GameManager isGamePaused IsTownSceneLoaded IsDebugEnabled IsWillInDungeon NotLoadingScene SetDamageRedFlashLightsForLogitech SetDamageRedFlashLightsForRazer PauseGame
+hand GUIManager Flash
+hand HUDManager HideAttack ShowBagInfo HideBagInfo UpdateGoldQuantity SetPotionQuantity SetEmptyConsumableIcon PlayWeaponRumble ShowForbiddenBagInfo
+hand InControl.InputManager InvertYAxis
+hand ItemDatabase GetItemByName
+hand ItemStack Create Hide SetParent

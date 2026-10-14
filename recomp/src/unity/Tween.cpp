@@ -106,8 +106,10 @@ void Tweens::Complete(int id)
     for (size_t i = 0; i < tweens_.size(); i++)
         if (tweens_[i].id == id) {
             std::function<void()> cb = std::move(tweens_[i].onComplete);
+            std::function<void()> kill = std::move(tweens_[i].onKill);
             tweens_.erase(tweens_.begin() + static_cast<long>(i));
             if (cb) cb();
+            if (kill) kill();
             return;
         }
 }
@@ -117,7 +119,9 @@ void Tweens::Kill(int id)
     if (id == 0) return;
     for (size_t i = 0; i < tweens_.size(); i++)
         if (tweens_[i].id == id) {
+            std::function<void()> kill = std::move(tweens_[i].onKill);
             tweens_.erase(tweens_.begin() + static_cast<long>(i));
+            if (kill) kill();
             return;
         }
     killedPending_.push_back(id); // (it may be completing this update: its callback won't run)
@@ -168,6 +172,21 @@ void Tweens::SetUnscaled(int id, bool unscaled)
         if (t.id == id) t.unscaled = unscaled;
 }
 
+void Tweens::SetDelay(int id, float delay)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id && !t.delayComplete && t.elapsedDelay == 0.0f) t.delay = delay;
+}
+
+void Tweens::OnKill(int id, std::function<void()> callback)
+{
+    for (Tween& t : tweens_)
+        if (t.id == id) {
+            t.onKill = std::move(callback);
+            return;
+        }
+}
+
 void Tweens::SetTarget(int id, const void* target)
 {
     for (Tween& t : tweens_)
@@ -181,12 +200,15 @@ int Tweens::KillTarget(const void* target)
 {
     if (!target) return 0;
     int killed = 0;
+    std::vector<std::function<void()>> kills;
     for (size_t i = tweens_.size(); i-- > 0;)
         if (tweens_[i].target == target) {
+            if (tweens_[i].onKill) kills.insert(kills.begin(), std::move(tweens_[i].onKill));
             tweens_.erase(tweens_.begin() + static_cast<long>(i));
             killed++;
         }
     killedTargetsPending_.push_back(target); // (one completing in this update: its callback won't run)
+    for (auto& k : kills) k();
     return killed;
 }
 
@@ -241,10 +263,12 @@ void Tweens::Update(float deltaTime, float unscaledDeltaTime)
     // Completed ones go (their callbacks run in order, after this frame's values are set; one
     // that an earlier callback kills doesn't run).
     std::vector<std::pair<int, std::function<void()>>> callbacks;
+    std::vector<std::function<void()>> kills; // (each completed tween's OnKill, after its OnComplete)
     std::vector<const void*> targets; // (each callback's tween's target)
     for (size_t k = done.size(); k-- > 0;) {
-        if (tweens_[done[k]].onComplete) {
+        if (tweens_[done[k]].onComplete || tweens_[done[k]].onKill) {
             callbacks.insert(callbacks.begin(), {tweens_[done[k]].id, std::move(tweens_[done[k]].onComplete)});
+            kills.insert(kills.begin(), std::move(tweens_[done[k]].onKill));
             targets.insert(targets.begin(), tweens_[done[k]].target);
         }
         tweens_.erase(tweens_.begin() + static_cast<long>(done[k]));
@@ -255,7 +279,8 @@ void Tweens::Update(float deltaTime, float unscaledDeltaTime)
         bool killed = false;
         for (int k : killedPending_) killed |= k == callbacks[n].first;
         for (const void* k : killedTargetsPending_) killed |= targets[n] && k == targets[n];
-        if (!killed) callbacks[n].second();
+        if (!killed && callbacks[n].second) callbacks[n].second();
+        if (kills[n]) kills[n]();
     }
     killedPending_.clear();
     killedTargetsPending_.clear();

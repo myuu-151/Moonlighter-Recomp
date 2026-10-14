@@ -129,6 +129,9 @@ float Time::realtimeSinceStartup = 0.0f;
 float Time::time = 0.0f;
 float Time::deltaTime = 0.02f;
 float Time::fixedDeltaTime = 0.02f;
+float Time::unscaledDeltaTime = 0.02f;
+float Time::timeScale = 1.0f;
+std::vector<int32_t> Input::keysDown, Input::keysPressed, Input::keysReleased;
 int32_t Time::frameCount = 0;
 
 } // namespace UnityEngine

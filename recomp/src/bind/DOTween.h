@@ -52,9 +52,14 @@ public:
     // Still in the layer's tweens (playing or paused).
     bool Alive();
 
+    // Tween.Restart (the shield loss's sprite animation): not modelled.
+    void Restart(bool includeDelay, float changeDelayTo);
+
     std::vector<int> ids;                         // the layer's tweens it stands for
     std::vector<cs::Object*> keep;                // the delegates its tweens call
     cs::Delegate<void()>* onComplete = nullptr;
+    cs::Delegate<void()>* onKill = nullptr;
+    cs::Object* id = nullptr;                     // SetId's (a string compares by value)
 };
 
 class Tweener : public Tween {
@@ -81,6 +86,12 @@ struct DOTween {
     // (Vector2Plugin: each component start + change * ease, one expression: unity::Tweens::To, as
     // the hand port's FlyingKamikazeGolem return has it.)
     static Tweener* To(cs::Delegate<unity::Vector2()>* getter, cs::Delegate<void(unity::Vector2)>* setter, unity::Vector2 endValue, float duration);
+    // (ColorPlugin: each component `startValue.r += changeValue.r * easeVal`, one expression: the
+    // layer's To, the colour as two pairs, as ShortcutExtensions.DOColor.)
+    static Tweener* To(cs::Delegate<UnityEngine::Color()>* getter, cs::Delegate<void(UnityEngine::Color)>* setter, UnityEngine::Color endValue,
+                       float duration);
+    // ToAlpha: ColorPlugin with alphaOnly: the alpha alone, the other components as the getter reads them.
+    static Tweener* ToAlpha(cs::Delegate<UnityEngine::Color()>* getter, cs::Delegate<void(UnityEngine::Color)>* setter, float endValue, float duration);
     static int32_t Kill(cs::Object* targetOrId) { return Kill(targetOrId, false); }
     static int32_t Kill(cs::Object* targetOrId, bool complete);
 };
@@ -88,6 +99,9 @@ struct DOTween {
 struct DOVirtual {
     static Tween* DelayedCall(float delay, TweenCallback* callback) { return DelayedCall(delay, callback, true); }
     static Tween* DelayedCall(float delay, TweenCallback* callback, bool ignoreTimeScale);
+    // DOVirtual.Float(from, to, duration, onVirtualUpdate): DOTween.To of a float starting at `from`,
+    // the callback given each value (FloatPlugin's one expression).
+    static Tweener* Float(float from, float to, float duration, cs::Delegate<void(float)>* onVirtualUpdate);
 };
 
 struct ShortcutExtensions {
@@ -136,11 +150,31 @@ struct TweenSettingsExtensions {
         if (t) OnComplete_(t, action);
         return t;
     }
+    // SetDelay right after the call that made the tween (before its first update): its delay.
     template <typename T>
     static T SetDelay(T t, float delay)
     {
-        (void)delay;
-        if (t) cs::NotTranslated("DOTween: SetDelay after the tween is made");
+        if (t) Delay_(t, delay);
+        return t;
+    }
+    template <typename T>
+    static T OnKill(T t, TweenCallback* action)
+    {
+        if (t) OnKill_(t, action);
+        return t;
+    }
+    // SetId(id): what DOTween.Kill(id) finds it by (a string id compares by value).
+    template <typename T>
+    static T SetId(T t, cs::Object* id)
+    {
+        if (t) t->id = id;
+        return t;
+    }
+    // SetTarget(target): what DOKill / DOTween.Kill(target) finds it by.
+    template <typename T>
+    static T SetTarget(T t, cs::Object* target)
+    {
+        if (t) Target_(t, target);
         return t;
     }
 
@@ -148,6 +182,9 @@ private:
     static void Ease_(Tween* t, Ease ease);
     static void Update_(Tween* t, bool independent);
     static void OnComplete_(Tween* t, TweenCallback* action);
+    static void Delay_(Tween* t, float delay);
+    static void OnKill_(Tween* t, TweenCallback* action);
+    static void Target_(Tween* t, cs::Object* target);
 };
 
 struct TweenExtensions {
@@ -167,6 +204,10 @@ struct TweenExtensions {
         return t;
     }
     static bool IsActive(Tween* t) { return t && t->IsActive(); }
+    static void Restart(Tween* t, bool includeDelay, float changeDelayTo)
+    {
+        if (t) t->Restart(includeDelay, changeDelayTo);
+    }
 };
 
 // The facade tweens that run (the scene's roots), pruned of the finished each frame.

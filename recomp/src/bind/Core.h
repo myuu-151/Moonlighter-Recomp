@@ -55,6 +55,7 @@ struct Color {
 class GameObject;
 class Sprite;
 class Object;
+enum class HideFlags : int32_t {};
 
 // Instantiate's remap: the original tree's objects (GameObjects, components) to their copies.
 struct Remap {
@@ -152,6 +153,11 @@ public:
     static void DestroyImmediate(Object* o) { Destroy(o); }
     void __ctor() {}
 
+    // Object.hideFlags (the editor's and UnloadUnusedAssets' business: kept, nothing more).
+    HideFlags get_hideFlags() { return hideFlags_; }
+    void set_hideFlags(HideFlags f) { hideFlags_ = f; }
+    HideFlags hideFlags_{};
+
     bool destroyed_ = false;
     cs::String* name_ = nullptr;
     // Held by its native side while it isn't destroyed (a scene's object, a component, an asset): a
@@ -241,13 +247,36 @@ struct Time {
     static float realtimeSinceStartup;
     static float time;
     static float deltaTime;
+    static float unscaledDeltaTime;
     static float fixedDeltaTime;
+    static float timeScale; // (the driver's clocks: setting it changes nothing by itself)
     static int32_t frameCount;
     static float get_realtimeSinceStartup() { return realtimeSinceStartup; }
     static float get_time() { return time; }
     static float get_deltaTime() { return deltaTime; }
+    static float get_unscaledDeltaTime() { return unscaledDeltaTime; }
     static float get_fixedDeltaTime() { return fixedDeltaTime; }
+    static float get_timeScale() { return timeScale; }
+    static void set_timeScale(float s) { timeScale = s; }
     static int32_t get_frameCount() { return frameCount; }
+};
+
+// UnityEngine.Input's keyboard: the replays' pad goes through InControl (translated); no key is
+// ever down here unless a driver says so (keysDown: KeyCode values held, keysPressed: pressed this frame).
+enum class KeyCode : int32_t {};
+struct Input {
+    static std::vector<int32_t> keysDown, keysPressed, keysReleased;
+    static bool GetKey(KeyCode k) { return Has(keysDown, k); }
+    static bool GetKeyDown(KeyCode k) { return Has(keysPressed, k); }
+    static bool GetKeyUp(KeyCode k) { return Has(keysReleased, k); }
+
+private:
+    static bool Has(const std::vector<int32_t>& v, KeyCode k)
+    {
+        for (int32_t x : v)
+            if (x == static_cast<int32_t>(k)) return true;
+        return false;
+    }
 };
 
 // UnityEngine.Mathf with Unity 2019.2's managed code on Mono (unity/Mathf.h).
@@ -278,6 +307,15 @@ struct Mathf {
     static float DeltaAngle(float a, float b) { return unity::Mathf::DeltaAngle(a, b); }
     static float MoveTowards(float c, float t, float d) { return unity::Mathf::MoveTowards(c, t, d); }
     static float MoveTowardsAngle(float c, float t, float d) { return unity::Mathf::MoveTowardsAngle(c, t, d); }
+    // Approximately (2019.2): Abs(b - a) < Max(1E-06f * Max(Abs(a), Abs(b)), Epsilon * 8f), each
+    // argument a float (the products rounded as they're passed).
+    static bool Approximately(float a, float b)
+    {
+        const float d = Abs(b - a);
+        const float m1 = static_cast<float>(1e-06 * static_cast<double>(Max(Abs(a), Abs(b))));
+        const float m2 = static_cast<float>(static_cast<double>(unity::Mathf::Epsilon) * 8.0);
+        return d < Max(m1, m2);
+    }
     // (shielded from engines' PI macro, as cs/Prim.h's Math::PI: the GameCube build includes
     // Octave's Maths.h, which defines PI)
 #pragma push_macro("PI")

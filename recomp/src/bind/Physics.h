@@ -61,6 +61,10 @@ public:
         Changed();
     }
     bool get_isTrigger() { return isTrigger_; }
+    // Collider2D.IsTouching(other): two of the scene's room colliders (bind::PhysicsScene::queries)
+    // within the skins, as unity::Physics2D::IsTouching has it (the hero's corner slide); others:
+    // not modelled.
+    bool IsTouching(Collider2D* other);
     // Unity makes the collider's shapes again when isTrigger changes (at once).
     void set_isTrigger(bool v);
     Rigidbody2D* get_attachedRigidbody();
@@ -176,6 +180,8 @@ struct RaycastHit2D {
     float distance = 0.0f, fraction = 0.0f;
     // operator bool: a collider was hit
     static bool op_Implicit(const RaycastHit2D& h) { return h.collider != nullptr; }
+    // transform: the hit collider's attached Rigidbody2D's, else its own (null: no hit).
+    Transform* get_transform() const;
 };
 inline void cs_trace_value(cs::Tracer& t, const RaycastHit2D& h) { t.Mark(h.collider); }
 
@@ -193,6 +199,17 @@ struct Physics2D {
     }
     static cs::Array<Collider2D*>* OverlapCircleAll(Vector2 point, float radius, int32_t layerMask);
     static cs::Array<Collider2D*>* OverlapCircleAll(Vector2 point, float radius) { return OverlapCircleAll(point, radius, -5); }
+    // BoxCast(origin, size, angle, direction, distance, layerMask) over the room's colliders
+    // (unity::Physics2D::BoxCast, the hand port's: the hero's moves and roll).
+    static RaycastHit2D BoxCast(Vector2 origin, Vector2 size, float angle, Vector2 direction, float distance, int32_t layerMask);
+    static RaycastHit2D BoxCast(Vector2 origin, Vector2 size, float angle, Vector2 direction, float distance)
+    {
+        return BoxCast(origin, size, angle, direction, distance, -5);
+    }
+    // IgnoreLayerCollision: the scene's world (its layer matrix, both ways), its fixtures refiltered.
+    static void IgnoreLayerCollision(int32_t layer1, int32_t layer2, bool ignore);
+    static void IgnoreLayerCollision(int32_t layer1, int32_t layer2) { IgnoreLayerCollision(layer1, layer2, true); }
+    static bool GetIgnoreLayerCollision(int32_t layer1, int32_t layer2);
 };
 
 } // namespace UnityEngine
@@ -217,6 +234,8 @@ public:
     // The facade collider of a room collider (Physics2D's room queries' results).
     void RegisterQuery(const unity::Collider2D* collider, UnityEngine::Collider2D* object);
     UnityEngine::Collider2D* ObjectOf(const unity::Collider2D* collider) const;
+    // The room collider a facade collider stands for (RegisterQuery's), nullptr if none.
+    const unity::Collider2D* QueryOf(const UnityEngine::Collider2D* object) const;
     // The collider object of a fixture (nullptr: none registered).
     UnityEngine::Collider2D* ObjectOf(const b2Fixture* fixture) const;
 
@@ -269,6 +288,11 @@ public:
     // Each Rigidbody2D.AddForce, before it's applied (a body not in the world included: the
     // replays' hero, whose body is the recording's).
     std::function<void(UnityEngine::Rigidbody2D* rb, UnityEngine::Vector2 force, UnityEngine::ForceMode2D mode)> onAddForce;
+    // Physics2D.OverlapBox when several colliders overlap the box: Unity returns the first its
+    // broad phase meets (Box2D's tree order, which every proxy the session made sets: not modelled,
+    // unity::Physics2D::OverlapBox). The candidates in OverlapBoxAll's order (its pick first); the
+    // index returned is taken. None: the first.
+    std::function<size_t(const std::vector<const unity::Collider2D*>& candidates)> onOverlapBoxTie;
     // Each OverlapCircleAll: what it found, in order.
     std::function<void(UnityEngine::Vector2 point, float radius, const std::vector<UnityEngine::Collider2D*>& found)> onOverlapCircle;
     // Each OnCollisionEnter2D before (after = false) and after the scripts of `self`'s object got it.

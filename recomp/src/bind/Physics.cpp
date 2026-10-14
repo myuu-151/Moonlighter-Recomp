@@ -195,7 +195,61 @@ Collider2D* Physics2D::OverlapBox(Vector2 point, Vector2 size, float angle, int3
     bind::PhysicsScene* p = P();
     if (!p || !p->queries) return nullptr;
     const unity::Collider2D* c = p->queries->OverlapBox(point, size, angle, layerMask);
-    return c ? p->ObjectOf(c) : nullptr;
+    if (c && p->onOverlapBoxTie) {
+        const std::vector<const unity::Collider2D*> all = p->queries->OverlapBoxAll(point, size, angle, layerMask);
+        if (all.size() > 1) {
+            const size_t pick = p->onOverlapBoxTie(all);
+            if (pick < all.size()) c = all[pick];
+        }
+    }
+    if (!c) return nullptr;
+    Collider2D* o = p->ObjectOf(c);
+    if (!o) cs::NotTranslated("Physics2D.OverlapBox found a room collider without its object (bind::PhysicsScene::RegisterQuery)");
+    return o;
+}
+
+RaycastHit2D Physics2D::BoxCast(Vector2 origin, Vector2 size, float angle, Vector2 direction, float distance, int32_t layerMask)
+{
+    RaycastHit2D r;
+    bind::PhysicsScene* p = P();
+    if (!p || !p->queries) return r;
+    const unity::RaycastHit2D h = p->queries->BoxCast(origin, size, angle, direction, distance, layerMask);
+    if (!h.collider) return r;
+    r.collider = p->ObjectOf(h.collider);
+    if (!r.collider) cs::NotTranslated("Physics2D.BoxCast hit a room collider without its object (bind::PhysicsScene::RegisterQuery)");
+    r.point = h.point;
+    r.normal = h.normal;
+    r.centroid = h.centroid;
+    r.distance = h.distance;
+    r.fraction = h.fraction;
+    return r;
+}
+
+void Physics2D::IgnoreLayerCollision(int32_t layer1, int32_t layer2, bool ignore)
+{
+    if (bind::PhysicsScene* p = P()) p->world.IgnoreLayerCollision(layer1, layer2, ignore);
+}
+
+bool Physics2D::GetIgnoreLayerCollision(int32_t layer1, int32_t layer2)
+{
+    bind::PhysicsScene* p = P();
+    return p && p->world.GetIgnoreLayerCollision(layer1, layer2);
+}
+
+Transform* RaycastHit2D::get_transform() const
+{
+    if (!collider) return nullptr;
+    if (Rigidbody2D* rb = collider->get_attachedRigidbody()) return rb->get_transform();
+    return collider->get_transform();
+}
+
+bool Collider2D::IsTouching(Collider2D* other)
+{
+    bind::PhysicsScene* p = P();
+    const unity::Collider2D* a = p ? p->QueryOf(this) : nullptr;
+    const unity::Collider2D* b = p ? p->QueryOf(cs::nc(other)) : nullptr;
+    if (!a || !b) cs::NotTranslated("Collider2D.IsTouching of a collider that isn't the room's (bind::PhysicsScene::RegisterQuery)");
+    return unity::Physics2D::IsTouching(*a, *b);
 }
 
 RaycastHit2D Physics2D::Raycast(Vector2 origin, Vector2 direction, float distance, int32_t layerMask)
@@ -310,6 +364,13 @@ Collider2D* PhysicsScene::ObjectOf(const unity::Collider2D* collider) const
 {
     for (const auto& q : queryObjects_)
         if (q.first == collider) return q.second;
+    return nullptr;
+}
+
+const unity::Collider2D* PhysicsScene::QueryOf(const Collider2D* object) const
+{
+    for (const auto& q : queryObjects_)
+        if (q.second == object) return q.first;
     return nullptr;
 }
 

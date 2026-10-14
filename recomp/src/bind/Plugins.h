@@ -29,6 +29,8 @@ public:
         playing_ = false;
     }
     void Stop() { Stop(false, false); }
+    // FadeOutNow(time): the volume's fade, then Stop: presentation (still playing until it ends).
+    void FadeOutNow(float fadeTime) { (void)fadeTime; }
     // SoundFinished (the clip's end: not modelled, never raised).
     void add_SoundFinished(cs::Delegate<void()>* d) { soundFinished_ = cs::Delegate<void()>::Combine(soundFinished_, d); }
     void remove_SoundFinished(cs::Delegate<void()>* d) { soundFinished_ = cs::Delegate<void()>::Remove(soundFinished_, d); }
@@ -57,6 +59,8 @@ public:
                                       bool isSingleSubscribedPlay);
     static bool PlaySoundAndForget(cs::String* sType, float volumePercentage, cs::Nullable<float> pitch, float delaySoundTime,
                                    cs::String* variationName, cs::Nullable<double> timeToSchedulePlay);
+    // StopAllOfSound(group): the group's playing variations stopped (no draws: nothing modelled plays on).
+    static void StopAllOfSound(cs::String* sType) { (void)sType; }
 };
 
 } // namespace MasterAudio
@@ -76,6 +80,9 @@ struct Obscured {
         return o;
     }
     static T op_Implicit(Obscured o) { return o.value; }
+    // ++ / -- (ObscuredFloat's, ObscuredInt's): the decrypted value plus or minus one, stored (rounded).
+    static Obscured op_Increment(Obscured o) { return op_Implicit(static_cast<T>(o.value + static_cast<T>(1))); }
+    static Obscured op_Decrement(Obscured o) { return op_Implicit(static_cast<T>(o.value - static_cast<T>(1))); }
     T GetDecrypted() const { return value; }
 };
 using ObscuredBool = Obscured<bool>;
