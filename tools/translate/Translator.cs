@@ -492,7 +492,8 @@ public sealed class Translator
         current = r;
         try
         {
-            r.Body = new MethodTranslator(this, m).Translate();
+            // (a hand-written body with the same results: Overrides.cs)
+            r.Body = Overrides.BodyOf(m) ?? new MethodTranslator(this, m).Translate();
         }
         catch (TranslateException e)
         {

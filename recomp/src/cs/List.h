@@ -7,6 +7,8 @@
 //    length (the capacity), so the capacity is tracked exactly;
 //  - IndexOf / Contains / Remove compare with EqualityComparer<T>.Default.
 // List is a reference type in C#: always allocate it with cs::gcnew and pass List<T>*.
+// cs::List<T> is shared::List<cs::Erase<T>> (cs/Object.h): one body for every erased reference
+// type, whose delegates (Find's, Sort's...) get the elements cast back to their parameters' types.
 //
 // Two spellings of the API: the C#-shaped one translated code calls (get_Count, get_Item,
 // set_Item, Add, ...) and the hand port's (Count(), operator[], Set, begin/end, CopyOf).
@@ -21,6 +23,7 @@
 #include "cs/Vector.h"
 
 namespace cs {
+namespace shared {
 
 template <typename T>
 class List : public Object, public virtual IList_1<T> {
@@ -46,10 +49,10 @@ public:
     void __ctor(IEnumerable_1<T>* collection)
     {
         if (!collection) ThrowArgumentNull("collection");
-        if (auto* l = dynamic_cast<List<T>*>(collection)) {
+        if (auto* l = DynCast<List<T>>(collection)) {
             items_ = l->items_;
             capacity_ = static_cast<int32_t>(items_.size());
-        } else if (auto* c = dynamic_cast<ICollection_1<T>*>(collection)) {
+        } else if (auto* c = DynCast<ICollection_1<T>>(collection)) {
             int32_t n = c->ICollection_1_get_Count();
             if (n > 0) {
                 Array<T>* tmp = Array<T>::New(n);
@@ -117,12 +120,12 @@ public:
     {
         if (!collection) ThrowArgumentNull("collection");
         if (static_cast<uint32_t>(index) > static_cast<uint32_t>(get_Count())) ThrowArgumentOutOfRange();
-        if (auto* c = dynamic_cast<ICollection_1<T>*>(collection)) {
+        if (auto* c = DynCast<ICollection_1<T>>(collection)) {
             int32_t n = c->ICollection_1_get_Count();
             if (n > 0) {
                 EnsureCapacity(get_Count() + n);
                 Vector<T> copy;
-                if (auto* l = dynamic_cast<List<T>*>(collection)) copy = l->items_;
+                if (auto* l = DynCast<List<T>>(collection)) copy = l->items_;
                 else {
                     Array<T>* tmp = Array<T>::New(n);
                     c->ICollection_1_CopyTo(tmp, 0);
@@ -213,7 +216,7 @@ public:
     template <typename Pred>
     static bool Call(Pred& p, const T& v)
     {
-        if constexpr (std::is_pointer<Pred>::value) return nc(p)->Invoke(v);
+        if constexpr (std::is_pointer<Pred>::value) return InvokeDown(nc(p), v);
         else return p(v);
     }
 
@@ -293,23 +296,24 @@ public:
         return size - freeIndex;
     }
     // ForEach(Action<T>): stops and throws if the action changes the list.
-    void ForEach(Delegate<void(T)>* action)
+    template <typename D>
+    void ForEach(D* action)
     {
         if (!action) ThrowArgumentNull("action");
         int32_t version = version_;
         for (int32_t i = 0; i < get_Count(); i++) {
             if (version != version_) break;
-            action->Invoke(items_[static_cast<size_t>(i)]);
+            InvokeDown(action, items_[static_cast<size_t>(i)]);
         }
         if (version != version_) ThrowInvalidOperation("Collection was modified; enumeration operation may not execute.");
     }
-    template <typename U>
-    List<U>* ConvertAll(Delegate<U(T)>* converter)
+    template <typename U, typename D>
+    cs::List<U>* ConvertAll(D* converter)
     {
         if (!converter) ThrowArgumentNull("converter");
-        List<U>* l = gcnew<List<U>>();
+        cs::List<U>* l = gcnew<cs::List<U>>();
         l->__ctor(get_Count());
-        for (int32_t i = 0; i < get_Count(); i++) l->Add(converter->Invoke(items_[static_cast<size_t>(i)]));
+        for (int32_t i = 0; i < get_Count(); i++) l->Add(InvokeDown(converter, items_[static_cast<size_t>(i)]));
         return l;
     }
 
@@ -354,7 +358,7 @@ public:
     {
         if (get_Count() > 0) {
             auto call = [&](const T& a, const T& b) -> int32_t {
-                if constexpr (std::is_pointer<Cmp>::value) return nc(cmp)->Invoke(a, b);
+                if constexpr (std::is_pointer<Cmp>::value) return InvokeDown(nc(cmp), a, b);
                 else return cmp(a, b);
             };
             IntrospectiveSort(items_.data(), 0, get_Count(), capacity_, call);
@@ -607,4 +611,5 @@ private:
     int32_t version_ = 0;
 };
 
+} // namespace shared
 } // namespace cs

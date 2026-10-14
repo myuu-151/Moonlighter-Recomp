@@ -137,7 +137,7 @@ std::vector<gen::EnemyDamageReceiver*> Receivers(const Replayed& s)
 {
     std::vector<gen::EnemyDamageReceiver*> out;
     if (cs::Array<gen::EnemyDamageReceiver*>* a = s.behaviour->GetComponentsInChildren<gen::EnemyDamageReceiver*>(true))
-        for (int32_t i = 0; i < a->get_Length(); i++) out.push_back(a->at(i));
+        for (int32_t i = 0; i < a->get_Length(); i++) out.push_back(cs::Down<gen::EnemyDamageReceiver*>(a->at(i)));
     return out;
 }
 std::string ReceiverPath(const Replayed& s, gen::EnemyDamageReceiver* r) { return r->gameObject_ == s.go ? std::string() : Utf8(r->gameObject_->get_name()); }
@@ -332,6 +332,10 @@ bool LoadData(Data& d)
     cs::StaticScope keep;
     gen::Constants::ReadFile(S("constants"));
     gen::EnemyStatManager::get_Instance()->ReadDefaultFile();
+    // Read once, never changed: kept out of every collection's marking (cs::Heap::Freeze; the _gc
+    // runs check it with ML_GC_FREEZE_CHECK).
+    cs::Heap::Freeze(gen::Constants::get_Instance()->_values);
+    cs::Heap::Freeze(gen::EnemyStatManager::get_Instance()->_mods);
     return d.prefab != nullptr;
 }
 
@@ -920,6 +924,8 @@ int Replay(const std::string& file, Data& data)
     const char* const enterKind = entersRecorded ? "attackEnter" : "attackHit";
     int unseenEnters = 0;
     const bool gcEveryFrame = std::getenv("ML_GC_EVERY_FRAME") != nullptr;
+    // ML_GC_AUTO=1: as the game collects, at a frame end once enough was made (cs::Heap::CollectDue).
+    const bool gcAuto = !gcEveryFrame && std::getenv("ML_GC_AUTO") != nullptr;
     int gcRuns = 0;
     size_t gcFreed = 0;
     using replay_profile::Scope;
@@ -1397,7 +1403,7 @@ int Replay(const std::string& file, Data& data)
         // ML_GC_EVERY_FRAME=1: the collector at every frame boundary (docs/translator_plan.md,
         // "Memory"), where no translated code is running: what the roots don't reach is freed, so
         // a live object the roots miss shows up as a crash or a mismatch in the frames after.
-        if (gcEveryFrame) {
+        if (gcEveryFrame || (gcAuto && cs::CurrentHeap().CollectDue())) {
             Scope p(replay_profile::Collector);
             gcFreed += cs::CurrentHeap().Collect();
             gcRuns++;
@@ -1408,6 +1414,7 @@ int Replay(const std::string& file, Data& data)
     std::printf("\n");
     t.Print();
     if (gcEveryFrame) PrintCollected(gcRuns, gcFreed, released);
+    if (gcAuto) std::printf("collected at %d of the frame ends (when due): %zu objects freed, %zu left\n", gcRuns, gcFreed, cs::CurrentHeap().Count());
     std::printf("Random drawn by the game's other scripts (resynced) %d times\n", rngElsewhere);
     if (roomExit.inferred) std::printf("the room's DisableEnemies placed from the enemies' rows (no event recorded) %d times\n", roomExit.inferred);
     if (unseenEnters)

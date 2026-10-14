@@ -549,14 +549,14 @@ void PhysicsScene::Rescan(Body& b)
         b.attached.push_back(Attached{col});
     };
     for (Component* c : go->components_)
-        if (auto* col = dynamic_cast<Collider2D*>(c)) add(col);
+        if (auto* col = cs::DynCast<Collider2D>(c)) add(col);
     std::vector<Transform*> stack(go->transform_->children_.rbegin(), go->transform_->children_.rend());
     while (!stack.empty()) {
         Transform* t = stack.back();
         stack.pop_back();
         if (t->gameObject_->GetComponent<Rigidbody2D*>()) continue;
         for (Component* c : t->gameObject_->components_)
-            if (auto* col = dynamic_cast<Collider2D*>(c)) add(col);
+            if (auto* col = cs::DynCast<Collider2D>(c)) add(col);
         for (auto it = t->children_.rbegin(); it != t->children_.rend(); ++it) stack.push_back(*it);
     }
 }
@@ -568,7 +568,7 @@ void PhysicsScene::SyncAttached(Body& b, Attached& a)
     const bool on = c->gameObject_->get_activeInHierarchy() && c->enabled_ && !c->destroyed_;
     const Vector2 center = LocalCenter(b, c);
     Vector2 size{0.0f, 0.0f};
-    if (auto* box = dynamic_cast<BoxCollider2D*>(c)) size = box->size_;
+    if (auto* box = cs::DynCast<BoxCollider2D>(c)) size = box->size_;
     else if (on) cs::NotTranslated("a child collider other than a BoxCollider2D (bind/Physics.cpp)");
     c->changed_ = false;
     if (on == a.built && (!on || (center.x == a.center.x && center.y == a.center.y && size.x == a.size.x && size.y == a.size.y && a.sensor == c->isTrigger_)))
@@ -818,7 +818,7 @@ void PhysicsScene::ReportTriggers()
             if (!g || g->destroyed_ || !g->get_activeInHierarchy()) continue;
             std::vector<Component*> comps = g->components_;
             for (Component* c : comps)
-                if (auto* m = dynamic_cast<MonoBehaviour*>(c)) m->cs_OnTriggerEnter2D(other);
+                if (auto* m = cs::DynCast<MonoBehaviour>(c)) m->cs_OnTriggerEnter2D(other);
         }
     }
 }
@@ -838,7 +838,7 @@ void PhysicsScene::ReportCollisions()
         if (kind == 0 && onCollisionEnter) onCollisionEnter(self, col, false);
         std::vector<Component*> comps = g->components_;
         for (Component* c : comps)
-            if (auto* m = dynamic_cast<MonoBehaviour*>(c)) {
+            if (auto* m = cs::DynCast<MonoBehaviour>(c)) {
                 if (kind == 0) m->cs_OnCollisionEnter2D(col);
                 else if (kind == 1) m->cs_OnCollisionStay2D(col);
                 else m->cs_OnCollisionExit2D(col);

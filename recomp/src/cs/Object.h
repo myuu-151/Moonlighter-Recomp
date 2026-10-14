@@ -20,6 +20,7 @@
 #include <exception>
 #include <string>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 
@@ -67,9 +68,11 @@ public:
     Tracer();
     uint32_t Epoch() const { return epoch_; }
     // (Inline: the test; out of line: the rest, which every cs_trace would otherwise carry.)
+    // Marked in an earlier epoch, or never: marked now. (A frozen object's mark, kFrozen, is
+    // above every epoch: never marked, never traced.)
     void Mark(Object* o)
     {
-        if (o && o->gc_mark_ != epoch_) Push(o);
+        if (o && o->gc_mark_ < epoch_) Push(o);
     }
     void Push(Object* o);
     // The generated cs_trace's: the references at these byte offsets of `obj` (each a pointer to a
@@ -89,6 +92,7 @@ public:
     std::vector<std::pair<Object*, Object*>>* parents_ = nullptr;
 
 private:
+    friend class Heap;
     std::vector<Object*> stack_;
     Object* current_ = nullptr;
     uint32_t epoch_;
@@ -109,6 +113,7 @@ public:
         o->gc_next_ = head_;
         head_ = o;
         count_++;
+        made_ += sizeof(T);
         return o;
     }
 
@@ -121,6 +126,23 @@ public:
     // seen. Returns the number of objects freed.
     size_t Collect();
     size_t Count() const { return count_; }
+
+    // When to collect (docs/gamecube_translated.md, "The collector"): a game loop collects at a frame
+    // end when CollectDue(), not at every one: when the objects made since the last collection
+    // (their own sizes, and the strings' and arrays' contents: AddPressure) pass the threshold
+    // (default 256 KB). A collection costs about the same whenever it runs; rarer is cheaper.
+    bool CollectDue() const { return made_ >= threshold_; }
+    void SetCollectThreshold(size_t bytes) { threshold_ = bytes; }
+    size_t MadeSinceCollect() const { return made_; }
+    static void AddPressure(size_t bytes);
+
+    // Data that never changes again (the constants' tree once read, a stat table): what `root`
+    // reaches is kept for good and no longer marked or swept, so collections cost what the
+    // changing objects cost. Frozen data must not come to reference newer objects (they would be
+    // reachable only through it, which isn't traced): ML_GC_FREEZE_CHECK=1 traces it anyway at
+    // each collection and reports any object only it reaches. Returns the objects frozen.
+    static size_t Freeze(Object* root);
+    static constexpr uint32_t kFrozen = 0xFFFFFFFFu;
     // Each object on the heap, the newest first (diagnostics: MLGC's test builds count them by type).
     template <typename F>
     void ForEach(F&& f) const
@@ -135,6 +157,8 @@ public:
 private:
     Object* head_ = nullptr;
     size_t count_ = 0;
+    size_t made_ = 0;
+    size_t threshold_ = 256 * 1024;
 };
 
 // The heap new objects go to; set by whoever owns the current object lifetime scope.
@@ -204,13 +228,46 @@ private:
 
 // ---- references ----------------------------------------------------------------------------
 
+// dynamic_cast<T*>(p), remembered: the result's offset from p depends only on p's dynamic type and
+// which of its subobjects p is, and p's vtable pointer names both. So a cast is a lookup in a small
+// table keyed by (p's vtable, T) after the first time; the same results as dynamic_cast's. (The
+// GameCube's libsupc++ compares type names with strcmp in every failed cast: the translated
+// code's Is/As/Cast and the facade's GetComponent were a tenth of its time.)
+namespace detail {
+struct CastSlot {
+    const void* vptr;
+    const void* to;
+    std::ptrdiff_t delta;
+};
+constexpr std::ptrdiff_t kCastFails = static_cast<std::ptrdiff_t>(~(~static_cast<std::size_t>(0) >> 1));
+constexpr std::size_t kCastSlots = 1024;
+extern CastSlot gCastCache[kCastSlots];
+} // namespace detail
+template <typename T, typename U>
+inline T* DynCast(U* p)
+{
+    static_assert(std::is_polymorphic<U>::value, "DynCast from a polymorphic type");
+    if (!p) return nullptr;
+    const void* vptr = *reinterpret_cast<const void* const*>(p);
+    const void* to = &typeid(T);
+    std::size_t h = ((reinterpret_cast<std::uintptr_t>(vptr) >> 3) ^ (reinterpret_cast<std::uintptr_t>(to) >> 4)) & (detail::kCastSlots - 1);
+    detail::CastSlot& s = detail::gCastCache[h];
+    if (s.vptr == vptr && s.to == to)
+        return s.delta == detail::kCastFails ? nullptr : reinterpret_cast<T*>(reinterpret_cast<char*>(p) + s.delta);
+    T* r = dynamic_cast<T*>(p);
+    s.vptr = vptr;
+    s.to = to;
+    s.delta = r ? reinterpret_cast<char*>(r) - reinterpret_cast<char*>(p) : detail::kCastFails;
+    return r;
+}
+
 // Any reference (class or interface pointer) as the object it points to. Interfaces don't
 // derive from Object (docs/translator_plan.md), so they cross-cast.
 template <typename T>
 inline Object* AsObject(T* p)
 {
     if constexpr (std::is_base_of<Object, T>::value) return static_cast<Object*>(p);
-    else return p ? dynamic_cast<Object*>(p) : nullptr;
+    else return DynCast<Object>(p);
 }
 inline Object* AsObject(std::nullptr_t) { return nullptr; }
 
@@ -219,6 +276,124 @@ Object* Root<T>::RootObject() const
 {
     return AsObject(p_);
 }
+
+// ---- generic code shared across reference types ----------------------------------------------
+//
+// .NET compiles one body of List<T> (Dictionary, HashSet, arrays, the collection interfaces) for
+// every reference type T; so does this: cs::List<Foo*> *is* cs::shared::List<cs::Object*> when Foo
+// is erased (cs::Erase), its elements held as cs::Object*, and what comes out of it is cast back to
+// the C# type where the translation reads it (cs::Down: a static_cast, no work at run time; the
+// translator writes one wherever a member returns the type parameter). One instantiation's code
+// instead of one per element type: the GameCube's code size (tools/gcsize).
+//
+// Erased: the translated game's classes (game.h specializes ErasedRef for each) and the runtime's
+// own generic classes and delegates below. Not erased: interfaces (a pointer into the object, not
+// to it), value types, strings (their default comparison is the culture's, an object's is
+// IComparable's), the facade's and the hand port's classes; each of those keeps its own instance.
+template <typename T>
+struct ErasedRef : std::false_type {};
+template <typename T>
+struct EraseT {
+    using type = T;
+};
+template <typename T>
+struct EraseT<T*> {
+    using type = typename std::conditional<ErasedRef<T>::value, Object*, T*>::type;
+};
+template <typename T>
+using Erase = typename EraseT<T>::type;
+
+// A value of a shared generic's (cs::Object* for an erased reference) as the C# type it has. Of
+// the same type already (a value type, an interface, a string...): the value itself, an lvalue
+// staying one (an array's struct element called in place).
+template <typename To, typename From>
+inline decltype(auto) Down(From&& x)
+{
+    if constexpr (std::is_same<typename std::remove_cv<typename std::remove_reference<From>::type>::type, To>::value) {
+        if constexpr (std::is_lvalue_reference<From>::value) return static_cast<From>(x);
+        else return To(std::move(x));
+    } else {
+        return static_cast<To>(x);
+    }
+}
+
+// The shared generics (their definitions: cs/Array.h, List.h, Dictionary.h, HashSet.h,
+// Queue.h, Collections.h, Interfaces.h), and the names translated code uses.
+namespace shared {
+template <typename T>
+class Array;
+template <typename T>
+class Array2;
+template <typename T>
+class List;
+template <typename K, typename V>
+class Dictionary;
+template <typename T>
+class HashSet;
+template <typename T>
+class Queue;
+template <typename K, typename V>
+struct KeyValuePair;
+template <typename T>
+struct IEnumerator_1;
+template <typename T>
+struct IEnumerable_1;
+template <typename T>
+struct ICollection_1;
+template <typename T>
+struct IList_1;
+template <typename T>
+struct IComparer_1;
+template <typename T>
+struct IEqualityComparer_1;
+template <typename T>
+struct IComparable_1;
+template <typename T>
+struct IEquatable_1;
+} // namespace shared
+template <typename T>
+using Array = shared::Array<Erase<T>>;
+template <typename T>
+using Array2 = shared::Array2<Erase<T>>;
+template <typename T>
+using List = shared::List<Erase<T>>;
+template <typename K, typename V>
+using Dictionary = shared::Dictionary<Erase<K>, Erase<V>>;
+template <typename T>
+using HashSet = shared::HashSet<Erase<T>>;
+template <typename T>
+using Queue = shared::Queue<Erase<T>>;
+template <typename K, typename V>
+using KeyValuePair = shared::KeyValuePair<Erase<K>, Erase<V>>;
+template <typename T>
+using IEnumerator_1 = shared::IEnumerator_1<Erase<T>>;
+template <typename T>
+using IEnumerable_1 = shared::IEnumerable_1<Erase<T>>;
+template <typename T>
+using ICollection_1 = shared::ICollection_1<Erase<T>>;
+template <typename T>
+using IList_1 = shared::IList_1<Erase<T>>;
+template <typename T>
+using IComparer_1 = shared::IComparer_1<Erase<T>>;
+template <typename T>
+using IEqualityComparer_1 = shared::IEqualityComparer_1<Erase<T>>;
+template <typename T>
+using IComparable_1 = shared::IComparable_1<Erase<T>>;
+template <typename T>
+using IEquatable_1 = shared::IEquatable_1<Erase<T>>;
+
+template <typename T>
+struct ErasedRef<shared::Array<T>> : std::true_type {};
+template <typename T>
+struct ErasedRef<shared::Array2<T>> : std::true_type {};
+template <typename T>
+struct ErasedRef<shared::List<T>> : std::true_type {};
+template <typename K, typename V>
+struct ErasedRef<shared::Dictionary<K, V>> : std::true_type {};
+template <typename T>
+struct ErasedRef<shared::HashSet<T>> : std::true_type {};
+template <typename T>
+struct ErasedRef<shared::Queue<T>> : std::true_type {};
 
 // Marks a field of any type: references are marked, values with references in them trace
 // their fields (found by argument-dependent lookup: cs_trace_value(Tracer&, const S&)), and
@@ -353,7 +528,7 @@ inline bool Is(U* p)
 {
     if (!p) return false;
     if constexpr (std::is_base_of<T, U>::value) return true;
-    else return dynamic_cast<T*>(p) != nullptr;
+    else return DynCast<T>(p) != nullptr;
 }
 
 // `x as T`
@@ -361,7 +536,7 @@ template <typename T, typename U>
 inline T* As(U* p)
 {
     if constexpr (std::is_base_of<T, U>::value) return static_cast<T*>(p);
-    else return p ? dynamic_cast<T*>(p) : nullptr;
+    else return DynCast<T>(p);
 }
 
 // `(T)x` for references: InvalidCastException unless null or a T.
@@ -371,7 +546,7 @@ inline T* Cast(U* p)
     if constexpr (std::is_base_of<T, U>::value) return static_cast<T*>(p);
     else {
         if (!p) return nullptr;
-        T* r = dynamic_cast<T*>(p);
+        T* r = DynCast<T>(p);
         if (!r) ThrowInvalidCast();
         return r;
     }

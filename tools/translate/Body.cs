@@ -91,7 +91,9 @@ public sealed class Body
         // reads and writes go through (*l_x), the declaration takes the address.
         if (l.IsRef)
         {
-            hoisted.Add((N.Ref(l.Type) + "*", n));
+            // (to an element of a shared array: the element's own type, cs::Object* for an erased
+            // reference; read back through cs::Down)
+            hoisted.Add((erasedRefs.Contains(l) ? $"::cs::Erase<{N.Ref(l.Type)}>*" : N.Ref(l.Type) + "*", n));
             refLocals.Add(n);
             n = "(*" + n + ")";
         }
@@ -129,8 +131,9 @@ public sealed class Body
                 foreach (var d in g.Declarations)
                     foreach (var v in d.Declarators)
                     {
-                        string name = Local(v.Symbol);
                         var init = v.Initializer?.Value ?? d.Initializer?.Value;
+                        if (v.Symbol.IsRef && init is IArrayElementReferenceOperation rae && MayBeErased(rae.Type)) erasedRefs.Add(v.Symbol);
+                        string name = Local(v.Symbol);
                         if (init != null && v.Symbol.IsRef) Line($"{name.Substring(2, name.Length - 3)} = &{LValue(init).C};");
                         else if (init != null) Line($"{name} = {Coerce(Expr(init), v.Symbol.Type)};");
                     }
@@ -357,7 +360,9 @@ public sealed class Body
             breakTargets.Push(null);
             Line($"for ({i} = 0; {i} < ::cs::nc({a})->get_Length(); {i} = ::cs::add({i}, 1)) {{");
             indent++;
-            Line($"{loopVar} = {ElementConvert($"{a}->at({i})", arr.ElementType, varType, info)};");
+            string elem = MayBeErased(arr.ElementType)
+                ? $"::cs::Down<{N.Ref(arr.ElementType)}>({a}->at({i}))" : $"{a}->at({i})";
+            Line($"{loopVar} = {ElementConvert(elem, arr.ElementType, varType, info)};");
             Statement(fe.Body);
             indent--;
             Line("}");
@@ -656,6 +661,7 @@ public sealed class Body
             case ILiteralOperation lit:
                 return Constant(lit.ConstantValue.Value, lit.Type);
             case ILocalReferenceOperation l:
+                if (erasedRefs.Contains(l.Local)) return new Ex($"::cs::Down<{N.Ref(l.Local.Type)}>({Local(l.Local)})", pure: true);
                 return new Ex(Local(l.Local), pure: true);
             case IParameterReferenceOperation p:
                 return new Ex(ParamName(p.Parameter), pure: true);
@@ -959,6 +965,8 @@ public sealed class Body
 
     readonly HashSet<Ex> refArgs = new();
     readonly HashSet<string> refLocals = new(StringComparer.Ordinal);
+    // ref locals to an element of a shared array (cs::Erase): declared as the element's type.
+    readonly HashSet<ILocalSymbol> erasedRefs = new(SymbolEqualityComparer.Default);
 
     static bool IsSimpleLocal(Ex e) => e.C.StartsWith("l_") || e.C.StartsWith("p_") || e.C == "this";
 
@@ -999,7 +1007,7 @@ public sealed class Body
         pure = false;
         string argText = string.Join(", ", args.Select(a => a.C));
         if (!N.IsGame(m))
-            return ExternalCall(m, recv, recvType, isThis, args, prop, out pure);
+            return Erased(m, ExternalCall(m, recv, recvType, isThis, args, prop, out pure));
         if (m.IsGenericMethod && !nonVirtual && (m.IsVirtual || m.IsAbstract || m.IsOverride || m.ContainingType.TypeKind == TypeKind.Interface))
             throw new TranslateException("a call to a virtual generic method (C++ has no virtual templates)");
         tr.NeedMethod(m);
@@ -1025,6 +1033,23 @@ public sealed class Body
             r = $"static_cast<{N.Ref(m.ContainingType)}>({r})";
         return $"{r}{(isValue ? "." : "->")}{tname}{targs}({argText})";
     }
+
+    // A runtime generic's value of a type parameter (List<T>'s get_Item, an enumerator's Current,
+    // Dictionary's get_Item, IEnumerator<T>.Current...): for an erased reference type the shared
+    // body gives a cs::Object* (cs/Object.h), cast back to the C# type here (a static_cast).
+    string Erased(IMethodSymbol m, string code)
+    {
+        if (m.MethodKind is not (MethodKind.Ordinary or MethodKind.PropertyGet or MethodKind.ExplicitInterfaceImplementation)) return code;
+        if (m.ReturnsVoid || m.ReturnsByRef) return code;
+        if (m.OriginalDefinition.ReturnType is not ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type }) return code;
+        if (!MayBeErased(m.ReturnType)) return code;
+        return $"::cs::Down<{N.Ref(m.ReturnType)}>({code})";
+    }
+
+    // A type whose value a shared generic may hold as cs::Object*: a class, an array, a delegate
+    // (not a string, an interface or a value type), or a type parameter (any of them).
+    internal static bool MayBeErased(ITypeSymbol t) =>
+        t.TypeKind is TypeKind.Class or TypeKind.Array or TypeKind.Delegate or TypeKind.TypeParameter && t.SpecialType != SpecialType.System_String;
 
     string ExternalCall(IMethodSymbol m, Ex recv, ITypeSymbol recvType, bool isThis, List<Ex> args, IPropertySymbol prop, out bool pure)
     {
@@ -1176,12 +1201,15 @@ public sealed class Body
         return new Ex(Wrap(pre, code), t: at);
     }
 
-    Ex ArrayElement(IArrayElementReferenceOperation ae)
+    // a[i]: an rvalue cast back from the shared array's cs::Object* for an erased reference type
+    // (cs/Object.h), or the element itself as an lvalue (an assignment, a ref argument).
+    Ex ArrayElement(IArrayElementReferenceOperation ae, bool lvalue = false)
     {
         var parts = new List<Ex> { Expr(ae.ArrayReference) };
         parts.AddRange(ae.Indices.Select(i => Expr(i)));
         var all = Sequence(parts, out string pre);
         string code = $"::cs::nc({all[0].C})->at({string.Join(", ", all.Skip(1).Select(i => i.C))})";
+        if (!lvalue && MayBeErased(ae.Type)) code = $"::cs::Down<{N.Ref(ae.Type)}>({code})";
         return new Ex(Wrap(pre, code), pure: false, t: ae.Type);
     }
 
@@ -1190,7 +1218,11 @@ public sealed class Body
     {
         switch (op)
         {
-            case ILocalReferenceOperation or IParameterReferenceOperation or IFieldReferenceOperation or IArrayElementReferenceOperation:
+            case IArrayElementReferenceOperation ae:
+                return ArrayElement(ae, lvalue: true);
+            case ILocalReferenceOperation lr:
+                return new Ex(Local(lr.Local), pure: true);
+            case IParameterReferenceOperation or IFieldReferenceOperation:
                 return Expr(op);
             case IInstanceReferenceOperation:
                 return new Ex("(*this)", pure: true);

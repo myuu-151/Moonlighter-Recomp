@@ -14,6 +14,8 @@
 
 namespace cs {
 
+namespace shared {
+
 template <typename T>
 class HashSet : public Object, public virtual ICollection_1<T> {
 public:
@@ -32,7 +34,7 @@ public:
     {
         if (!collection) ThrowArgumentNull("collection");
         int32_t suggested = 0;
-        if (auto* c = dynamic_cast<ICollection_1<T>*>(collection)) suggested = c->ICollection_1_get_Count();
+        if (auto* c = DynCast<ICollection_1<T>>(collection)) suggested = c->ICollection_1_get_Count();
         Initialize(suggested);
         UnionWith(collection);
         if ((count_ == 0 && static_cast<int32_t>(slots_.size()) > 3) || (count_ > 0 && static_cast<int32_t>(slots_.size()) / count_ > 3)) TrimExcess();
@@ -262,4 +264,5 @@ private:
     int32_t version_ = 0;
 };
 
+} // namespace shared
 } // namespace cs

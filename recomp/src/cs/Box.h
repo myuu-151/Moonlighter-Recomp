@@ -119,7 +119,7 @@ public:
     void cs_trace(Tracer& t) override { TraceField(t, value); }
     bool Equals(Object* other) override
     {
-        auto* o = dynamic_cast<Box<T>*>(other);
+        auto* o = DynCast<Box<T>>(other);
         return o && detail::BoxEquals(value, o->value);
     }
     int32_t GetHashCode() override { return detail::BoxHash(value); }
@@ -143,11 +143,11 @@ template <typename T>
 inline T Unbox(Object* o)
 {
     if (!o) ThrowNullReference();
-    if (auto* b = dynamic_cast<Box<T>*>(o)) return b->value;
+    if (auto* b = DynCast<Box<T>>(o)) return b->value;
     // An enum's box unboxes to its underlying type and back (the CLI allows both).
     if constexpr (std::is_enum<T>::value) {
         using U = typename std::underlying_type<T>::type;
-        if (auto* b = dynamic_cast<Box<U>*>(o)) return static_cast<T>(b->value);
+        if (auto* b = DynCast<Box<U>>(o)) return static_cast<T>(b->value);
     }
     ThrowInvalidCast();
 }
@@ -156,7 +156,7 @@ inline T Unbox(Object* o)
 template <typename T>
 inline bool IsBoxed(Object* o)
 {
-    return o && dynamic_cast<Box<T>*>(o) != nullptr;
+    return o && DynCast<Box<T>>(o) != nullptr;
 }
 
 // System.Nullable<T>

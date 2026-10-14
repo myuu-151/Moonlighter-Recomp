@@ -8,9 +8,6 @@
 
 namespace cs {
 
-template <typename T>
-class Array;
-
 struct IDisposable {
     virtual ~IDisposable() = default;
     virtual void IDisposable_Dispose() = 0;
@@ -27,6 +24,8 @@ struct IEnumerable {
     virtual ~IEnumerable() = default;
     virtual IEnumerator* IEnumerable_GetEnumerator() = 0;
 };
+
+namespace shared {
 
 template <typename T>
 struct IEnumerator_1 : virtual IEnumerator, virtual IDisposable {
@@ -71,10 +70,14 @@ struct IEqualityComparer_1 {
     virtual int32_t IEqualityComparer_1_GetHashCode(T obj) = 0;
 };
 
+} // namespace shared
+
 struct IComparable {
     virtual ~IComparable() = default;
     virtual int32_t IComparable_CompareTo(Object* obj) = 0;
 };
+
+namespace shared {
 
 template <typename T>
 struct IComparable_1 {
@@ -87,5 +90,7 @@ struct IEquatable_1 {
     virtual ~IEquatable_1() = default;
     virtual bool IEquatable_1_Equals(T other) = 0;
 };
+
+} // namespace shared
 
 } // namespace cs

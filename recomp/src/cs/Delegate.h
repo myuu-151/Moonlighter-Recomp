@@ -35,7 +35,7 @@ public:
     }
     bool Equals(Object* other) override
     {
-        auto* o = dynamic_cast<DelegateBase*>(other);
+        auto* o = DynCast<DelegateBase>(other);
         if (!o || o->list_.size() != list_.size()) return false;
         for (size_t i = 0; i < list_.size(); i++)
             if (list_[i].target != o->list_[i].target || list_[i].id != o->list_[i].id) return false;
@@ -178,6 +178,17 @@ public:
         return a;
     }
 };
+
+// A delegate called with a shared generic's values (cs/Object.h: cs::Object* for an erased
+// reference), each cast back to its parameter's type.
+template <typename R, typename... A, typename... V>
+inline R InvokeDown(Delegate<R(A...)>* d, const V&... v)
+{
+    return d->Invoke(Down<A>(v)...);
+}
+
+template <typename Sig>
+struct ErasedRef<Delegate<Sig>> : std::true_type {};
 
 // d1 == d2 / d1 != d2 on delegates (Delegate.op_Equality).
 inline bool DelegateOpEquality(DelegateBase* a, DelegateBase* b) { return DelegateEquals(a, b); }

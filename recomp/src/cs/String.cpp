@@ -200,7 +200,7 @@ char16_t String::get_Chars(int32_t i) const
 
 bool String::Equals(Object* other)
 {
-    auto* o = dynamic_cast<String*>(other);
+    auto* o = DynCast<String>(other);
     return o && o->s_ == s_;
 }
 
@@ -224,6 +224,65 @@ bool String::op_Equality(String* a, String* b)
     if (a == b) return true;
     if (!a || !b) return false;
     return a->s_ == b->s_;
+}
+
+namespace {
+// String.IndexOf(string, start) and String.Remove's checks, on a buffer (as String.cpp's own).
+int32_t IndexIn(const std::u16string& s, const char16_t* value, int32_t start)
+{
+    if (start < 0 || start > static_cast<int32_t>(s.size())) ThrowArgumentOutOfRange();
+    size_t p = s.find(value, static_cast<size_t>(start));
+    return p == std::u16string::npos ? -1 : static_cast<int32_t>(p);
+}
+void RemoveIn(std::u16string& s, int32_t start, int32_t count)
+{
+    if (start < 0 || count < 0 || start > static_cast<int32_t>(s.size()) - count) ThrowArgumentOutOfRange();
+    s.erase(static_cast<size_t>(start), static_cast<size_t>(count));
+}
+} // namespace
+
+String* RemoveJsonComments(String* text)
+{
+    // The game's loop:
+    //   for (num = text.IndexOf("//"); num != -1; num = text.IndexOf("//"))
+    //       text = text.Remove(num, text.IndexOf('\n', num) - num + 1)  (or text.Remove(num): no '\n')
+    // in one scan: what comes before a "//" never ends with '/' (else the "//" would start a
+    // character earlier), so no "//" forms where a comment was taken out, and each search's first
+    // "//" is the next one in what's left of the input.
+    const std::u16string& in = nc(text)->str();
+    std::u16string t;
+    t.reserve(in.size());
+    bool changed = false;
+    size_t i = 0;
+    for (;;) {
+        size_t p = in.find(u"//", i);
+        if (p == std::u16string::npos) {
+            t.append(in, i, std::u16string::npos);
+            break;
+        }
+        t.append(in, i, p - i);
+        changed = true;
+        size_t nl = in.find(u'\n', p);
+        if (nl == std::u16string::npos) break;
+        i = nl + 1;
+    }
+    // Then its "/*" ... "*/" loop, step for step (on the one buffer instead of new strings).
+    for (int32_t num = IndexIn(t, u"/*", 0); num != -1; num = IndexIn(t, u"/*", 0)) {
+        changed = true;
+        int32_t num3 = IndexIn(t, u"*/", num);
+        if (num3 == -1) {
+            if (num < 0 || num > static_cast<int32_t>(t.size())) ThrowArgumentOutOfRange();
+            t.erase(static_cast<size_t>(num));
+        } else {
+            int32_t num4 = IndexIn(t, u"/*", num + 2);
+            while (num4 != -1 && num4 < num3) {
+                num3 = IndexIn(t, u"*/", num3 + 2);
+                num4 = IndexIn(t, u"/*", num4 + 2);
+            }
+            RemoveIn(t, num, num3 - num + 2);
+        }
+    }
+    return changed ? String::New(std::move(t)) : text;
 }
 
 int32_t NameIndex(String* name, const char16_t* const* names, int32_t count)

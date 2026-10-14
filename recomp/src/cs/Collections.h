@@ -19,9 +19,6 @@
 
 namespace cs {
 
-template <typename T>
-class Array;
-
 // ---- EqualityComparer<T>.Default ----------------------------------------------------------------
 
 
@@ -69,8 +66,8 @@ struct Comparer {
             // ObjectComparer / GenericComparer: null first, then IComparable<T> / IComparable.
             if (!a) return b ? -1 : 0;
             if (!b) return 1;
-            if (auto* c = dynamic_cast<IComparable_1<T>*>(a)) return c->IComparable_1_CompareTo(b);
-            if (auto* c = dynamic_cast<IComparable*>(a)) return c->IComparable_CompareTo(AsObject(b));
+            if (auto* c = DynCast<IComparable_1<T>>(a)) return c->IComparable_1_CompareTo(b);
+            if (auto* c = DynCast<IComparable>(a)) return c->IComparable_CompareTo(AsObject(b));
             Throw<ArgumentException>();
         } else if constexpr (std::is_arithmetic<T>::value || std::is_enum<T>::value) {
             return CompareTo(a, b);
@@ -81,6 +78,9 @@ struct Comparer {
 };
 
 // ---- KeyValuePair<K, V> ------------------------------------------------------------------------------
+// (cs::KeyValuePair<K, V> is shared::KeyValuePair<Erase<K>, Erase<V>>, cs/Object.h)
+
+namespace shared {
 
 template <typename K, typename V>
 struct KeyValuePair {
@@ -112,6 +112,8 @@ inline int32_t cs_box_hash(const KeyValuePair<K, V>& a)
 {
     return EqualityComparer<K>::GetHashCode(a.key);
 }
+
+} // namespace shared
 
 // The common shape of an enumerator handed out through IEnumerable<T>: wraps a value-type
 // enumerator (MoveNext / get_Current / Dispose), as boxing a List<T>.Enumerator does.

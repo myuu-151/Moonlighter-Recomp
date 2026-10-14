@@ -137,4 +137,6 @@ add_test(NAME slime_translated_gc
 add_test(NAME enemy_golem_soldier_translated_gc
          COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
-set_tests_properties(${_ml_gc_tests} PROPERTIES ENVIRONMENT "ML_GC_EVERY_FRAME=1;ML_GC_POISON=1")
+# (ML_GC_FREEZE_CHECK: the static data the replays freeze is traced anyway, any object only it
+# reaches reported: cs::Heap::Freeze)
+set_tests_properties(${_ml_gc_tests} PROPERTIES ENVIRONMENT "ML_GC_EVERY_FRAME=1;ML_GC_POISON=1;ML_GC_FREEZE_CHECK=1")

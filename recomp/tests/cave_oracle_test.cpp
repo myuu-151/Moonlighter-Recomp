@@ -108,12 +108,14 @@ Value LayoutValue(const DungeonLayout& L)
     Put(out, "maxPos", Vec(cave->maxPos));
     Put(out, "miners", Int(cave->miners->Count()));
     Value rooms = Arr();
-    for (CaveRoom* r : *cave->rooms) {
+    for (auto* ro_ : *cave->rooms) {
+        CaveRoom* r = cs::Down<CaveRoom*>(ro_); // (the translated build's lists share cs::Object*: cs/Object.h)
         Value ro = Obj();
         Put(ro, "t", Str(cs::Is<BossCaveRoom>(r) ? "B" : cs::Is<SingleCaveRoom>(r) ? "S" : "?"));
         Put(ro, "p", Vec(r->position));
         Value units = Arr();
-        for (CaveRoomUnit* u : *r->units) {
+        for (auto* u_ : *r->units) {
+            CaveRoomUnit* u = cs::Down<CaveRoomUnit*>(u_);
             Value uo = Obj();
             Put(uo, "l", Vec(u->localPos));
             Put(uo, "n", Int(idx(u->connectedNorth)));
@@ -144,7 +146,7 @@ Value LayoutValue(const DungeonLayout& L)
     auto list = [&](cs::List<CaveRoom*>* l) {
         Value a = Arr();
         if (l)
-            for (CaveRoom* r : *l) a.arr.push_back(Int(idx(r)));
+            for (auto* r : *l) a.arr.push_back(Int(idx(cs::Down<CaveRoom*>(r))));
         return a;
     };
     Put(sp, "timedChestCaveRooms", list(L.timedChestCaveRooms));

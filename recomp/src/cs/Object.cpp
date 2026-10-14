@@ -25,6 +25,10 @@
 
 namespace cs {
 
+namespace detail {
+CastSlot gCastCache[kCastSlots];
+} // namespace detail
+
 void Tracer::Push(Object* o)
 {
     o->gc_mark_ = epoch_;
@@ -35,7 +39,14 @@ void Tracer::Push(Object* o)
 void Tracer::MarkRefs(const void* obj, const uint16_t* offsets, int32_t count)
 {
     const char* base = static_cast<const char*>(obj);
-    for (int32_t i = 0; i < count; i++) Mark(*reinterpret_cast<Object* const*>(base + offsets[i]));
+    for (int32_t i = 0; i < count; i++) {
+        Object* o = *reinterpret_cast<Object* const*>(base + offsets[i]);
+        if (o && o->gc_mark_ < epoch_) {
+            o->gc_mark_ = epoch_;
+            stack_.push_back(o);
+            if (parents_) parents_->push_back({o, current_});
+        }
+    }
 }
 
 namespace {
@@ -95,7 +106,39 @@ namespace {
 uint32_t gEpoch = 0;
 } // namespace
 
-Tracer::Tracer() : epoch_(++gEpoch == 0 ? ++gEpoch : gEpoch) {}
+// (Epochs count up from 1; kFrozen, the largest, is never one.)
+Tracer::Tracer() : epoch_(++gEpoch == 0 || gEpoch == Heap::kFrozen ? (gEpoch = 1) : gEpoch) {}
+
+namespace {
+// The frozen objects (Heap::Freeze), for ML_GC_FREEZE_CHECK.
+std::vector<Object*>& Frozen()
+{
+    static std::vector<Object*>* v = new std::vector<Object*>();
+    return *v;
+}
+} // namespace
+
+size_t Heap::Freeze(Object* root)
+{
+    if (!root || root->gc_mark_ == kFrozen) return 0;
+    Tracer t;
+    t.Mark(root);
+    std::vector<Object*> reached;
+    while (!t.stack_.empty()) {
+        Object* o = t.stack_.back();
+        t.stack_.pop_back();
+        reached.push_back(o);
+        o->cs_trace(t);
+    }
+    for (Object* o : reached) o->gc_mark_ = kFrozen;
+    Frozen().insert(Frozen().end(), reached.begin(), reached.end());
+    return reached.size();
+}
+
+void Heap::AddPressure(size_t bytes)
+{
+    CurrentHeap().made_ += bytes;
+}
 
 void Heap::Clear()
 {
@@ -111,14 +154,14 @@ void Heap::Clear()
         }
         return;
     }
-    // Keep what the roots reach (on the program's heap); free the rest.
+    // Keep what the roots reach (on the program's heap) and what's frozen; free the rest.
     Tracer t;
     TraceRoots(t);
     t.Drain();
     std::vector<Object*> dead;
     while (o) {
         Object* next = o->gc_next_;
-        if (o->gc_mark_ == t.Epoch()) {
+        if (o->gc_mark_ >= t.Epoch()) {
             o->gc_next_ = program.head_;
             program.head_ = o;
             program.count_++;
@@ -160,12 +203,31 @@ size_t Heap::Collect()
     // they are kept (and so is what they reference only if something traced reaches it too:
     // hand-written code keeping a translated object holds it in a cs::Root).
     for (Object* o = head_; o; o = o->gc_next_)
-        if (!o->cs_traced()) t.Mark(o);
+        if (o->gc_mark_ != kFrozen && !o->cs_traced()) t.Mark(o);
     t.Drain();
+    // ML_GC_FREEZE_CHECK=1: what frozen data references, marked through it: anything marked only
+    // that way is an object the freeze would have lost (reported; kept).
+    static const bool freezeCheck = std::getenv("ML_GC_FREEZE_CHECK") != nullptr;
+    if (freezeCheck) {
+        for (Object* f : Frozen()) f->cs_trace(t);
+        size_t lost = 0;
+        while (!t.stack_.empty()) {
+            Object* o = t.stack_.back();
+            t.stack_.pop_back();
+            if (lost < 8) std::fprintf(stderr, "  lost: %s\n", o->cs_typename());
+            lost++;
+            o->cs_trace(t);
+        }
+        if (lost) {
+            std::fprintf(stderr, "ML_GC_FREEZE_CHECK: frozen data references %zu objects nothing else reaches\n", lost);
+            std::exit(3);
+        }
+    }
+    made_ = 0;
     size_t freed = 0;
     Object** link = &head_;
     while (Object* o = *link) {
-        if (o->gc_mark_ == t.Epoch()) {
+        if (o->gc_mark_ >= t.Epoch()) {
             link = &o->gc_next_;
         } else {
             *link = o->gc_next_;

@@ -15,9 +15,6 @@
 
 namespace cs {
 
-template <typename T>
-class Array;
-
 class String : public Object, public virtual IEnumerable_1<char16_t> {
 public:
     explicit String(std::u16string s) : s_(std::move(s)) {}
@@ -139,6 +136,12 @@ String* ToString(double v); // "G": 15 significant digits
 int32_t NameIndex(String* name, const char16_t* const* names, int32_t count);
 int32_t NameIndex(String* name, const char* const* names, int32_t count); // ASCII names
 int32_t NameIndex(const char* name, const char* const* names, int32_t count);
+
+// FsJSONManager.RemoveComments (the game's: tools/translate/Overrides.cs) in one pass: the same
+// result, the same exceptions, the same object back when there is no comment, but one new string
+// instead of one per comment (the game's copies the whole text at each of them: 6 MB of garbage
+// for the 34 KB constants file).
+String* RemoveJsonComments(String* text);
 
 // Parsing as int.Parse / float.Parse with the invariant (en-US) culture.
 int32_t ParseInt32(String* s);

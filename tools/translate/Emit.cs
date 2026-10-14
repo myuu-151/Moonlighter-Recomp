@@ -57,6 +57,12 @@ public sealed class Emitter
         foreach (var o in ordered.Where(o => o.T.TypeKind is TypeKind.Class or TypeKind.Struct or TypeKind.Interface))
             h.Append(Namespaced(o.T, Template(o.T) + (o.T.TypeKind == TypeKind.Interface || o.T.TypeKind == TypeKind.Struct ? "struct " : "class ") + N.FlatName(o.T) + ";\n"));
         h.Append('\n');
+        // The game's classes share the runtime generics' code (cs::Erase, cs/Object.h): List<C> is
+        // List<object>'s, its values cast back where they're read. Before any class names one.
+        h.Append("namespace cs {\n");
+        foreach (var o in ordered.Where(o => o.T.TypeKind == TypeKind.Class))
+            h.Append($"{(o.Generic ? Template(o.T) : "template <> ")}struct ErasedRef<{N.QualifiedGameName(o.T)}{TemplateArgsOf(o.T)}> : std::true_type {{}};\n");
+        h.Append("} // namespace cs\n\n");
 
         var cpp = new Dictionary<string, StringBuilder>(StringComparer.Ordinal);
         StringBuilder Cpp(string file)
@@ -417,14 +423,16 @@ public sealed class Emitter
         if (m.IsStatic || m.MethodKind == MethodKind.StaticConstructor) mods = "static ";
         else if (m.IsVirtual || m.IsAbstract || m.IsOverride) mods = "virtual ";
         else if (t.TypeKind == TypeKind.Interface) mods = "virtual ";
-        if (m.MethodKind == MethodKind.ExplicitInterfaceImplementation || m.ExplicitInterfaceImplementations.Length > 0) mods = "virtual ";
+        if (m.MethodKind == MethodKind.ExplicitInterfaceImplementation || m.ExplicitInterfaceImplementations.Length > 0)
+            mods = SharedSignature(m.ExplicitInterfaceImplementations[0]) ? "" : "virtual "; // (an __impl: Forwarders')
         string tail = "";
         if (t.TypeKind == TypeKind.Interface || m.IsAbstract) tail = " = 0";
         string ov = Override(m);
         return $"{tmpl}{mods}{ret} {name}({Params(m)}){ov}{tail};";
     }
 
-    string AccessorVirtual(IMethodSymbol m) => m.IsVirtual || m.IsAbstract || m.IsOverride || m.ExplicitInterfaceImplementations.Length > 0 ? "virtual " : "";
+    string AccessorVirtual(IMethodSymbol m) =>
+        m.IsVirtual || m.IsAbstract || m.IsOverride || m.ExplicitInterfaceImplementations.Length > 0 && !SharedSignature(m.ExplicitInterfaceImplementations[0]) ? "virtual " : "";
 
     // `override` when the C++ base declares the method: a translated override, an explicit
     // interface implementation, or System.Object's ToString/Equals/GetHashCode.
@@ -710,7 +718,7 @@ public sealed class Emitter
         if (m.ExplicitInterfaceImplementations.Length > 0)
         {
             var im = m.ExplicitInterfaceImplementations[0];
-            return InterfaceMapped(im.ContainingType) && !im.IsGenericMethod ? " override" : "";
+            return InterfaceMapped(im.ContainingType) && !im.IsGenericMethod && !SharedSignature(im) ? " override" : "";
         }
         if (!m.IsOverride) return "";
         var o = m.OverriddenMethod;
@@ -721,6 +729,11 @@ public sealed class Emitter
         if (root.ContainingType.SpecialType == SpecialType.System_Object && root.Name is "ToString" or "Equals" or "GetHashCode" && !m.ContainingType.IsValueType) return " override";
         return "";
     }
+
+    // A member of a runtime generic interface whose C++ signature is shared (cs::Erase) where the
+    // C# one names the type parameter: an explicit implementation of it is a plain overload, and a
+    // forwarder with the shared signature overrides.
+    bool SharedSignature(IMethodSymbol im) => N.SharedSignature(im);
 
     // Interface members the class maps to an ordinary method: forwarders under the interface's name.
     string Forwarders(INamedTypeSymbol t)
@@ -743,13 +756,23 @@ public sealed class Emitter
                 var impl = t.FindImplementationForInterfaceMember(im) as IMethodSymbol;
                 if (impl == null) { sb.Append($"    // no implementation of {im}\n"); continue; }
                 if (impl.ExplicitInterfaceImplementations.Any(x => SymbolEqualityComparer.Default.Equals(x.OriginalDefinition, im.OriginalDefinition))
-                    && SymbolEqualityComparer.Default.Equals(impl.ContainingType.OriginalDefinition, t.OriginalDefinition)) continue;
+                    && SymbolEqualityComparer.Default.Equals(impl.ContainingType.OriginalDefinition, t.OriginalDefinition) && !SharedSignature(im)) continue;
                 string iname = N.InterfaceMember(im);
+                // A runtime generic interface (IComparable<T>, IEnumerator<T>...) is shared across
+                // erased reference types (cs/Object.h): its members take and give cs::Erase<T>; the
+                // implementation gets its arguments cast back.
+                bool shared = !N.IsGame(i) && i.IsGenericType;
+                bool ErasedSlot(ITypeSymbol original) => shared && original is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type };
                 string ret = TypeOrGap(im.ReturnType);
-                string ps = string.Join(", ", im.Parameters.Select(p => TypeOrGap(p.Type) + (p.RefKind != RefKind.None ? "&" : "") + " " + Body.ParamName(p)));
+                if (ErasedSlot(im.OriginalDefinition.ReturnType)) ret = $"::cs::Erase<{ret}>";
+                var ops = im.OriginalDefinition.Parameters;
+                string ps = string.Join(", ", im.Parameters.Select((p, k) =>
+                    (ErasedSlot(ops[k].Type) && p.RefKind == RefKind.None ? $"::cs::Erase<{TypeOrGap(p.Type)}>" : TypeOrGap(p.Type)) +
+                    (p.RefKind != RefKind.None ? "&" : "") + " " + Body.ParamName(p)));
                 string sig = iname + "(" + ps + ")";
                 if (!done.Add(sig)) continue;
-                string args = string.Join(", ", im.Parameters.Select(Body.ParamName));
+                string args = string.Join(", ", im.Parameters.Select((p, k) =>
+                    ErasedSlot(ops[k].Type) && p.RefKind == RefKind.None ? $"::cs::Down<{TypeOrGap(p.Type)}>({Body.ParamName(p)})" : Body.ParamName(p)));
                 string target;
                 if (!N.IsGame(impl))
                 {

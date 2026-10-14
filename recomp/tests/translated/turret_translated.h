@@ -322,7 +322,7 @@ struct TurretHooks : Hooks {
         turret->onDestroyProjectiles = [this](TurretProbe& b, bool after) {
             const int id = TurretId(&b);
             std::vector<gen::BrokenGolemTurretProjectile*> now;
-            for (int32_t i = 0; i < b._projectilesShot->get_Count(); i++) now.push_back(b._projectilesShot->get_Item(i));
+            for (int32_t i = 0; i < b._projectilesShot->get_Count(); i++) now.push_back(cs::Down<gen::BrokenGolemTurretProjectile*>(b._projectilesShot->get_Item(i)));
             if (!after) {
                 leaving[id] = now;
                 return;
@@ -343,7 +343,7 @@ struct TurretHooks : Hooks {
             return;
         }
         if (n <= shotsBefore) return;
-        gen::BrokenGolemTurretProjectile* p = turret->_projectilesShot->get_Item(static_cast<int32_t>(n - 1));
+        auto* p = cs::Down<gen::BrokenGolemTurretProjectile*>(turret->_projectilesShot->get_Item(static_cast<int32_t>(n - 1)));
         shots.push_back({e.id, step, IdOf(p->gameObject_), static_cast<int>(p->projectileDirection), XY(p->gameObject_->transform_->get_position())});
     }
 
@@ -566,7 +566,8 @@ struct TurretHooks : Hooks {
                 if (!s || !tu || s->Gone()) continue;
                 auto* turret = dynamic_cast<gen::BrokenGolemTurretBehaviour*>(s->behaviour);
                 std::vector<int> mine, game;
-                for (int32_t i = 0; i < turret->_projectilesShot->get_Count(); i++) mine.push_back(IdOf(turret->_projectilesShot->get_Item(i)->gameObject_));
+                for (int32_t i = 0; i < turret->_projectilesShot->get_Count(); i++)
+                    mine.push_back(IdOf(cs::Down<gen::BrokenGolemTurretProjectile*>(turret->_projectilesShot->get_Item(i))->gameObject_));
                 for (const Value& id : (*tu)["shot"].arr) game.push_back(static_cast<int>(id.AsInt()));
                 bool ok = Same(turret->patrolLapse, Bits((*tu)["lapse"])) && turret->canShoot == (*tu)["canShoot"].b &&
                           static_cast<int>(turret->enemyDirection) == (*tu)["dir"].AsInt() && mine == game;

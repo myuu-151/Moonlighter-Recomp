@@ -15,6 +15,8 @@
 
 namespace cs {
 
+namespace shared {
+
 template <typename T>
 class Queue : public Object {
 public:
@@ -63,6 +65,8 @@ public:
 private:
     std::deque<T> items_;
 };
+
+} // namespace shared
 
 class Stopwatch : public Object {
 public:

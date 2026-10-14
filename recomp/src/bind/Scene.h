@@ -425,7 +425,7 @@ template <typename T>
 T GameObject::GetComponent()
 {
     for (Component* c : components_)
-        if (auto t = dynamic_cast<T>(c)) return t;
+        if (auto t = cs::DynCast<typename std::remove_pointer<T>::type>(c)) return t;
     return nullptr;
 }
 
@@ -434,7 +434,7 @@ void GameObject::Collect(std::vector<T>& out, bool includeInactive, bool first)
 {
     if (!includeInactive && !get_activeInHierarchy()) return;
     for (Component* c : components_)
-        if (auto t = dynamic_cast<T>(c)) {
+        if (auto t = cs::DynCast<typename std::remove_pointer<T>::type>(c)) {
             out.push_back(t);
             if (first) return;
         }
@@ -474,7 +474,7 @@ cs::Array<T>* GameObject::GetComponents()
 {
     std::vector<T> out;
     for (Component* c : components_)
-        if (auto t = dynamic_cast<T>(c)) out.push_back(t);
+        if (auto t = cs::DynCast<typename std::remove_pointer<T>::type>(c)) out.push_back(t);
     return cs::Array<T>::FromVector(out);
 }
 

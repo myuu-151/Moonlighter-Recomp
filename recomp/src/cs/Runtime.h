@@ -107,7 +107,7 @@ inline bool ObjectCall_Equals(T* o, Object* other)
 template <typename T, typename std::enable_if<!std::is_pointer<T>::value, int>::type = 0>
 inline bool ObjectCall_Equals(const T& v, Object* other)
 {
-    auto* b = dynamic_cast<Box<T>*>(other);
+    auto* b = DynCast<Box<T>>(other);
     return b && detail::BoxEquals(v, b->value);
 }
 // object.Equals(a, b)
@@ -125,7 +125,7 @@ inline bool ArrayExists(Array<T>* a, Delegate<bool(T)>* match)
     if (!a) ThrowArgumentNull("array");
     if (!match) ThrowArgumentNull("match");
     for (int32_t i = 0; i < a->get_Length(); i++)
-        if (match->Invoke(a->at(i))) return true;
+        if (InvokeDown(match, a->at(i))) return true;
     return false;
 }
 

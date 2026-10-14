@@ -95,7 +95,9 @@ def compile_all(jobs, work, gen, opt, rebuild, genflags=()):
     want = " ".join(cxxflags + list(genflags))
     if not os.path.exists(stamp) or open(stamp).read() != want:
         rebuild = True
-    if rebuild or not os.path.exists(pch) or os.path.getmtime(pch) < os.path.getmtime(os.path.join(gen, "game.h")):
+    # (every object depends on the runtime's headers: the newest of them)
+    headers = max(os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(SRC) for f in fs if f.endswith(".h"))
+    if rebuild or not os.path.exists(pch) or os.path.getmtime(pch) < max(os.path.getmtime(os.path.join(gen, "game.h")), headers):
         t = time.time()
         run([CXX] + cxxflags + list(genflags) + GEN_WARN + ["-x", "c++-header", os.path.join(gen, "game.h"), "-o", pch])
         print(f"  game.h precompiled ({time.time() - t:.0f} s, {os.path.getsize(pch) >> 20} MB)", flush=True)
@@ -104,7 +106,7 @@ def compile_all(jobs, work, gen, opt, rebuild, genflags=()):
 
     def one(task):
         src, out, kind = task
-        if not rebuild and os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(src) and \
+        if not rebuild and os.path.exists(out) and os.path.getmtime(out) >= max(os.path.getmtime(src), headers) and \
                 (kind != "gen" or os.path.getmtime(out) >= os.path.getmtime(pch)):
             return None
         if kind == "c":

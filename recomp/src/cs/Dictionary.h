@@ -25,6 +25,8 @@ int32_t GetPrime(int32_t min);
 int32_t ExpandPrime(int32_t oldSize);
 } // namespace HashHelpers
 
+namespace shared {
+
 template <typename K, typename V>
 class Dictionary : public Object, public virtual ICollection_1<KeyValuePair<K, V>> {
 public:
@@ -96,14 +98,16 @@ public:
         }
         return false;
     }
-    bool TryGetValue(const K& key, V& value) const
+    // (the out parameter of the C# type: the value cast back to it, for an erased reference)
+    template <typename U>
+    bool TryGetValue(const K& key, U& value) const
     {
         int32_t i = FindEntry(key);
         if (i >= 0) {
-            value = entries_[static_cast<size_t>(i)].value;
+            value = Down<U>(entries_[static_cast<size_t>(i)].value);
             return true;
         }
-        value = V{};
+        value = U{};
         return false;
     }
 
@@ -428,4 +432,5 @@ private:
     ValueCollection* values_ = nullptr;
 };
 
+} // namespace shared
 } // namespace cs

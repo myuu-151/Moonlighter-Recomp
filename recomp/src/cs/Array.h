@@ -1,6 +1,7 @@
 #pragma once
 // C# arrays: T[] is cs::Array<T>* (a reference type with a fixed length, bounds-checked
-// elements and the generic collection interfaces), T[,] is cs::Array2<T>*.
+// elements and the generic collection interfaces), T[,] is cs::Array2<T>*: shared::Array of
+// cs::Erase<T> (cs/Object.h), one body for every erased reference type.
 
 #include <algorithm>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include "cs/Vector.h"
 
 namespace cs {
+namespace shared {
 
 template <typename T>
 class Array : public Object, public virtual IList_1<T> {
@@ -33,6 +35,14 @@ public:
     {
         Array* a = gcnew<Array>(0);
         a->items_ = Vector<T>(v);
+        return a;
+    }
+    // (elements of the C# type, for an array shared by erased references: cs/Object.h)
+    template <typename U, typename std::enable_if<!std::is_same<U, T>::value, int>::type = 0>
+    static Array* FromVector(const std::vector<U>& v)
+    {
+        Array* a = gcnew<Array>(0);
+        for (const U& x : v) a->items_.push_back(x);
         return a;
     }
     static Array* FromVector(const Vector<T>& v)
@@ -196,4 +206,5 @@ private:
     Vector<T> items_;
 };
 
+} // namespace shared
 } // namespace cs

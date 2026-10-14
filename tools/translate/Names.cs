@@ -247,15 +247,93 @@ public sealed class Names
             case MethodKind.Conversion:
                 return Ident(m.Name) + "_" + Ident(m.ReturnType.Name);
             case MethodKind.ExplicitInterfaceImplementation:
-                return InterfaceMember(m.ExplicitInterfaceImplementations[0]);
+                return ExplicitName(m.ExplicitInterfaceImplementations[0]);
         }
         if (m.ContainingType?.TypeKind == TypeKind.Interface) return InterfaceMember(m);
         // Accessors of explicitly implemented properties/events.
-        if (m.ExplicitInterfaceImplementations.Length > 0) return InterfaceMember(m.ExplicitInterfaceImplementations[0]);
+        if (m.ExplicitInterfaceImplementations.Length > 0) return ExplicitName(m.ExplicitInterfaceImplementations[0]);
         string name = Ident(m.Name);
         if (tr.HidesBase(m)) name += "_n" + tr.HideDepth(m);
+        if (ErasureClash(m)) name += "_e" + SignatureHash(m);
         return name;
     }
+
+    // ---- overloads the shared generics would merge ----
+    // List<A> and List<B> are one C++ type when A and B are erased classes (cs/Object.h), so two
+    // C# overloads differing only there would be one C++ signature: such a method gets its own name
+    // (its C# signature's hash; an override, its root's), so every call and override agrees.
+
+    static IMethodSymbol Root(IMethodSymbol m)
+    {
+        m = m.OriginalDefinition;
+        while (m.OverriddenMethod != null) m = m.OverriddenMethod.OriginalDefinition;
+        return m;
+    }
+
+    readonly Dictionary<IMethodSymbol, bool> clashes = new(SymbolEqualityComparer.Default);
+    bool ErasureClash(IMethodSymbol m)
+    {
+        var root = Root(m);
+        if (clashes.TryGetValue(root, out bool known)) return known;
+        return clashes[root] = FindClash(root);
+    }
+
+    bool FindClash(IMethodSymbol root)
+    {
+        if (root.Parameters.Length == 0) return false;
+        string key = ErasedSignature(root);
+        string exact = ExactSignature(root);
+        for (var t = root.ContainingType; t != null && IsGame(t); t = t.BaseType)
+            foreach (var o in t.GetMembers(root.Name).OfType<IMethodSymbol>())
+            {
+                if (o.Parameters.Length != root.Parameters.Length || o.MethodKind != root.MethodKind) continue;
+                var or = Root(o);
+                if (SymbolEqualityComparer.Default.Equals(or, root)) continue;
+                if (ErasedSignature(or) == key && ExactSignature(or) != exact) return true;
+            }
+        return false;
+    }
+
+    static string ExactSignature(IMethodSymbol m) => string.Join(",", m.Parameters.Select(p => p.RefKind + " " + p.Type.ToDisplayString()));
+    string ErasedSignature(IMethodSymbol m) => string.Join(",", m.Parameters.Select(p => p.RefKind + " " + ErasedKey(p.Type, false)));
+
+    static string SignatureHash(IMethodSymbol m)
+    {
+        uint h = 2166136261;
+        foreach (char c in ExactSignature(Root(m))) h = (h ^ c) * 16777619;
+        return (h % 100000).ToString();
+    }
+
+    // A type as C++ sees it once shared generics erase their class arguments.
+    string ErasedKey(ITypeSymbol t, bool asArgument)
+    {
+        if (asArgument && ErasedAsArgument(t)) return "object";
+        if (t is IArrayTypeSymbol at) return ErasedKey(at.ElementType, true) + "[" + at.Rank + "]";
+        if (t is INamedTypeSymbol nt && nt.IsGenericType && !IsGame(nt))
+            return nt.OriginalDefinition.ToDisplayString() + "<" + string.Join(",", nt.TypeArguments.Select(a => ErasedKey(a, true))) + ">";
+        return t.ToDisplayString();
+    }
+
+    // A type argument a shared generic holds as cs::Object* (cs::Erase): a game class, an array,
+    // a delegate, one of the runtime's generic collections.
+    bool ErasedAsArgument(ITypeSymbol t)
+    {
+        if (t.TypeKind is TypeKind.Array or TypeKind.Delegate) return true;
+        if (t.TypeKind != TypeKind.Class || t.SpecialType is SpecialType.System_String or SpecialType.System_Object) return false;
+        if (IsGame(t)) return true;
+        string n = t.OriginalDefinition.ToDisplayString();
+        return n is "System.Collections.Generic.List<T>" or "System.Collections.Generic.Dictionary<TKey, TValue>" or
+            "System.Collections.Generic.HashSet<T>" or "System.Collections.Generic.Queue<T>";
+    }
+
+    // An explicit implementation's name: the member's, but for a runtime generic interface member
+    // whose C++ signature is shared (cs::Erase, cs/Object.h): <member>__impl, a forwarder with the
+    // shared signature overriding (Emit.Forwarders).
+    string ExplicitName(IMethodSymbol im) => InterfaceMember(im) + (SharedSignature(im) ? "__impl" : "");
+
+    public bool SharedSignature(IMethodSymbol im) =>
+        !IsGame(im.ContainingType) && im.ContainingType.IsGenericType &&
+        (im.OriginalDefinition.ReturnType is ITypeParameterSymbol || im.OriginalDefinition.Parameters.Any(p => p.Type is ITypeParameterSymbol));
 
     // Interface members: <Interface>[_<arity>]_<member> (IEnumerator_MoveNext).
     public string InterfaceMember(IMethodSymbol im)

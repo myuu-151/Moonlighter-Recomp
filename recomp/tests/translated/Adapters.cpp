@@ -64,7 +64,8 @@ std::vector<std::vector<float>> GetFloat2DArray(const std::string& key)
 {
     std::vector<std::vector<float>> r;
     if (auto* a = gen::Constants::GetFloat2DArray(Str(key)))
-        for (cs::Array<float>* row : a->vec()) {
+        for (auto* row_ : a->vec()) {
+            cs::Array<float>* row = cs::Down<cs::Array<float>*>(row_);
             std::vector<float> v;
             if (row)
                 for (float f : row->vec()) v.push_back(f);
@@ -137,10 +138,10 @@ void DungeonLayout::Generate(const FloorGenerationSaveInfo& floorInfo, bool spec
     for (int num2 = 0; num2 < 5; num2++) list->Add(g->cave->CreateMiner(cs::New<gen::CommonRoomMiner>()));
     g->initCaveRoom = cs::New<gen::SingleCaveRoom>();
     switch (g->lastDoorDirectionIndex) {
-    case 0: g->initCaveRoom->get_units()->get_Item(0)->blockedNorth = true; break;
-    case 1: g->initCaveRoom->get_units()->get_Item(0)->blockedSouth = true; break;
-    case 2: g->initCaveRoom->get_units()->get_Item(0)->blockedWest = true; break;
-    case 3: g->initCaveRoom->get_units()->get_Item(0)->blockedEast = true; break;
+    case 0: cs::Down<gen::CaveRoomUnit*>(g->initCaveRoom->get_units()->get_Item(0))->blockedNorth = true; break;
+    case 1: cs::Down<gen::CaveRoomUnit*>(g->initCaveRoom->get_units()->get_Item(0))->blockedSouth = true; break;
+    case 2: cs::Down<gen::CaveRoomUnit*>(g->initCaveRoom->get_units()->get_Item(0))->blockedWest = true; break;
+    case 3: cs::Down<gen::CaveRoomUnit*>(g->initCaveRoom->get_units()->get_Item(0))->blockedEast = true; break;
     }
     g->cave->AddRoom(g->initCaveRoom);
     int num3 = 100;
