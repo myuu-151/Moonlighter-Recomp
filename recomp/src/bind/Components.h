@@ -215,6 +215,47 @@ struct AnimatorStateInfo {
 };
 inline void cs_trace_value(cs::Tracer&, const AnimatorStateInfo&) {}
 
+// Animator.parameters' entries (the controller's parameters, as Unity lists them).
+enum class AnimatorControllerParameterType : int32_t { Float = 1, Int = 3, Bool = 4, Trigger = 9 };
+class AnimatorControllerParameter : public cs::Object {
+public:
+    const char* cs_typename() const override { return "UnityEngine.AnimatorControllerParameter"; }
+    bool cs_traced() const override { return true; }
+    void cs_trace(cs::Tracer& t) override { t.Mark(name_); }
+    cs::String* get_name() { return name_; }
+    int32_t get_nameHash() { return nameHash_; }
+    AnimatorControllerParameterType get_type() { return type_; }
+    float get_defaultFloat() { return defaultFloat_; }
+    int32_t get_defaultInt() { return static_cast<int32_t>(defaultFloat_); }
+    bool get_defaultBool() { return defaultFloat_ != 0.0f; }
+    cs::String* name_ = nullptr;
+    int32_t nameHash_ = 0;
+    AnimatorControllerParameterType type_ = AnimatorControllerParameterType::Float;
+    float defaultFloat_ = 0.0f;
+};
+
+class Animator;
+
+// A state machine behaviour: a script on an Animator's states (Unity makes one per state it's on).
+// The extracted controllers don't list them: a driver puts them on (Animator::AddBehaviour). Unity
+// calls OnStateEnter when its state starts (a transition's destination as it begins), OnStateExit when
+// it's left (unity::Animator's onStateEnter / onStateExit): the translated overrides through the
+// generated cs_OnState* forwarders.
+class StateMachineBehaviour : public ScriptableObject {
+public:
+    const char* cs_typename() const override { return "UnityEngine.StateMachineBehaviour"; }
+    static const char* cs_static_typename() { return "UnityEngine.StateMachineBehaviour"; }
+    virtual void cs_OnStateEnter(Animator* animator, AnimatorStateInfo stateInfo, int32_t layerIndex) { (void)animator, (void)stateInfo, (void)layerIndex; }
+    virtual void cs_OnStateExit(Animator* animator, AnimatorStateInfo stateInfo, int32_t layerIndex) { (void)animator, (void)stateInfo, (void)layerIndex; }
+    virtual void cs_OnStateUpdate(Animator* animator, AnimatorStateInfo stateInfo, int32_t layerIndex) { (void)animator, (void)stateInfo, (void)layerIndex; }
+    // base.OnStateEnter(...) and the others: StateMachineBehaviour's own do nothing.
+    static void BaseMessage(StateMachineBehaviour* self, Animator* animator, AnimatorStateInfo stateInfo, int32_t layerIndex)
+    {
+        (void)self, (void)animator, (void)stateInfo, (void)layerIndex;
+    }
+    void __ctor() {}
+};
+
 class Animator : public Behaviour {
 public:
     const char* cs_typename() const override { return "UnityEngine.Animator"; }
@@ -242,6 +283,42 @@ public:
     AnimatorStateInfo GetCurrentAnimatorStateInfo(int32_t layer);
     bool IsInTransition(int32_t layer);
     static int32_t StringToHash(cs::String* name) { return unity::StringToHash(cs::nc(name)->ToUtf8()); }
+    // The parameters by id (Animator.StringToHash of the name); an id the controller hasn't: nothing
+    // (Unity logs it), 0 / false read.
+    void SetFloat(int32_t id, float value);
+    void SetBool(int32_t id, bool value);
+    void SetInteger(int32_t id, int32_t value);
+    void SetTrigger(int32_t id);
+    void ResetTrigger(int32_t id);
+    float GetFloat(int32_t id);
+    bool GetBool(int32_t id);
+    int32_t GetInteger(int32_t id);
+    // Animator.parameters: the controller's, in its order (a new array each call, as Unity's).
+    cs::Array<AnimatorControllerParameter*>* get_parameters();
+    // CrossFade(stateHashName, 0, layer, normalizedTimeOffset): a zero-length crossfade is Play at
+    // that time; a state the controller hasn't: nothing (Unity warns). Longer ones: not modelled.
+    void CrossFade(int32_t stateHashName, float normalizedTransitionDuration, int32_t layer, float normalizedTimeOffset);
+    // applyRootMotion (the controller's m_ApplyRootMotion until a script sets it).
+    bool get_applyRootMotion() { return applyRootMotion_ < 0 ? controller_ && controller_->applyRootMotion == 1 : applyRootMotion_ == 1; }
+    void set_applyRootMotion(bool on) { applyRootMotion_ = on ? 1 : 0; }
+    // Its update mode's clock: AnimatorUpdateMode.UnscaledTime runs on Time.unscaledDeltaTime (the
+    // controller's updateMode 2 when it's extracted; a driver may say).
+    bool unscaledTime_ = false;
+    // A controller in the older format (no sprite paths): the SpriteRenderer its sprite goes to, where
+    // it isn't the first below the Animator (a driver's: the hero's HeroMerchantArt/Will).
+    SpriteRenderer* spriteTarget_ = nullptr;
+
+    // The state machine behaviours on its states (the driver's: the extraction doesn't have them),
+    // and GetBehaviours<T>() over them, in the order they were put on.
+    void AddBehaviour(int32_t stateHash, StateMachineBehaviour* behaviour);
+    template <typename T>
+    cs::Array<T>* GetBehaviours()
+    {
+        std::vector<T> out;
+        for (auto& b : behaviours_)
+            if (auto t = dynamic_cast<T>(b.second)) out.push_back(t);
+        return cs::Array<T>::FromVector(out);
+    }
 
     // The animation pass (Scene::UpdateAnimators): the state machine, the clips' writes applied.
     void UpdatePass(float deltaTime);
@@ -272,6 +349,11 @@ private:
     // defaults written back; on again, it starts over from its default state.
     void WriteDefaults();
     void Restart();
+
+    // The behaviours' messages for a state (unity::Animator's onStateEnter / onStateExit).
+    void StateMessage(int32_t hash, bool enter);
+    std::vector<std::pair<int32_t, StateMachineBehaviour*>> behaviours_;
+    int applyRootMotion_ = -1; // set by a script: 0 / 1
 
     const unity::AnimatorController* controller_ = nullptr;
     RuntimeAnimatorController* runtime_ = nullptr;

@@ -138,3 +138,32 @@ add_test(NAME enemy_golem_soldier_translated_gc
          COMMAND enemy_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/enemy_GolemSoldier.jsonl GolemSoldier
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set_tests_properties(${_ml_gc_tests} PROPERTIES ENVIRONMENT "ML_GC_EVERY_FRAME=1;ML_GC_POISON=1")
+# Will, the hero, on the game's own code (tests/translated/player_translated_test: player_walk_test's
+# replay and rows, tests/player_walk_replay.h) on the walk recordings: HeroMerchant,
+# HeroMerchantController, HeroMerchantStats, SMAnimatorHandler, the Dash, his weapon translated.
+add_executable(player_translated_test tests/translated/player_translated_test.cpp tests/translated/scene/Standins.cpp)
+target_link_libraries(player_translated_test PRIVATE mlgen)
+ml_translated_debug(player_translated_test)
+set(ML_TRANSLATED_WALKS
+    player_walk_translated walk
+    player_roll_translated walk_roll
+    player_diagonals_translated walk_diag
+    player_fall_translated walk_fall
+    player_attack_translated walk_attack
+    player_rocks_translated walk_rocks)
+set(_ml_walk_gc_tests)
+list(LENGTH ML_TRANSLATED_WALKS _ml_n)
+math(EXPR _ml_last "${_ml_n} - 1")
+foreach(_i RANGE 0 ${_ml_last} 2)
+    math(EXPR _j "${_i} + 1")
+    list(GET ML_TRANSLATED_WALKS ${_i} _name)
+    list(GET ML_TRANSLATED_WALKS ${_j} _file)
+    add_test(NAME ${_name}
+             COMMAND player_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/${_file}.jsonl
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+    add_test(NAME ${_name}_gc
+             COMMAND player_translated_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/${_file}.jsonl
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+    list(APPEND _ml_walk_gc_tests ${_name}_gc)
+endforeach()
+set_tests_properties(${_ml_walk_gc_tests} PROPERTIES ENVIRONMENT "ML_GC_EVERY_FRAME=1;ML_GC_POISON=1")

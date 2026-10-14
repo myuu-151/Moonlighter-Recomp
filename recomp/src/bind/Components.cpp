@@ -108,8 +108,10 @@ void Animator::cs_trace(cs::Tracer& t)
 {
     Behaviour::cs_trace(t);
     t.Mark(runtime_);
+    for (auto& b : behaviours_) t.Mark(b.second);
     for (GameObject* g : targets_) t.Mark(g);
     t.Mark(spriteRenderer_);
+    t.Mark(spriteTarget_);
 }
 
 void Animator::cs_Attached()
@@ -165,6 +167,9 @@ void Animator::SetController(const unity::AnimatorController* controller)
     if (controller_) {
         anim_ = std::make_unique<unity::Animator>(*controller_);
         anim_->speed = speed_;
+        if (controller_->updateMode == 2) unscaledTime_ = true;
+        anim_->onStateEnter = [this](int32_t hash) { StateMessage(hash, true); };
+        anim_->onStateExit = [this](int32_t hash) { StateMessage(hash, false); };
         anim_->onEvent = [this](const unity::AnimationEvent& e) {
             if (onEvent) onEvent(*this, e, false);
             if (gameObject_ && !gameObject_->SendAnimationEvent(e))
@@ -205,6 +210,100 @@ void Animator::ResetTrigger(cs::String* name)
 {
     if (anim_) anim_->ResetTrigger(U8(name));
 }
+namespace {
+// The parameter an id names (nullptr: none).
+const unity::AnimatorParameter* ParamById(const unity::AnimatorController* c, int32_t id)
+{
+    if (!c) return nullptr;
+    for (const unity::AnimatorParameter& p : c->params)
+        if (p.hash == id) return &p;
+    return nullptr;
+}
+} // namespace
+
+void Animator::SetFloat(int32_t id, float value)
+{
+    if (const auto* p = ParamById(controller_, id); p && anim_) anim_->SetFloat(p->name, value);
+}
+void Animator::SetBool(int32_t id, bool value)
+{
+    if (const auto* p = ParamById(controller_, id); p && anim_) anim_->SetBool(p->name, value);
+}
+void Animator::SetInteger(int32_t id, int32_t value)
+{
+    if (const auto* p = ParamById(controller_, id); p && anim_) anim_->SetInteger(p->name, value);
+}
+void Animator::SetTrigger(int32_t id)
+{
+    if (const auto* p = ParamById(controller_, id); p && anim_) anim_->SetTrigger(p->name);
+}
+void Animator::ResetTrigger(int32_t id)
+{
+    if (const auto* p = ParamById(controller_, id); p && anim_) anim_->ResetTrigger(p->name);
+}
+float Animator::GetFloat(int32_t id)
+{
+    const auto* p = ParamById(controller_, id);
+    return p && anim_ ? anim_->GetFloat(p->name) : 0.0f;
+}
+bool Animator::GetBool(int32_t id)
+{
+    const auto* p = ParamById(controller_, id);
+    return p && anim_ && anim_->GetBool(p->name);
+}
+int32_t Animator::GetInteger(int32_t id)
+{
+    const auto* p = ParamById(controller_, id);
+    return p && anim_ ? anim_->GetInteger(p->name) : 0;
+}
+
+cs::Array<AnimatorControllerParameter*>* Animator::get_parameters()
+{
+    std::vector<AnimatorControllerParameter*> out;
+    if (controller_)
+        for (const unity::AnimatorParameter& p : controller_->params) {
+            auto* a = cs::gcnew<AnimatorControllerParameter>();
+            a->name_ = cs::String::FromUtf8(p.name);
+            a->nameHash_ = p.hash;
+            a->type_ = static_cast<AnimatorControllerParameterType>(p.type);
+            a->defaultFloat_ = p.defaultValue;
+            out.push_back(a);
+        }
+    return cs::Array<AnimatorControllerParameter*>::FromVector(out);
+}
+
+void Animator::CrossFade(int32_t stateHashName, float normalizedTransitionDuration, int32_t layer, float normalizedTimeOffset)
+{
+    (void)layer;
+    if (!anim_ || !controller_) return;
+    const int s = controller_->StateByHash(stateHashName);
+    if (s < 0) return;
+    if (normalizedTransitionDuration != 0.0f) cs::NotTranslated("Animator.CrossFade with a duration");
+    anim_->Play(controller_->states[static_cast<size_t>(s)].name, std::isinf(normalizedTimeOffset) ? 0.0f : normalizedTimeOffset);
+}
+
+void Animator::AddBehaviour(int32_t stateHash, StateMachineBehaviour* behaviour) { behaviours_.emplace_back(stateHash, behaviour); }
+
+void Animator::StateMessage(int32_t hash, bool enter)
+{
+    if (behaviours_.empty()) return;
+    AnimatorStateInfo info;
+    info.info.shortNameHash = hash;
+    if (controller_)
+        if (const int s = controller_->StateByHash(hash); s >= 0) {
+            const unity::AnimatorState& st = controller_->states[static_cast<size_t>(s)];
+            info.info.fullPathHash = st.fullPathHash;
+            info.info.tagHash = st.tagHash;
+            info.info.loop = st.loop;
+        }
+    const auto list = behaviours_; // (a message may add or remove behaviours)
+    for (const auto& b : list) {
+        if (b.first != hash || b.second->destroyed_) continue;
+        if (enter) b.second->cs_OnStateEnter(this, info, 0);
+        else b.second->cs_OnStateExit(this, info, 0);
+    }
+}
+
 float Animator::GetFloat(cs::String* name) { return anim_ ? anim_->GetFloat(U8(name)) : 0.0f; }
 bool Animator::GetBool(cs::String* name) { return anim_ && anim_->GetBool(U8(name)); }
 int32_t Animator::GetInteger(cs::String* name) { return anim_ ? anim_->GetInteger(U8(name)) : 0; }
@@ -291,6 +390,7 @@ float Animator::Read(GameObject* g, const unity::AnimatedProperty& p)
     if (a == "m_Enabled")
         for (Component* c : g->components_)
             if (auto* b = dynamic_cast<Behaviour*>(c)) return b->enabled_ ? 1.0f : 0.0f;
+    if (p.type == 198) return 0.0f; // (a ParticleSystem's: presentation, not written)
     std::fprintf(stderr, "[bind] Animator: property %s/%s (class %d) not bound\n", p.path.c_str(), a.c_str(), p.type);
     return 0.0f;
 }
@@ -365,7 +465,7 @@ void Animator::Bind()
             anim_->SetDefault(p.path, p.attribute, defaults_.back());
         }
     }
-    if (props.empty()) spriteRenderer_ = gameObject_->GetComponentInChildren<SpriteRenderer*>(true);
+    if (props.empty()) spriteRenderer_ = spriteTarget_ ? spriteTarget_ : gameObject_->GetComponentInChildren<SpriteRenderer*>(true);
 }
 
 void Animator::Apply()
@@ -401,7 +501,7 @@ void Animator::UpdatePass(float deltaTime)
     if (!bound_) Bind();
     anim_->Update(deltaTime);
     ran_ = true;
-    if (controller_->applyRootMotion == 1) ApplyRootMotion();
+    if (get_applyRootMotion()) ApplyRootMotion();
     Apply();
 }
 
@@ -422,14 +522,16 @@ void Animator::ApplyRootMotion()
 
 namespace bind {
 
-void Scene::UpdateAnimators(float deltaTime)
+void Scene::UpdateAnimators(float deltaTime) { UpdateAnimators(deltaTime, deltaTime); }
+
+void Scene::UpdateAnimators(float deltaTime, float unscaledDeltaTime)
 {
     // The Animators running as the pass starts: one its object came on during the pass (a pooled
     // shot a clip event took out) first runs in the next one (game/EnemyProjectile.h).
     std::vector<UnityEngine::Animator*> list;
     for (UnityEngine::Animator* a : animators)
         if (!a->destroyed_ && a->enabled_ && a->gameObject_ && a->gameObject_->get_activeInHierarchy()) list.push_back(a);
-    for (UnityEngine::Animator* a : list) a->UpdatePass(deltaTime);
+    for (UnityEngine::Animator* a : list) a->UpdatePass(a->unscaledTime_ ? unscaledDeltaTime : deltaTime);
     animators.erase(std::remove_if(animators.begin(), animators.end(), [](UnityEngine::Animator* a) { return a->destroyed_; }), animators.end());
 }
 

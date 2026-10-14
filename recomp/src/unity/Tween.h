@@ -60,6 +60,12 @@ public:
     // when the tween starts, on its first update; one that's done or killed: ignored).
     void SetEase(int id, Ease ease);
     void SetUnscaled(int id, bool unscaled);
+    // SetDelay on a handle before it starts (DOTween reads the delay as the tween runs: one set
+    // after the call that made it, before its first update, counts whole).
+    void SetDelay(int id, float delay);
+    // Tween.OnKill(callback): when the tween goes, whether it completed (after its OnComplete) or
+    // was killed (Kill, KillTarget). One that's done or killed: ignored.
+    void OnKill(int id, std::function<void()> callback);
     // A tween we only need the end of (OnComplete after `delay` + `duration`).
     int Timer(float duration, float delay, std::function<void()> onComplete);
     // The tween's target (Tween.target: the transform a DOMove / DOMoveX moves; none: nullptr),
@@ -86,6 +92,7 @@ private:
         std::function<Vector2()> get;
         std::function<void(Vector2)> set;
         std::function<void()> onComplete;
+        std::function<void()> onKill;
     };
     std::vector<Tween> tweens_;
     std::vector<int> killedPending_; // killed while this update's callbacks run

@@ -522,6 +522,8 @@ int Replay(const std::string& file, Data& data)
     auto* heroController = cs::New<gen::HeroMerchantController>();
     auto* heroStats = cs::New<gen::HeroMerchantStats>();
     heroGo->Attach(heroMerchant);
+    // (his controller's messages are his doings, the recording's here: off, no Start or Update)
+    heroController->enabled_ = false;
     heroGo->Attach(heroController);
     heroGo->Attach(heroStats);
     heroMerchant->heroMerchantController = heroController;

@@ -18,6 +18,10 @@
 namespace standins {
 
 struct Services {
+    // The hero's own code (HeroMerchant.DealDamageToPlayer, HeroMerchantController's
+    // CheckForHolesAfterPush and GetColliderOffsset: units.txt's `wrap`) stood in for by the hooks
+    // below (the enemy replays: his doings are the recording's); false: the game's own runs.
+    bool heroStandIns = true;
     // HeroMerchant.DealDamageToPlayer(attackStrength, damageSource, type, enemySource).
     std::function<void(float strength, cs::String* source, int type, gen::Enemy* enemy)> dealDamageToPlayer;
     // HeroMerchantController.AddForce(force): an impulse on the hero's body.
@@ -37,7 +41,35 @@ struct Services {
     // TimeManagerV2.Instance / GameManager.Instance (none: null, as in a scene without them).
     gen::TimeManagerV2* timeManager = nullptr;
     gen::GameManager* gameManager = nullptr;
+    // GameManager's state the hero reads: paused (PauseGame sets it), the town's scene loaded (a
+    // hit then does nothing: the recordings' "town").
+    bool gamePaused = false;
+    bool townSceneLoaded = false;
+    // ItemDatabase.GetItemByName (the item database: the driver's, from items.json) and
+    // ItemStack.Create (an item's object, its UI not made).
+    std::function<gen::ItemMaster*(cs::String* name)> itemByName;
+    std::function<gen::ItemStack*(gen::ItemMaster* master)> createItemStack;
 };
 Services& S();
+
+// The HUD's health bar (WillHealthBar) as far as it acts on the hero: subscribed to his health,
+// absorption and shield after his own code (WillHealthBar.Init runs after HeroMerchant.Init), each
+// drop plays his damaged effect (HeroMerchantController.PlayDamagedEffect, the game's) as the bar
+// does: the health falling (PlayAnimation), the absorption below what the bar shows, each shield
+// image removed. The bar itself (its sliders, texts, sprites' tweens) is presentation.
+class HealthBar : public cs::Object {
+public:
+    const char* cs_typename() const override { return "standins.HealthBar"; }
+    bool cs_traced() const override { return true; }
+    void cs_trace(cs::Tracer& t) override { t.Mark(stats_); }
+    static HealthBar* Subscribe(gen::HeroMerchantStats* stats);
+    void CurrentHealth_OnStateUpdated(float value);
+    void Absorption_OnStateUpdated(float value);
+    void Shield_OnStateUpdated(float value);
+
+private:
+    gen::HeroMerchantStats* stats_ = nullptr;
+    int shields_ = 0; // the shield images shown
+};
 
 } // namespace standins

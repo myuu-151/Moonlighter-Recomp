@@ -46,6 +46,7 @@ struct MessageArgs {
 inline bool MessageIs(cs::String* name, cs::String* literal) { return name && literal && name->str() == literal->str(); }
 
 enum class SendMessageOptions : int32_t { RequireReceiver = 0, DontRequireReceiver = 1 };
+enum class Space : int32_t { World = 0, Self = 1 };
 
 // ---- Component ------------------------------------------------------------------------------------
 
@@ -80,6 +81,7 @@ public:
     void SendMessage(cs::String* name);
     void SendMessage(cs::String* name, cs::Object* value);
     void SendMessage(cs::String* name, cs::Object* value, SendMessageOptions options);
+    void SendMessage(cs::String* name, SendMessageOptions options) { SendMessage(name, nullptr, options); }
 
     // ---- the engine's side ----
     // Added to its object (before any message).
@@ -104,6 +106,8 @@ public:
     // new GameObject() / new GameObject(name): with its Transform, at the scene's root.
     void __ctor();
     void __ctor(cs::String* name);
+    // new GameObject(name, components): with those components (none so far: an empty list).
+    void __ctor(cs::String* name, cs::Array<cs::Type*>* components);
     static GameObject* Create(const std::string& name, Transform* parent = nullptr);
 
     Transform* get_transform() { return transform_; }
@@ -140,6 +144,7 @@ public:
     void SendMessage(cs::String* name) { SendMessage(name, nullptr); }
     void SendMessage(cs::String* name, cs::Object* value);
     void SendMessage(cs::String* name, cs::Object* value, SendMessageOptions) { SendMessage(name, value); }
+    void SendMessage(cs::String* name, SendMessageOptions) { SendMessage(name, nullptr); }
     // An Animator's event: every MonoBehaviour of the object with the method (Unity logs "has no
     // receiver" when none has it). Returns whether one did.
     bool SendAnimationEvent(const unity::AnimationEvent& e);
@@ -200,6 +205,16 @@ public:
     Vector3 get_right();
     // Rotate(eulers) (Space.Self): localRotation * Euler(eulers); about z only (the 2D game's).
     void Rotate(Vector3 eulers);
+    // Rotate(axis, angle) (Space.Self): about z only.
+    void Rotate(Vector3 axis, float angle);
+    // Translate(translation, Space.World): position += translation (the engine's float adds);
+    // Space.Self (Translate(translation)): through the transform's rotation, none modelled but
+    // an unturned one's (position += translation).
+    void Translate(Vector3 translation) { Translate(translation, Space::Self); }
+    void Translate(Vector3 translation, Space relativeTo);
+    // foreach (Transform child in transform): its children in order (Unity's Transform.Enumerator:
+    // GetChild(i) while i < childCount, read at each step).
+    cs::IEnumerator* GetEnumerator();
     Vector3 TransformPoint(Vector3 local);
     Vector3 InverseTransformPoint(Vector3 world);
 
@@ -384,8 +399,11 @@ public:
     void ResumeFixed();
     // The objects Destroy(obj) marked, at the frame's end.
     void ProcessDestroys();
-    // The Animators' pass (bind/Components.cpp): each enabled one on an active object.
+    // The Animators' pass (bind/Components.cpp): each enabled one on an active object, in
+    // `animators`' order (a driver may order them: the hero's weapon's runs before his), each on its
+    // update mode's clock (UnscaledTime: unscaledDeltaTime).
     void UpdateAnimators(float deltaTime);
+    void UpdateAnimators(float deltaTime, float unscaledDeltaTime);
 
     // ---- what the components call ----
     void Started(UnityEngine::MonoBehaviour* m) { pendingStarts_.push_back(m); }

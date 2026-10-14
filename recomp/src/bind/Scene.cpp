@@ -60,6 +60,12 @@ void GameObject::cs_trace(cs::Tracer& t)
 
 void GameObject::__ctor() { __ctor(CS_LIT(u"New Game Object")); }
 
+void GameObject::__ctor(cs::String* name, cs::Array<cs::Type*>* components)
+{
+    if (components && components->get_Length() > 0) cs::NotTranslated("new GameObject(name, component types)");
+    __ctor(name);
+}
+
 void GameObject::__ctor(cs::String* name)
 {
     name_ = name;
@@ -240,6 +246,35 @@ void Transform::set_position(Vector3 world)
     Changed();
 }
 
+void Transform::Translate(Vector3 translation, Space relativeTo)
+{
+    if (relativeTo == Space::Self)
+        for (Transform* t = this; t; t = t->parent_)
+            if (t->rotationZ_ != 0.0f) cs::NotTranslated("Transform.Translate(Space.Self) under a rotation");
+    const Vector3 p = get_position();
+    set_position(Vector3{p.x + translation.x, p.y + translation.y, p.z + translation.z});
+}
+
+namespace {
+// Transform.Enumerator: the children by index, the count read at each step.
+class TransformEnumerator : public cs::Object, public virtual cs::IEnumerator {
+public:
+    explicit TransformEnumerator(Transform* t) : t_(t) {}
+    const char* cs_typename() const override { return "UnityEngine.Transform+Enumerator"; }
+    bool cs_traced() const override { return true; }
+    void cs_trace(cs::Tracer& t) override { t.Mark(t_); }
+    bool IEnumerator_MoveNext() override { return ++i_ < cs::nc(t_)->get_childCount(); }
+    cs::Object* IEnumerator_get_Current() override { return t_->GetChild(i_); }
+    void IEnumerator_Reset() override { i_ = -1; }
+
+private:
+    Transform* t_;
+    int32_t i_ = -1;
+};
+} // namespace
+
+cs::IEnumerator* Transform::GetEnumerator() { return cs::gcnew<TransformEnumerator>(this); }
+
 Vector3 Transform::TransformPoint(Vector3 local)
 {
     Vector3 v = ApplyLocal(this, local);
@@ -312,6 +347,12 @@ void Transform::set_localRotation(Quaternion q)
 }
 Quaternion Transform::get_rotation() { return ZRotation(get_eulerAngles().z); }
 void Transform::set_rotation(Quaternion q) { set_eulerAngles({0.0f, 0.0f, ZAngle(q)}); }
+void Transform::Rotate(Vector3 axis, float angle)
+{
+    if (axis.x != 0.0f || axis.y != 0.0f || axis.z == 0.0f) cs::NotTranslated("Transform.Rotate about an axis other than z");
+    Rotate(Vector3{0.0f, 0.0f, axis.z > 0.0f ? angle : -angle});
+}
+
 void Transform::Rotate(Vector3 eulers)
 {
     if (eulers.x != 0.0f || eulers.y != 0.0f) cs::NotTranslated("Transform.Rotate about x or y");

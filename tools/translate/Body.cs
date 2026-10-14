@@ -2015,7 +2015,18 @@ public sealed class Body
         bool isInc = inc.Kind == OperationKind.Increment;
         bool post = inc.IsPostfix;
         var target = inc.Target;
-        if (inc.OperatorMethod != null) throw new TranslateException("user-defined ++");
+        // the new value from the old: the type's own step, or a user-defined ++ / -- (op_Increment)
+        string Step(string old)
+        {
+            var m = inc.OperatorMethod;
+            if (m == null) return $"::cs::step({old}, {(isInc ? 1 : -1)})";
+            if (N.IsGame(m))
+            {
+                tr.NeedMethod(m);
+                return $"{N.Type(m.ContainingType)}::{N.Method(m)}({old})";
+            }
+            return ExternalCall(m, null, null, false, new List<Ex> { new Ex(old, pure: true) }, null, out _);
+        }
         if (target is IPropertyReferenceOperation pr)
         {
             var get = pr.Property.GetMethod;
@@ -2041,12 +2052,17 @@ public sealed class Body
             string old = Temp(pr.Type);
             string nw = Temp(pr.Type);
             pre.Append($"{old} = {CallCode(get, recv, pr.Instance?.Type, isThis, idx, pr.Property, false, out _)}, ");
-            pre.Append($"{nw} = ::cs::step({old}, {(isInc ? 1 : -1)}), ");
+            pre.Append($"{nw} = {Step(old)}, ");
             var args = new List<Ex>(idx) { new Ex(nw, pure: true) };
             string call = CallCode(set, recv, pr.Instance?.Type, isThis, args, pr.Property, false, out _);
             return $"({pre}{call}, {(post ? old : nw)})";
         }
         string lv = StableLValue(target, out string prefix);
+        if (inc.OperatorMethod != null)
+        {
+            string o = Temp(target.Type);
+            return $"({prefix}{o} = {lv}, {lv} = {Step(o)}, {(post ? o : lv)})";
+        }
         string fn = post ? (isInc ? "postinc" : "postdec") : (isInc ? "preinc" : "predec");
         string code = $"::cs::{fn}({lv})";
         return prefix.Length > 0 ? $"({prefix}{code})" : code;
