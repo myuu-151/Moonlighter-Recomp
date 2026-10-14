@@ -269,6 +269,14 @@ add_test(NAME ui_rect
          COMMAND ui_rect_test ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/ui_title.jsonl ${CMAKE_CURRENT_SOURCE_DIR}/../data/oracle/ui_dungeon.jsonl
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
+# The GameCube's exact sqrt and sqrtf (src/util/GekkoSqrt.h) with model estimates at the ends of
+# frsqrte's bound against the PC's, bit for bit; no data. `--all` adds every one of the 2^32 floats.
+find_package(Threads REQUIRED)
+add_executable(gekko_sqrt_test tests/gekko_sqrt_test.cpp)
+target_include_directories(gekko_sqrt_test PRIVATE src)
+target_link_libraries(gekko_sqrt_test PRIVATE Threads::Threads)
+add_test(NAME gekko_sqrt COMMAND gekko_sqrt_test)
+
 # The PC preview of generated floors (PNGs), from the same code the GameCube build draws with.
 add_executable(preview tools/preview.cpp)
 target_link_libraries(preview PRIVATE mlcore)
