@@ -196,7 +196,11 @@ namespace MoonlighterOracle
         // A glyph record, little-endian: u16 char, u8 found (GetCharacterInfo's result), u8 flipped,
         // i32 index, f32 uv x y w h, f32 vert x y w h, f32 advance (CharacterInfo.width), i32 size,
         // i32 style; with texels (the font probe) i16 x y w h of its rect in the font texture (from
-        // the uv rect) and w*h alpha bytes, rows from the rect's bottom row up (the texture's order).
+        // the uv rect, padding included) and w*h alpha bytes, rows from the rect's lowest texture row
+        // up. Unity puts a glyph's top row at the lowest (the quad's top corners sample uv.y +
+        // uv.height, the height being negative), so the first row is the glyph's top; a flipped
+        // glyph (one wider than tall) is stored transposed (its quad's top-left and bottom-right
+        // corners take each other's uv).
 
 #pragma warning disable 618 // CharacterInfo's raw fields: what the font cache holds
         private static void WriteGlyph(BinaryWriter b, char c, bool found, CharacterInfo ci)
@@ -359,21 +363,33 @@ namespace MoonlighterOracle
             int groups = 0, glyphs = 0, missing = 0;
             foreach (var f in fonts)
             {
-                var plan = new List<KeyValuePair<string, KeyValuePair<int, string>>>(); // set name -> (size, chars)
-                foreach (int size in ProbeSizes) plan.Add(new KeyValuePair<string, KeyValuePair<int, string>>("latin", new KeyValuePair<int, string>(size, latinChars)));
+                // The groups: (set, size, style, characters).
+                var plan = new List<Tuple<string, int, int, string>>();
+                var covered = new HashSet<long>(); // size << 40 | style << 32 | char
+                void Plan(string set, int size, int style, IEnumerable<char> chars)
+                {
+                    var list = new List<char>();
+                    foreach (char c in chars)
+                        if (covered.Add(((long)size << 40) | ((long)style << 32) | c)) list.Add(c);
+                    if (list.Count > 0) plan.Add(Tuple.Create(set, size, style, new string(list.ToArray())));
+                }
+                foreach (int size in ProbeSizes)
+                    for (int style = 0; style < 4; style++) Plan("latin", size, style, latinChars);
                 if (cjkFor.TryGetValue(f.name, out var cjk) && cjk.Count > 0)
                 {
                     string cjkChars = Chars(cjk);
-                    foreach (int size in CjkSizes) plan.Add(new KeyValuePair<string, KeyValuePair<int, string>>("cjk:" + f.name, new KeyValuePair<int, string>(size, cjkChars)));
+                    foreach (int size in CjkSizes)
+                        for (int style = 0; style < 3; style++) Plan("cjk:" + f.name, size, style, cjkChars); // no CJK text is bold italic
                 }
+                // Every glyph the game's own texts used in the layout probe (TextOracle.used) the grid hasn't got.
+                if (used.TryGetValue(f.name, out var mine))
+                    foreach (var kv in mine.OrderBy(k => k.Key))
+                        Plan("used", (int)(kv.Key >> 8), (int)(kv.Key & 0xff), Chars(kv.Value));
                 foreach (var item in plan)
                 {
-                    bool isCjk = item.Key != "latin";
-                    for (int style = 0; style < 4; style++)
-                    {
-                        if (isCjk && style == 3) continue; // bold italic: no CJK text asks for it
-                        int size = item.Value.Key;
-                        string chars = item.Value.Value;
+                    { // one group
+                        int size = item.Item2, style = item.Item3;
+                        string chars = item.Item4;
                         int before = rebuilt;
                         f.RequestCharactersInTexture(chars, size, (FontStyle)style);
                         int after = rebuilt;
@@ -404,7 +420,7 @@ namespace MoonlighterOracle
                         }
                         b.Flush();
                         var j = new Json().Obj().Prop("ev", "glyphs").Prop("font", f.name).Prop("size", size).Prop("style", style)
-                            .Prop("set", item.Key).Prop("n", chars.Length).Prop("found", found)
+                            .Prop("set", item.Item1).Prop("n", chars.Length).Prop("found", found)
                             .Key("tex").Arr().Val(w).Val(h).Val(tex != null ? (int)tex.format : -1).EndArr().Prop("read", how)
                             .Prop("rebuilt", after - before).Prop("rebuiltAfterRead", rebuilt - after)
                             .Prop("data", Convert.ToBase64String(ms.ToArray()));
@@ -412,8 +428,11 @@ namespace MoonlighterOracle
                         groups++;
                         if (rebuilt != after) OraclePlugin.Log.LogWarning($"fonts: {f.name} {size} {style}: the texture was rebuilt while being read");
                     }
-                    writer.Flush();
-                    yield return null;
+                    if (groups % 4 == 0)
+                    {
+                        writer.Flush();
+                        yield return null;
+                    }
                 }
                 log.LogInfo($"fonts: {f.name} done ({groups} groups, {glyphs} glyphs, {sw.ElapsedMilliseconds} ms)");
             }
@@ -430,6 +449,18 @@ namespace MoonlighterOracle
         }
 
         private static int genCount;
+
+        /// The glyphs the game's own texts used (not the synthetic grid's), by font, (size << 8 |
+        /// style): the font probe renders these too.
+        private static readonly Dictionary<string, Dictionary<long, HashSet<char>>> used = new Dictionary<string, Dictionary<long, HashSet<char>>>();
+
+        private static void Used(Font font, CharacterInfo ci)
+        {
+            if (!used.TryGetValue(font.name, out var byKey)) used[font.name] = byKey = new Dictionary<long, HashSet<char>>();
+            long key = ((long)ci.size << 8) | ((long)ci.style & 0xff);
+            if (!byKey.TryGetValue(key, out var set)) byKey[key] = set = new HashSet<char>();
+            set.Add((char)ci.index);
+        }
 
         private static Json SettingsJson(Json j, TextGenerationSettings s)
         {
@@ -523,7 +554,12 @@ namespace MoonlighterOracle
                 CharacterInfo[] all = font.characterInfo;
                 if (all != null)
                     foreach (var ci in all.OrderBy(c => c.index).ThenBy(c => c.size).ThenBy(c => (int)c.style))
-                        if (ci.index >= 0 && ci.index < 0x10000 && wanted.Contains((char)ci.index) && sizes.Contains(ci.size)) { WriteGlyph(b, (char)ci.index, true, ci); n++; }
+                        if (ci.index >= 0 && ci.index < 0x10000 && wanted.Contains((char)ci.index) && sizes.Contains(ci.size))
+                        {
+                            WriteGlyph(b, (char)ci.index, true, ci);
+                            n++;
+                            if (!sm.set.StartsWith("synth")) Used(font, ci);
+                        }
                 b.Flush();
                 j.Prop("ng", n).Prop("glyphs", Convert.ToBase64String(ms.ToArray()));
                 var tex = font.material != null ? font.material.mainTexture as Texture2D : null;
@@ -590,6 +626,7 @@ namespace MoonlighterOracle
         private static readonly string[] Prefabs =
         {
             "Canvas/Canvas - Will", "Canvas/Canvas - Dungeon", "Canvas/PopUp - Options", "Canvas/PopUp - Pause", "dialogs/optionsdialog",
+            "Canvas/Canvas - PopUps", "Canvas/Canvas - Shop", "Canvas/Canvas - Town", "shop/shop_lvl2", "shop/shop_lvl3", "shop/shop_lvl4",
         };
 
         private static List<KeyValuePair<string, Text>> PrefabTexts()
