@@ -19,7 +19,10 @@
 //     end per Tangle, as slime_test compares it, plus the weave's fields. Also printed: the
 //     script order between each Tangle's LateUpdate and its agent's.
 //
-// Usage: tangle_test [tangle.jsonl]   (ML_TANGLE_DEBUG=1: every mismatch)
+// Usage: tangle_test [tangle.jsonl] [prefab]   (ML_TANGLE_DEBUG=1: every mismatch; prefab: the
+//        recording's Tangles' (default Tangle; ForestTangle for a Forest recording, made with
+//        -oracle-dungeon=Forest -oracle-tangle): the replay builds them from it, the weave's
+//        self-checks stay the Golem Tangle's)
 
 #include <algorithm>
 #include <cmath>
@@ -195,19 +198,19 @@ struct Data {
     bool ok = false;
 };
 
-Data LoadData()
+Data LoadData(const std::string& name = "Tangle")
 {
     Data d;
     d.dir = std::getenv("ML_DATA") ? std::getenv("ML_DATA") : "data/extracted";
     const std::string constants = ReadFile(d.dir + "/constants.json"), stats = ReadFile(d.dir + "/enemy_stats.json"),
-                      prefabs = ReadFile(d.dir + "/prefabs.json"), anim = ReadFile(d.dir + "/animators/Tangle.json"),
+                      prefabs = ReadFile(d.dir + "/prefabs.json"), anim = ReadFile(d.dir + "/animators/" + name + ".json"),
                       physics = ReadFile(d.dir + "/physics2d.json");
     if (constants.empty() || stats.empty() || prefabs.empty() || anim.empty()) return d;
     game::Constants::LoadFromText(constants);
     d.enemyStats = json::Parse(stats);
     if (!physics.empty()) d.physics2d = json::Parse(physics);
     game::PrefabLibrary::Load(json::Parse(prefabs));
-    d.prefab = game::PrefabLibrary::Find("Tangle", "enemies_golem");
+    d.prefab = game::PrefabLibrary::Find(name, "enemies_golem");
     d.controller = std::make_unique<unity::AnimatorController>(unity::AnimatorController::FromJson(json::Parse(anim)));
     d.ok = d.prefab != nullptr;
     return d;
@@ -978,10 +981,12 @@ int ReplayRecording(const std::string& file, const Data& data)
 int main(int argc, char** argv)
 {
     const std::string file = argc > 1 ? argv[1] : "data/oracle/tangle.jsonl";
+    const std::string prefab = argc > 2 ? argv[2] : "Tangle";
     CheckRaycast();
     Data data = LoadData();
     if (data.ok) {
         CheckWeave(data);
+        if (prefab != "Tangle") data = LoadData(prefab); // (the recording's Tangles' prefab and Animator)
     } else {
         std::printf("(no game data in %s (ML_DATA; animators/Tangle.json from tools/extract/animators.py): skipping the weave checks)\n", data.dir.c_str());
     }

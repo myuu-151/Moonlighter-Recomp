@@ -73,6 +73,7 @@
 #include "../polygon_probe.h"
 #include "../replay_frames.h"
 #include "../replay_profile.h"
+#include "../sound_creators.h"
 
 namespace {
 
@@ -561,7 +562,9 @@ int Replay(const std::string& file, Data& data)
     // MasterAudio's groups: the first scene's permanent creators' ("Sounds - Will" has the chests'
     // "dungeon_chest_unlock"), then the Golem dungeon's, then the general ones' (enemy_replay.h's).
     game::MasterAudio audio;
-    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, {"Sounds - Will", "Sounds - interface", "Sounds - GolemDungeon", "Sounds - GeneralDungeons"}))
+    // (Will's and the interface's creators first, then the dungeon's and the general ones:
+    // tests/sound_creators.h, the recording's or by its dungeon.)
+    if (!data.soundGroups.IsNull() && audio.Load(data.soundGroups, SoundCreators(start)))
         DarkTonic::MasterAudio::MasterAudio::engine = &audio;
     else std::printf("(no sound_groups.json: MasterAudio's draws not made)\n");
 

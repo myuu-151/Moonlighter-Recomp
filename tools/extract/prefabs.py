@@ -24,6 +24,13 @@ Needs UnityPy.
        (fields only for the classes in FIELDS; a LayerMask as its bits, a reference as whether
        it's set, a list as its length, but for the STRUCTURED fields; a collider ends with
        size x, size y for a box, the radius for a circle, the paths for a polygon)
+
+In the other dungeons' enemy bundles (ALL_FIELDS_BUNDLES: enemies_forest, enemies_desert,
+enemies_tesla), a script no FIELDS line names has every serialized field (raw_field): numbers,
+strings, {x, y(, z)} vectors and {r, g, b, a} colours as the bundle has them, [Serializable]
+objects field by field, lists element by element, a LayerMask as its bits, a reference to the
+prefab's own object or component as its path below the root ('' the root), to another asset
+as {"ref": its name, "type": its class} (a prefab: its root's name), null when unset.
 """
 import argparse
 import json
@@ -136,6 +143,28 @@ STRUCTURED = {
     ('FlyingKamikazeGolemBehaviour', 'Attack'): object_path,
     ('EventSounds', 'enableSound'): play_sound_types,
 }
+# The other dungeons' enemy bundles: every serialized field of a script FIELDS doesn't name.
+ALL_FIELDS_BUNDLES = ('enemies_forest', 'enemies_desert', 'enemies_tesla')
+UNITY_FIELDS = ('m_GameObject', 'm_Script', 'm_Name', 'm_EditorHideFlags', 'm_EditorClassIdentifier')
+
+
+def raw_field(value, go_path, asset):
+    """A serialized value as the module's doc says (asset(pptr): {"ref", "type"} of another asset)."""
+    if isinstance(value, dict):
+        if set(value) == {'m_FileID', 'm_PathID'}:
+            if value['m_PathID'] == 0:
+                return None
+            if value['m_FileID'] == 0 and value['m_PathID'] in go_path:
+                return go_path[value['m_PathID']]
+            return asset(value)
+        if set(value) == {'m_Bits'}:
+            return value['m_Bits']
+        return {k: raw_field(v, go_path, asset) for k, v in value.items()}
+    if isinstance(value, list):
+        return [raw_field(v, go_path, asset) for v in value]
+    return value
+
+
 PLAYER_PREFABS = ('WoodChest', 'IronChest', 'GoldChest', 'MagicChest', 'BossChest', 'DungeonToShopChest', 'TimedChestSlime')
 
 
@@ -243,6 +272,28 @@ def main():
                 sprite_names[ref['m_PathID']] = obj.read().m_Name if obj is not None else None
             return sprite_names[ref['m_PathID']]
 
+        asset_names = {}
+
+        def asset(ref):
+            """Another asset: {"ref": its name (a component's: its object's), "type": its class}."""
+            key = (ref['m_FileID'], ref['m_PathID'])
+            if key not in asset_names:
+                obj = by_id.get(ref['m_PathID']) if ref['m_FileID'] == 0 else None
+                if obj is None:
+                    asset_names[key] = {'ref': None, 'type': 'external'}
+                else:
+                    name = obj.peek_name()
+                    if not name and obj.type.name not in ('GameObject', 'Sprite', 'Texture2D'):
+                        try:
+                            go = tree(obj.path_id).get('m_GameObject')
+                            name = tree(go['m_PathID'])['m_Name'] if go and go['m_PathID'] in by_id else name
+                        except Exception:  # noqa: BLE001 - no type tree
+                            pass
+                    asset_names[key] = {'ref': name, 'type': obj.type.name}
+            return asset_names[key]
+
+        all_fields = bundle.name in ALL_FIELDS_BUNDLES
+
         class_names = {}
 
         def class_name(ref):
@@ -318,6 +369,9 @@ def main():
                     if mb is None:
                         continue
                     cls = class_name(mb['m_Script'])
+                    if all_fields and cls not in FIELDS:
+                        behaviours.append([cls, {f: raw_field(v, go_path, asset) for f, v in mb.items() if f not in UNITY_FIELDS}])
+                        continue
                     behaviours.append([cls, {f: STRUCTURED[cls, f](mb[f], go_path, sprite_name) if (cls, f) in STRUCTURED and f in mb
                                              else field(mb.get(f)) for f in FIELDS.get(cls, ())}])
                 row.append(behaviours)
