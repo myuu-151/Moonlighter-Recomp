@@ -157,6 +157,7 @@ def main():
     step('the sprites', [EXTRACT / 'sprites.py', '--game', game, '--out', OUT])
     step("the hero's, enemies' and weapons' animators and sprites", [EXTRACT / 'animators.py', '--game', game, '--out', OUT])
     step("MasterAudio's sound groups", [EXTRACT / 'sound_groups.py', '--game', game, '--out', OUT])
+    step("the localization (I2's languages and terms)", [EXTRACT / 'localization.py', '--game', game, '--out', OUT])
     try:
         import TypeTreeGeneratorAPI  # noqa: F401
         step("the UI's trees, sprites and fonts", [EXTRACT / 'ui.py', '--game', game, '--out', OUT])
